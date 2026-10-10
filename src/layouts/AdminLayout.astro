@@ -37,14 +37,25 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
     <title>{title} · Admin {brandName}</title>
   </head>
   <body class="bg-bone-50">
-    <div class="flex min-h-screen">
-      <aside class="hidden w-56 shrink-0 flex-col border-r border-ink/10 bg-bone px-4 py-6 sm:flex">
-        <a href="/" class="px-2 font-display text-xl lowercase">{brandName}</a>
-        <p class="mt-1 px-2 font-sans text-[11px] uppercase tracking-[0.14em] text-ink-muted">Admin</p>
-        <nav class="mt-8 flex flex-col gap-1">
+    <div id="admin-shell" class="group flex min-h-screen">
+      <!-- Celular: o menu lateral vira gaveta (abre no ☰); a partir de sm fica fixo -->
+      <div data-admin-close class="fixed inset-0 z-30 hidden bg-ink/40 group-[.is-open]:block sm:!hidden" aria-hidden="true"></div>
+      <aside
+        id="admin-sidebar"
+        class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 -translate-x-full flex-col overflow-y-auto border-r border-ink/10 bg-bone px-4 py-6 transition-transform duration-200 group-[.is-open]:translate-x-0 sm:static sm:z-auto sm:w-56 sm:translate-x-0 sm:transition-none"
+      >
+        <div class="flex items-start justify-between">
+          <div>
+            <a href="/" class="px-2 font-display text-xl lowercase">{brandName}</a>
+            <p class="mt-1 px-2 font-sans text-[11px] uppercase tracking-[0.14em] text-ink-muted">Admin</p>
+          </div>
+          <button type="button" data-admin-close class="rounded-card px-2 py-1 text-xl leading-none text-ink-muted sm:hidden" aria-label="Fechar menu">✕</button>
+        </div>
+        <nav class="mt-8 flex flex-col gap-1" aria-label="Menu do admin">
           {nav.map((item) => (
             <a
               href={item.href}
+              aria-current={isActive(item.href) ? 'page' : undefined}
               class:list={[
                 'rounded-card px-3 py-2 font-sans text-sm transition-colors',
                 isActive(item.href) ? 'bg-ink text-bone' : 'text-ink-soft hover:bg-bone-200',
@@ -54,7 +65,7 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
             </a>
           ))}
         </nav>
-        <form method="POST" action="/auth/sair" class="mt-auto">
+        <form method="POST" action="/auth/sair" class="mt-auto pt-6">
           <button class="w-full rounded-card px-3 py-2 text-left font-sans text-sm text-ink-muted hover:bg-bone-200">
             Sair
           </button>
@@ -62,27 +73,20 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
       </aside>
 
       <div class="min-w-0 flex-1">
-        <!-- Celular: o menu lateral não cabe, vira uma barra rolável no topo -->
-        <nav class="flex items-center gap-1 overflow-x-auto border-b border-ink/10 bg-bone px-3 py-2 sm:hidden" aria-label="Menu do admin">
-          <a href="/" class="shrink-0 px-2 font-display text-lg lowercase">{brandName}</a>
-          {nav.map((item) => (
-            <a
-              href={item.href}
-              aria-current={isActive(item.href) ? 'page' : undefined}
-              class:list={[
-                'shrink-0 whitespace-nowrap rounded-card px-3 py-2 font-sans text-sm',
-                isActive(item.href) ? 'bg-ink text-bone' : 'text-ink-soft',
-              ]}
-            >
-              {item.label}
-            </a>
-          ))}
-          <form method="POST" action="/auth/sair" class="shrink-0">
-            <button class="whitespace-nowrap rounded-card px-3 py-2 font-sans text-sm text-ink-muted">Sair</button>
-          </form>
-        </nav>
         <header class="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-bone px-4 py-4 sm:px-6">
-          <h1 class="font-display text-2xl">{title}</h1>
+          <div class="flex items-center gap-3">
+            <button
+              type="button"
+              data-admin-toggle
+              class="-ml-1 rounded-card p-1.5 text-ink hover:bg-bone-200 sm:hidden"
+              aria-controls="admin-sidebar"
+              aria-expanded="false"
+              aria-label="Abrir menu"
+            >
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+            </button>
+            <h1 class="font-display text-2xl">{title}</h1>
+          </div>
           <div class="flex items-center gap-2 font-sans text-[11px] uppercase tracking-[0.1em]">
             <span class:list={['rounded-full px-2 py-1', hasSupabase ? 'bg-agua-wash text-agua-dark' : 'bg-blush-light text-ink-soft']}>
               {modeLabel}
@@ -96,5 +100,16 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
         </main>
       </div>
     </div>
+    <script>
+      const shell = document.getElementById('admin-shell')!;
+      const toggle = document.querySelector<HTMLButtonElement>('[data-admin-toggle]')!;
+      const setOpen = (open: boolean) => {
+        shell.classList.toggle('is-open', open);
+        toggle.setAttribute('aria-expanded', String(open));
+      };
+      toggle.addEventListener('click', () => setOpen(!shell.classList.contains('is-open')));
+      document.querySelectorAll('[data-admin-close]').forEach((el) => el.addEventListener('click', () => setOpen(false)));
+      document.addEventListener('keydown', (e) => e.key === 'Escape' && setOpen(false));
+    </script>
   </body>
 </html>

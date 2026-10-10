@@ -20,6 +20,9 @@ const nav = [
   { href: '/admin/site', label: 'Conteúdo' },
 ];
 
+const isActive = (href: string) =>
+  path === href || (href !== '/admin' && path.startsWith(href));
+
 const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
 ---
 
@@ -44,9 +47,7 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
               href={item.href}
               class:list={[
                 'rounded-card px-3 py-2 font-sans text-sm transition-colors',
-                path === item.href || (item.href !== '/admin' && path.startsWith(item.href))
-                  ? 'bg-ink text-bone'
-                  : 'text-ink-soft hover:bg-bone-200',
+                isActive(item.href) ? 'bg-ink text-bone' : 'text-ink-soft hover:bg-bone-200',
               ]}
             >
               {item.label}
@@ -60,8 +61,27 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
         </form>
       </aside>
 
-      <div class="flex-1">
-        <header class="flex items-center justify-between border-b border-ink/10 bg-bone px-6 py-4">
+      <div class="min-w-0 flex-1">
+        <!-- Celular: o menu lateral não cabe, vira uma barra rolável no topo -->
+        <nav class="flex items-center gap-1 overflow-x-auto border-b border-ink/10 bg-bone px-3 py-2 sm:hidden" aria-label="Menu do admin">
+          <a href="/" class="shrink-0 px-2 font-display text-lg lowercase">{brandName}</a>
+          {nav.map((item) => (
+            <a
+              href={item.href}
+              aria-current={isActive(item.href) ? 'page' : undefined}
+              class:list={[
+                'shrink-0 whitespace-nowrap rounded-card px-3 py-2 font-sans text-sm',
+                isActive(item.href) ? 'bg-ink text-bone' : 'text-ink-soft',
+              ]}
+            >
+              {item.label}
+            </a>
+          ))}
+          <form method="POST" action="/auth/sair" class="shrink-0">
+            <button class="whitespace-nowrap rounded-card px-3 py-2 font-sans text-sm text-ink-muted">Sair</button>
+          </form>
+        </nav>
+        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-bone px-4 py-4 sm:px-6">
           <h1 class="font-display text-2xl">{title}</h1>
           <div class="flex items-center gap-2 font-sans text-[11px] uppercase tracking-[0.1em]">
             <span class:list={['rounded-full px-2 py-1', hasSupabase ? 'bg-agua-wash text-agua-dark' : 'bg-blush-light text-ink-soft']}>
@@ -71,7 +91,7 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
             <span class:list={['rounded-full px-2 py-1', hasResend ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>E-mail</span>
           </div>
         </header>
-        <main class="p-6">
+        <main class="p-4 sm:p-6">
           <slot />
         </main>
       </div>

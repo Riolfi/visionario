@@ -1,7 +1,6 @@
 ---
 import '../styles/global.css';
 import ThemeVars from '../components/ThemeVars.astro';
-import { hasSupabase, hasMercadoPago, hasResend } from '../lib/env';
 
 interface Props {
   title: string;
@@ -23,7 +22,6 @@ const nav = [
 const isActive = (href: string) =>
   path === href || (href !== '/admin' && path.startsWith(href));
 
-const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
 ---
 
 <!doctype html>
@@ -86,13 +84,6 @@ const modeLabel = hasSupabase ? 'Supabase' : 'Fallback local (.data/)';
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
             <h1 class="font-display text-2xl">{title}</h1>
-          </div>
-          <div class="flex items-center gap-2 font-sans text-[11px] uppercase tracking-[0.1em]">
-            <span class:list={['rounded-full px-2 py-1', hasSupabase ? 'bg-agua-wash text-agua-dark' : 'bg-blush-light text-ink-soft']}>
-              {modeLabel}
-            </span>
-            <span class:list={['rounded-full px-2 py-1', hasMercadoPago ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>MP</span>
-            <span class:list={['rounded-full px-2 py-1', hasResend ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>E-mail</span>
           </div>
         </header>
         <main class="p-4 sm:p-6">

@@ -24,6 +24,10 @@ export const env = {
   brandLegalName: read('PUBLIC_BRAND_LEGAL_NAME') || 'Visionário Acessórios LTDA',
   brandCnpj: read('PUBLIC_BRAND_CNPJ') || '00.000.000/0001-00',
 
+  /** Token da API Cosmos (Bluesoft) — busca de produto por código de barras no
+   *  cadastro. Opcional: sem ele, a busca usa só as bases Open Facts. */
+  cosmosToken: read('COSMOS_TOKEN'),
+
   supabaseUrl: read('SUPABASE_URL'),
   supabaseAnonKey: read('SUPABASE_ANON_KEY'),
   supabaseServiceKey: read('SUPABASE_SERVICE_ROLE_KEY'),

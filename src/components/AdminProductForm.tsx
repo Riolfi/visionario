@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks';
+import { useEffect, useRef, useState } from 'preact/hooks';
 import CameraScanButton from './CameraScanButton';
 import type { CategoryNode, Product } from '../lib/types';
 
@@ -33,9 +33,47 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     is_bestseller: product?.is_bestseller ?? false,
   });
 
+  const formRef = useRef(form);
+  formRef.current = form;
+
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
+
+  // ---- busca do produto pelo código de barras (bases públicas) ------------
+  // Preenche só o que estiver VAZIO (nome, descrição curta, descrição); a foto
+  // vira sugestão pra aceitar. Nunca mexe em preço/estoque/categoria.
+  type Found = { source: string; name: string; brand: string | null; description: string | null; image: string | null };
+  const [lookup, setLookup] = useState<
+    { state: 'idle' } | { state: 'busy' } | { state: 'none' } | { state: 'found'; data: Found; filled: string[] }
+  >({ state: 'idle' });
+
+  async function lookupCode(raw: string) {
+    const code = raw.replace(/\D/g, '');
+    if (code.length < 8) return;
+    setLookup({ state: 'busy' });
+    try {
+      const res = await fetch(`/api/admin/products/lookup?code=${code}`);
+      const data = (await res.json()) as { found: boolean } & Found;
+      if (!data.found) return setLookup({ state: 'none' });
+      // formRef: o que está na tela AGORA (a pessoa pode ter digitado durante a busca)
+      const f = formRef.current;
+      const patch: Partial<typeof form> = {};
+      const filled: string[] = [];
+      if (!f.name.trim()) (patch.name = data.name), filled.push('nome');
+      if (!f.short_description.trim() && data.brand) (patch.short_description = `Marca: ${data.brand}`), filled.push('descrição curta');
+      if (!f.description.trim() && data.description) (patch.description = data.description), filled.push('descrição');
+      setForm((cur) => ({ ...cur, ...patch }));
+      setLookup({ state: 'found', data, filled });
+    } catch {
+      setLookup({ state: 'none' });
+    }
+  }
+
+  // cadastro novo vindo do leitor (?barcode=): já busca ao abrir
+  useEffect(() => {
+    if (!product && initialBarcode) lookupCode(initialBarcode);
+  }, []);
 
   function addUrl() {
     const url = urlInput.trim();
@@ -168,7 +206,12 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         <div class="block">
           <div class="flex items-center justify-between gap-2">
             <label class="label" for="product-barcode">Código de barras</label>
-            <CameraScanButton onCode={(code) => upd('barcode', code)} />
+            <CameraScanButton
+              onCode={(code) => {
+                upd('barcode', code);
+                lookupCode(code);
+              }}
+            />
           </div>
           <input
             id="product-barcode"
@@ -178,10 +221,36 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             value={form.barcode}
             onInput={(e) => upd('barcode', (e.target as HTMLInputElement).value)}
             onKeyDown={(e) => {
-              // o leitor "digita" o código e um Enter — não deixa isso enviar o form sozinho
-              if (e.key === 'Enter') e.preventDefault();
+              // o leitor "digita" o código e um Enter — não deixa isso enviar o
+              // form sozinho; em vez disso, busca os dados do produto
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                lookupCode((e.target as HTMLInputElement).value);
+              }
             }}
           />
+          {lookup.state === 'busy' && <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Buscando o produto pelo código…</p>}
+          {lookup.state === 'none' && (
+            <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado nas bases públicas — preencha manualmente.</p>
+          )}
+          {lookup.state === 'found' && (
+            <div class="mt-1.5 rounded-card border border-agua/40 bg-agua/10 p-2.5 font-sans text-[12px] text-ink">
+              <p>
+                Encontrado: <strong>{lookup.data.name}</strong>
+                {lookup.data.brand ? ` · ${lookup.data.brand}` : ''}.{' '}
+                {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estavam preenchidos. '}
+                Confira antes de salvar.
+              </p>
+              {lookup.data.image && !images.includes(lookup.data.image) && (
+                <div class="mt-2 flex items-center gap-2">
+                  <img src={lookup.data.image} alt="" class="h-12 w-12 rounded border border-ink/10 object-cover" />
+                  <button type="button" class="underline" onClick={() => setImages((l) => [...l, lookup.data.image!])}>
+                    Usar esta foto
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

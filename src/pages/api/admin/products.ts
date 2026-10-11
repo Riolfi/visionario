@@ -20,11 +20,20 @@ function parseInput(raw: Record<string, unknown>): { ok: true; value: ProductInp
   if (name.length < 2) return { ok: false, error: 'Nome obrigatório.' };
   if (!category_id) return { ok: false, error: 'Categoria obrigatória.' };
 
+  // obrigatórios no cadastro (mesma regra do formulário)
+  if (!String(raw.barcode || '').trim()) return { ok: false, error: 'Código de barras obrigatório.' };
+  if (!String(raw.short_description || '').trim()) return { ok: false, error: 'Marca obrigatória.' };
+  if (!String(raw.description || '').trim()) return { ok: false, error: 'Descrição completa obrigatória.' };
+
   const price_cents = Math.round(Number(raw.price_cents) || 0);
   if (price_cents <= 0) return { ok: false, error: 'Preço inválido.' };
 
   const compareRaw = Number(raw.compare_at_price_cents);
   const compare_at_price_cents = Number.isFinite(compareRaw) && compareRaw > 0 ? Math.round(compareRaw) : null;
+  // com oferta, o preço cheio (compare_at) tem que ser maior que o cobrado
+  if (compare_at_price_cents !== null && compare_at_price_cents <= price_cents) {
+    return { ok: false, error: 'A oferta precisa ser menor que o preço.' };
+  }
 
   const images = Array.isArray(raw.images)
     ? raw.images.map((s) => String(s).trim()).filter(Boolean)

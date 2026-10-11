@@ -22,6 +22,31 @@ function maskMoney(raw: string): string {
 }
 const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '') || '0');
 
+/** Rótulo do campo: * vermelho quando obrigatório, "(opcional)" apagado quando não. */
+function FieldLabel({ text, htmlFor, required }: { text: string; htmlFor: string; required?: boolean }) {
+  return (
+    <label class="label flex items-center gap-1.5" for={htmlFor}>
+      {text}
+      {required ? (
+        <span class="text-red-600" aria-hidden="true">*</span>
+      ) : (
+        <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span>
+      )}
+    </label>
+  );
+}
+
+/** Campos obrigatórios, na ordem da tela — o nome aparece na mensagem de erro. */
+const REQUIRED = [
+  ['barcode', 'código de barras'],
+  ['name', 'nome'],
+  ['short_description', 'marca'],
+  ['category_id', 'subcategoria'],
+  ['price', 'preço'],
+  ['stock', 'estoque'],
+  ['description', 'descrição completa'],
+] as const;
+
 export default function AdminProductForm({ product, tree, initialBarcode }: Props) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -37,9 +62,14 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     description: product?.description ?? '',
     ingredients: product?.ingredients ?? '',
     how_to_use: product?.how_to_use ?? '',
-    // preços guardados já mascarados ("1.234,56"); o R$ fica fixo na frente do campo
-    price: product ? maskMoney(String(product.price_cents)) : '',
-    compare_at: product?.compare_at_price_cents ? maskMoney(String(product.compare_at_price_cents)) : '',
+    // preços guardados já mascarados ("1.234,56"); o R$ fica fixo na frente do campo.
+    // Preço = valor cheio; oferta = valor com desconto. No banco, price_cents é o
+    // que o cliente paga e compare_at_price_cents o "de" — com oferta, o preço
+    // cheio mora no compare_at.
+    price: product
+      ? maskMoney(String(product.compare_at_price_cents ?? product.price_cents))
+      : '',
+    offer: product?.compare_at_price_cents ? maskMoney(String(product.price_cents)) : '',
     stock: product ? String(product.stock) : '0',
     barcode: product?.barcode ?? initialBarcode ?? '',
     is_active: product?.is_active ?? true,
@@ -53,9 +83,14 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   const baseCode = useRef<string | null>(product?.barcode?.replace(/\D/g, '') || null);
   const autoFilled = useRef(false);
 
+  // campos obrigatórios vazios na última tentativa de salvar (ficam em vermelho)
+  const [invalid, setInvalid] = useState<Set<string>>(new Set());
+
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
+    if (invalid.has(k)) setInvalid((cur) => new Set([...cur].filter((x) => x !== k)));
   }
+  const bad = (k: string) => (invalid.has(k) ? ' border-red-500' : '');
 
   // ---- busca do produto pelo código de barras (bases públicas) ------------
   // Preenche nome, marca e descrição: só o que estiver vazio quando é o mesmo
@@ -81,16 +116,20 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
           const r = await fetch(`https://${h}/api/v2/product/${code}.json?fields=${fields}`, { signal: AbortSignal.timeout(5000) });
           const d = r.ok ? await r.json() : null;
           const p = d?.status === 1 ? d.product : null;
-          const name = (p?.product_name_pt || p?.product_name || '').trim();
-          if (!name) return null;
+          if (!p) return null;
+          const name = (p.product_name_pt || p.product_name || '').trim();
+          const brand = (p.brands || '').split(',')[0]?.trim() || null;
+          const image = p.image_front_url || null;
+          // marca e foto sem nome ainda valem (mesma regra do servidor)
+          if (!name && !brand && !image) return null;
           const qty = (p.quantity || '').trim();
           const generic = (p.generic_name_pt || p.generic_name || '').trim();
           return {
             source: h.split('.')[1]!,
-            name: qty && !name.includes(qty) ? `${name} ${qty}` : name,
-            brand: (p.brands || '').split(',')[0]?.trim() || null,
+            name: name && qty && !name.includes(qty) ? `${name} ${qty}` : name,
+            brand,
             description: generic && generic.toLowerCase() !== name.toLowerCase() ? generic : null,
-            image: p.image_front_url || null,
+            image,
           } as Found;
         } catch {
           return null;
@@ -225,6 +264,22 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
   async function submit(e: Event) {
     e.preventDefault();
+    const missing = REQUIRED.filter(([k]) =>
+      k === 'price' ? moneyToCents(form.price) <= 0 : !String(form[k]).trim(),
+    );
+    if (missing.length) {
+      setInvalid(new Set(missing.map(([k]) => k)));
+      setError(`Preencha: ${missing.map(([, label]) => label).join(', ')}.`);
+      return window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    const priceCents = moneyToCents(form.price);
+    const offerCents = form.offer ? moneyToCents(form.offer) : 0;
+    if (offerCents && offerCents >= priceCents) {
+      setInvalid(new Set(['offer']));
+      setError('A oferta precisa ser menor que o preço.');
+      return window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    setInvalid(new Set());
     setSaving(true);
     setError(null);
     try {
@@ -240,10 +295,8 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
           description: form.description,
           ingredients: form.ingredients,
           how_to_use: form.how_to_use,
-          price_cents: moneyToCents(form.price),
-          compare_at_price_cents: form.compare_at
-            ? moneyToCents(form.compare_at)
-            : null,
+          price_cents: offerCents || priceCents,
+          compare_at_price_cents: offerCents ? priceCents : null,
           stock: parseInt(form.stock, 10) || 0,
           barcode: form.barcode.trim() || null,
           is_active: form.is_active,
@@ -259,6 +312,15 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     } finally {
       setSaving(false);
     }
+  }
+
+  async function cancel() {
+    const leave = await confirmDialog({
+      title: 'Sair e perder alterações?',
+      confirmLabel: 'Sair',
+      cancelLabel: 'Manter alterações',
+    });
+    if (leave) window.location.href = '/admin/produtos';
   }
 
   async function remove() {
@@ -287,35 +349,35 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   }
 
   return (
-    <form onSubmit={submit} class="max-w-2xl space-y-5">
+    <form onSubmit={submit} noValidate class="max-w-2xl space-y-5">
       {error && <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
       <div class="grid gap-4 sm:grid-cols-2">
         {/* primeiro de tudo: bipar o código já busca e preenche o resto */}
-        <div class="block sm:col-span-2">
-          <label class="label" for="product-barcode">Código de barras</label>
-          <div class="flex items-stretch gap-2">
-            <input
-              id="product-barcode"
-              class="field min-w-0 flex-1"
-              inputMode="numeric"
-              placeholder="digitar código de barras manualmente"
-              value={form.barcode}
-              onInput={(e) => {
-                const el = e.target as HTMLInputElement;
-                const v = el.value.replace(/\D/g, '').slice(0, 14);
-                el.value = v;
-                upd('barcode', v);
-              }}
-              onKeyDown={(e) => {
-                // o leitor "digita" o código e um Enter — não deixa isso enviar o
-                // form sozinho; em vez disso, busca os dados do produto
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  lookupCode((e.target as HTMLInputElement).value);
-                }
-              }}
-            />
+        <div class="sm:col-span-2">
+          <FieldLabel text="Código de barras" htmlFor="product-barcode" required />
+          <input
+            id="product-barcode"
+            class={`field${bad('barcode')}`}
+            inputMode="numeric"
+            placeholder="digitar código de barras manualmente"
+            value={form.barcode}
+            onInput={(e) => {
+              const el = e.target as HTMLInputElement;
+              const v = el.value.replace(/\D/g, '').slice(0, 14);
+              el.value = v;
+              upd('barcode', v);
+            }}
+            onKeyDown={(e) => {
+              // o leitor "digita" o código e um Enter — não deixa isso enviar o
+              // form sozinho; em vez disso, busca os dados do produto
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                lookupCode((e.target as HTMLInputElement).value);
+              }
+            }}
+          />
+          <div class="mt-2">
             <CameraScanButton
               onCode={(code) => {
                 upd('barcode', code);
@@ -328,12 +390,12 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             <p class="mt-1.5 font-sans text-[12px] text-amber-700">Não consegui consultar as bases de produtos agora. Tente bipar de novo.</p>
           )}
           {lookup.state === 'none' && (
-            <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado nas bases públicas — preencha manualmente.</p>
+            <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado - Preenchimento manual.</p>
           )}
           {lookup.state === 'found' && (
             <div class="mt-1.5 rounded-card border border-agua/40 bg-agua/10 p-2.5 font-sans text-[12px] text-ink">
               <p>
-                Encontrado: <strong>{lookup.data.name}</strong>
+                Encontrado: <strong>{lookup.data.name || 'sem nome na base, digite o nome'}</strong>
                 {lookup.data.brand ? ` · ${lookup.data.brand}` : ''}.{' '}
                 {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estão com os dados deste código. '}
                 Confira antes de salvar.
@@ -349,17 +411,17 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             </div>
           )}
         </div>
-        <label class="block sm:col-span-2">
-          <span class="label">Nome</span>
-          <input class="field" value={form.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} required />
-        </label>
-        <label class="block">
-          <span class="label">Slug (URL)</span>
-          <input class="field" value={form.slug} placeholder="gerado do nome se vazio" onInput={(e) => upd('slug', (e.target as HTMLInputElement).value)} />
-        </label>
-        <label class="block">
-          <span class="label">Subcategoria</span>
-          <select class="field" value={form.category_id} onChange={(e) => upd('category_id', (e.target as HTMLSelectElement).value)} required>
+        <div class="sm:col-span-2">
+          <FieldLabel text="Nome" htmlFor="product-name" required />
+          <input id="product-name" class={`field${bad('name')}`} value={form.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} />
+        </div>
+        <div>
+          <FieldLabel text="Marca" htmlFor="product-brand" required />
+          <input id="product-brand" class={`field${bad('short_description')}`} value={form.short_description} onInput={(e) => upd('short_description', (e.target as HTMLInputElement).value)} />
+        </div>
+        <div>
+          <FieldLabel text="Subcategoria" htmlFor="product-category" required />
+          <select id="product-category" class={`field${bad('category_id')}`} value={form.category_id} onChange={(e) => upd('category_id', (e.target as HTMLSelectElement).value)}>
             <option value="" disabled>
               {tree.length === 0 ? '— crie categorias primeiro —' : 'Selecione a subcategoria'}
             </option>
@@ -370,13 +432,14 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
               </optgroup>
             ))}
           </select>
-        </label>
-        <label class="block">
-          <span class="label">Preço</span>
+        </div>
+        <div>
+          <FieldLabel text="Preço" htmlFor="product-price" required />
           <span class="relative block">
             <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-sans text-sm text-ink-muted">R$</span>
             <input
-              class="field pl-10"
+              id="product-price"
+              class={`field pl-10${bad('price')}`}
               inputMode="numeric"
               placeholder="0,00"
               value={form.price}
@@ -385,30 +448,31 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
                 const v = maskMoney(el.value);
                 el.value = v;
                 upd('price', v);
-              }} required
+              }}
             />
           </span>
-        </label>
-        <label class="block">
-          <span class="label">Preço "de" / comparação</span>
+        </div>
+        <div>
+          <FieldLabel text="Oferta" htmlFor="product-offer" />
           <span class="relative block">
             <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-sans text-sm text-ink-muted">R$</span>
             <input
-              class="field pl-10"
+              id="product-offer"
+              class={`field pl-10${bad('offer')}`}
               inputMode="numeric"
               placeholder="0,00"
-              value={form.compare_at}
+              value={form.offer}
               onInput={(e) => {
                 const el = e.target as HTMLInputElement;
                 const v = maskMoney(el.value);
                 el.value = v;
-                upd('compare_at', v);
+                upd('offer', v);
               }}
             />
           </span>
-        </label>
-        <div class="block">
-          <label class="label" for="product-stock">Estoque</label>
+        </div>
+        <div>
+          <FieldLabel text="Estoque" htmlFor="product-stock" required />
           <div class="flex items-stretch gap-2">
             <button
               type="button"
@@ -421,7 +485,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             </button>
             <input
               id="product-stock"
-              class="field text-center"
+              class={`field text-center${bad('stock')}`}
               inputMode="numeric"
               value={form.stock}
               onInput={(e) => {
@@ -442,24 +506,24 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             </button>
           </div>
         </div>
+        <div class="sm:col-span-2">
+          <FieldLabel text="Descrição completa" htmlFor="product-description" required />
+          <textarea id="product-description" class={`field${bad('description')}`} rows={4} value={form.description} onInput={(e) => upd('description', (e.target as HTMLTextAreaElement).value)} />
+        </div>
+        <div class="sm:col-span-2">
+          <FieldLabel text="Material" htmlFor="product-material" />
+          <textarea id="product-material" class="field" rows={3} value={form.ingredients} onInput={(e) => upd('ingredients', (e.target as HTMLTextAreaElement).value)} />
+        </div>
+        <div class="sm:col-span-2">
+          <FieldLabel text="Cuidados" htmlFor="product-care" />
+          <textarea id="product-care" class="field" rows={3} value={form.how_to_use} onInput={(e) => upd('how_to_use', (e.target as HTMLTextAreaElement).value)} />
+        </div>
+        <div class="sm:col-span-2">
+          <FieldLabel text="Nome do link (URL)" htmlFor="product-slug" />
+          <input id="product-slug" class="field" value={form.slug} onInput={(e) => upd('slug', (e.target as HTMLInputElement).value)} />
+        </div>
       </div>
 
-      <label class="block">
-        <span class="label">Marca</span>
-        <input class="field" value={form.short_description} onInput={(e) => upd('short_description', (e.target as HTMLInputElement).value)} />
-      </label>
-      <label class="block">
-        <span class="label">Descrição completa</span>
-        <textarea class="field" rows={4} value={form.description} onInput={(e) => upd('description', (e.target as HTMLTextAreaElement).value)} />
-      </label>
-      <label class="block">
-        <span class="label">Material</span>
-        <textarea class="field" rows={3} value={form.ingredients} onInput={(e) => upd('ingredients', (e.target as HTMLTextAreaElement).value)} />
-      </label>
-      <label class="block">
-        <span class="label">Cuidados</span>
-        <textarea class="field" rows={3} value={form.how_to_use} onInput={(e) => upd('how_to_use', (e.target as HTMLTextAreaElement).value)} />
-      </label>
       <div>
         <span class="label">Imagens do produto</span>
         <p class="mb-2 text-[12px] text-ink-muted">
@@ -527,7 +591,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         <button type="submit" class="btn-primary w-full" disabled={saving}>
           {saving ? 'Salvando…' : product ? 'Salvar' : 'Criar produto'}
         </button>
-        <a href="/admin/produtos" class="btn-outline w-full">Cancelar</a>
+        <button type="button" onClick={cancel} class="btn-outline w-full">Cancelar</button>
         {/* editando: apaga o produto; cadastro novo: descarta o que foi preenchido */}
         <button type="button" onClick={remove} class="btn-outline w-full" disabled={saving}>
           Excluir

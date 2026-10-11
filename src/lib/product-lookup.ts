@@ -76,16 +76,21 @@ async function fromOpenFacts(code: string): Promise<LookupResult | null> {
         product?: Record<string, string>;
       } | null;
       const p = d?.status === 1 ? d.product : null;
-      const name = clean(p?.product_name_pt) || clean(p?.product_name);
-      if (!p || !name) return null;
+      if (!p) return null;
+      const name = clean(p.product_name_pt) || clean(p.product_name);
+      const brand = clean(p.brands).split(',')[0]?.trim() || null;
+      const image = clean(p.image_front_url) || null;
+      // tem base que traz marca e foto mas não o nome (ex.: Nivea na Open Beauty
+      // Facts) — ainda vale: preenche o que tem, o nome fica pra digitar
+      if (!name && !brand && !image) return null;
       const generic = clean(p.generic_name_pt) || clean(p.generic_name);
       const qty = clean(p.quantity);
       return {
         source,
-        name: qty && !name.includes(qty) ? `${name} ${qty}` : name,
-        brand: clean(p.brands).split(',')[0]?.trim() || null,
+        name: name && qty && !name.includes(qty) ? `${name} ${qty}` : name,
+        brand,
         description: generic && generic.toLowerCase() !== name.toLowerCase() ? generic : null,
-        image: clean(p.image_front_url) || null,
+        image,
       } satisfies LookupResult;
     }),
   );

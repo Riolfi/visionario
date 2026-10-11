@@ -2,7 +2,7 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getProducts } from '../../../lib/repo/catalog';
 import { brl } from '../../../lib/format';
-import CameraScanButton from '../../../components/CameraScanButton';
+import CameraScanButton, { SCAN_BTN, CHECK_ICON_PATH } from '../../../components/CameraScanButton';
 
 export const prerender = false;
 
@@ -17,13 +17,19 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
 
   <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
     <label class="label" for="barcode-scan">Código de barras</label>
-    <input
-      id="barcode-scan"
-      class="field"
-      inputmode="numeric"
-      placeholder="digitar código de barras manualmente"
-      autocomplete="off"
-    />
+    <div class="flex items-stretch gap-2">
+      <input
+        id="barcode-scan"
+        class="field min-w-0 flex-1"
+        inputmode="numeric"
+        placeholder="digitar código de barras manualmente"
+        autocomplete="off"
+      />
+      <button type="button" id="barcode-send" class={SCAN_BTN}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={CHECK_ICON_PATH} /></svg>
+        Enviar
+      </button>
+    </div>
     <div class="mt-2"><CameraScanButton client:load targetId="barcode-scan" /></div>
     <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Pesquise para criar ou editar um produto</p>
     <p id="barcode-scan-status" class="mt-1 font-sans text-[13px] text-ink-muted empty:hidden" aria-live="polite"></p>
@@ -96,11 +102,18 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
   const input = document.getElementById('barcode-scan') as HTMLInputElement | null;
   const status = document.getElementById('barcode-scan-status');
 
-  input?.addEventListener('keydown', async (e) => {
+  // Enter (leitor USB / teclado) e o botão "Enviar" fazem a mesma busca
+  input?.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     e.preventDefault();
+    search();
+  });
+  document.getElementById('barcode-send')?.addEventListener('click', () => search());
+
+  async function search() {
+    if (!input) return;
     const code = input.value.trim();
-    if (!code) return;
+    if (!code) return input.focus();
 
     input.disabled = true;
     if (status) status.textContent = 'Buscando…';
@@ -121,5 +134,5 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
     } finally {
       input.disabled = false;
     }
-  });
+  }
 </script>

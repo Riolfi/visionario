@@ -10,6 +10,14 @@ import CameraScanner from './CameraScanner';
  * Sem onCode (ilha do Astro, que não recebe função): preenche o input
  * `targetId` e dispara Enter nele, reaproveitando o script da página.
  */
+/** Estilo dos botões ao lado do campo de código ("Enviar" e "Abrir leitor"):
+ *  mesma altura do .field (py-3 + 15px) e mesma largura entre si. */
+export const SCAN_BTN =
+  'inline-flex w-36 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-card border border-ink/20 bg-white/70 px-3 py-3 font-sans text-[15px] text-ink hover:bg-bone-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/70';
+
+/** Ícone de check do botão "Enviar". */
+export const CHECK_ICON_PATH = 'M5 12.5l4.5 4.5L19 7.5';
+
 interface Props {
   onCode?: (code: string) => void;
   targetId?: string;
@@ -47,7 +55,7 @@ export default function CameraScanButton({ onCode, targetId, class: cls = '' }: 
         onClick={() => setOpen(true)}
         disabled={!hasCamera}
         title={hasCamera ? 'Ler o código com a câmera' : 'Nenhuma câmera encontrada neste aparelho'}
-        class={`inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-card border border-ink/20 bg-white/70 px-4 py-3 font-sans text-[15px] text-ink hover:bg-bone-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white/70 ${cls}`}
+        class={`${SCAN_BTN} ${cls}`}
       >
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 9v6M10 9v6M13 9v6M16 9v6" /></svg>
         Abrir leitor

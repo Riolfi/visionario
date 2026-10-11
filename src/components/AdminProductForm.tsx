@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import CameraScanButton from './CameraScanButton';
+import CameraScanButton, { SCAN_BTN, CHECK_ICON_PATH } from './CameraScanButton';
 import { confirmDialog } from '../lib/confirm-dialog';
 import type { CategoryNode, Product } from '../lib/types';
 
@@ -356,27 +356,33 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         {/* primeiro de tudo: bipar o código já busca e preenche o resto */}
         <div class="sm:col-span-2">
           <FieldLabel text="Código de barras" htmlFor="product-barcode" required />
-          <input
-            id="product-barcode"
-            class={`field${bad('barcode')}`}
-            inputMode="numeric"
-            placeholder="digitar código de barras manualmente"
-            value={form.barcode}
-            onInput={(e) => {
-              const el = e.target as HTMLInputElement;
-              const v = el.value.replace(/\D/g, '').slice(0, 14);
-              el.value = v;
-              upd('barcode', v);
-            }}
-            onKeyDown={(e) => {
-              // o leitor "digita" o código e um Enter — não deixa isso enviar o
-              // form sozinho; em vez disso, busca os dados do produto
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                lookupCode((e.target as HTMLInputElement).value);
-              }
-            }}
-          />
+          <div class="flex items-stretch gap-2">
+            <input
+              id="product-barcode"
+              class={`field min-w-0 flex-1${bad('barcode')}`}
+              inputMode="numeric"
+              placeholder="digitar código de barras manualmente"
+              value={form.barcode}
+              onInput={(e) => {
+                const el = e.target as HTMLInputElement;
+                const v = el.value.replace(/\D/g, '').slice(0, 14);
+                el.value = v;
+                upd('barcode', v);
+              }}
+              onKeyDown={(e) => {
+                // o leitor "digita" o código e um Enter — não deixa isso enviar o
+                // form sozinho; em vez disso, busca os dados do produto
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  lookupCode((e.target as HTMLInputElement).value);
+                }
+              }}
+            />
+            <button type="button" class={SCAN_BTN} onClick={() => lookupCode(form.barcode)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={CHECK_ICON_PATH} /></svg>
+              Enviar
+            </button>
+          </div>
           <div class="mt-2">
             <CameraScanButton
               onCode={(code) => {

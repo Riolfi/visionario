@@ -2,7 +2,7 @@
  * Conta de CLIENTE de teste, para o dono ver a loja como cliente (a conta de
  * administrador só acessa o painel).
  *
- *   npm run test-user                 cria a conta, ou gera uma senha nova se já existe
+ *   npm run test-user                 gera uma senha nova para cliente@visionario.com.br (ou cria a conta)
  *   npm run test-user -- outro@email  usa outro e-mail
  *
  * A senha é gerada na hora e aparece só no terminal. Só roda num banco marcado
@@ -28,7 +28,7 @@ const { data: ident, error: identErr } = await sb.from('store_identity').select(
 if (identErr) die(`store_identity: ${identErr.message}`);
 if (ident?.store !== 'visionario') die('este banco não está marcado como da Visionário. Nada foi alterado.');
 
-const email = (process.argv[2] || 'cliente-teste@visionario.test').toLowerCase();
+const email = (process.argv[2] || 'cliente@visionario.com.br').toLowerCase();
 const password = randomBytes(9).toString('base64url'); // 12 caracteres
 
 // listUsers não filtra por e-mail; a loja tem poucas contas, uma página basta

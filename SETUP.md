@@ -159,8 +159,9 @@ Para ver a loja como cliente, use a **conta de cliente de teste**:
 npm run test-user
 ```
 
-Cria `cliente-teste@visionario.test` (ou gera uma senha nova, se já existe) e mostra
-a senha só no terminal. Para outro e-mail: `npm run test-user -- outro@email`.
+A conta de teste é `cliente@visionario.com.br`. O comando acima **troca a senha dela**
+(use quando esquecer) e mostra a nova só no terminal; se a conta não existir, cria.
+Para outro e-mail: `npm run test-user -- outro@email`.
 
 ---
 

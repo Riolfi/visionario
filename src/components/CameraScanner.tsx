@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 
 /**
@@ -20,8 +21,11 @@ interface Props {
   onClose: () => void;
   /** última mensagem do Caixa ("X adicionado", "não cadastrado") */
   status?: { tone: 'ok' | 'warn' | 'err'; text: string } | null;
-  /** texto do botão de baixo (Caixa: "Concluir leitura"; leitura única: "Cancelar") */
+  /** texto do botão de baixo (leitura única: "Cancelar") */
   closeLabel?: string;
+  /** Modo lista (Caixa): a câmera fica na metade de cima e este painel
+   *  ocupa a metade de baixo — o painel traz os próprios botões. */
+  panel?: ComponentChildren;
 }
 
 type Detector = { detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
@@ -44,7 +48,7 @@ function beep() {
   navigator.vibrate?.(60);
 }
 
-export default function CameraScanner({ onCode, onClose, status, closeLabel = 'Concluir leitura' }: Props) {
+export default function CameraScanner({ onCode, onClose, status, closeLabel = 'Cancelar', panel }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -149,6 +153,15 @@ export default function CameraScanner({ onCode, onClose, status, closeLabel = 'C
     };
   }, []);
 
+  // tela cheia de verdade: a página por baixo não rola junto
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
   // Esc fecha (teclado em tablet)
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
@@ -156,28 +169,55 @@ export default function CameraScanner({ onCode, onClose, status, closeLabel = 'C
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  return (
-    <div class="fixed inset-0 z-[70] flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="Ler código de barras com a câmera">
-      <div class="relative flex-1 overflow-hidden">
-        <video ref={videoRef} class="absolute inset-0 h-full w-full object-cover" playsInline muted />
-        {/* mira */}
-        {ready && !error && (
-          <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
-            <div class="relative h-[160px] w-[82vw] max-w-[380px] rounded-[18px] border-2 border-white/90 shadow-[0_0_0_100vmax_rgba(0,0,0,0.45)]">
-              <span class="absolute left-[16px] right-[16px] top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-red-500/80" />
-            </div>
+  const camera = (
+    <div class="relative min-h-0 flex-1 overflow-hidden bg-black">
+      <video ref={videoRef} class="absolute inset-0 h-full w-full object-cover" playsInline muted />
+      {/* faixa de leitura, no centro da área da câmera */}
+      {ready && !error && (
+        <div class="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <div
+            class={`relative w-[82vw] max-w-[380px] rounded-[18px] border-2 border-white/90 shadow-[0_0_0_100vmax_rgba(0,0,0,0.45)] ${
+              panel ? 'h-[110px]' : 'h-[160px]'
+            }`}
+          >
+            <span class="absolute left-[16px] right-[16px] top-1/2 h-[2px] -translate-y-1/2 animate-pulse bg-red-500/80" />
           </div>
-        )}
-        {!ready && !error && (
-          <p class="absolute inset-0 flex items-center justify-center font-sans text-[15px] text-white/80">Abrindo a câmera…</p>
-        )}
-        {error && (
-          <div class="absolute inset-0 flex items-center justify-center p-8">
-            <p class="max-w-[300px] text-center font-sans text-[15px] leading-relaxed text-white">{error}</p>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
+      {!ready && !error && (
+        <p class="absolute inset-0 flex items-center justify-center font-sans text-[15px] text-white/80">Abrindo a câmera…</p>
+      )}
+      {error && (
+        <div class="absolute inset-0 flex items-center justify-center p-8">
+          <p class="max-w-[300px] text-center font-sans text-[15px] leading-relaxed text-white">{error}</p>
+        </div>
+      )}
+      {panel && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Fechar leitor"
+          class="absolute right-[12px] top-[max(12px,env(safe-area-inset-top))] grid h-[40px] w-[40px] place-items-center rounded-full bg-black/55 font-sans text-[22px] leading-none text-white"
+        >
+          ×
+        </button>
+      )}
+    </div>
+  );
 
+  // altura travada na tela visível (100dvh): nada "quebra" pra baixo da dobra
+  if (panel) {
+    return (
+      <div class="fixed inset-x-0 top-0 z-[70] grid h-[100dvh] grid-rows-2 bg-black" role="dialog" aria-modal="true" aria-label="Leitor de código de barras">
+        <div class="flex min-h-0">{camera}</div>
+        <div class="flex min-h-0 flex-col bg-bone">{panel}</div>
+      </div>
+    );
+  }
+
+  return (
+    <div class="fixed inset-x-0 top-0 z-[70] flex h-[100dvh] flex-col bg-black" role="dialog" aria-modal="true" aria-label="Ler código de barras com a câmera">
+      {camera}
       <div class="bg-black px-[20px] pb-[max(20px,env(safe-area-inset-bottom))] pt-[16px]">
         <p
           class={`mb-[12px] min-h-[22px] text-center font-sans text-[15px] ${

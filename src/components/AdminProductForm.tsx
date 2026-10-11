@@ -131,6 +131,32 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   async function onFiles(e: Event) {
     const input = e.target as HTMLInputElement;
     const files = input.files ? Array.from(input.files) : [];
+    await uploadFiles(files, input);
+  }
+
+  /** Foto tirada na hora pelo celular: vem com 3–8 MB (passa do limite de
+   *  5 MB do upload) — reduz pra 1600px de lado maior em JPEG antes de enviar. */
+  async function onCameraPhoto(e: Event) {
+    const input = e.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
+      const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bmp.width * scale);
+      canvas.height = Math.round(bmp.height * scale);
+      canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+      const photo = blob ? new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' }) : file;
+      await uploadFiles([photo], input);
+    } catch {
+      await uploadFiles([file], input); // não deu pra reduzir: tenta o original
+    }
+  }
+
+  async function uploadFiles(files: File[], input: HTMLInputElement) {
     if (!files.length) return;
     setUploading(true);
     setError(null);
@@ -204,6 +230,61 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       {error && <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
       <div class="grid gap-4 sm:grid-cols-2">
+        {/* primeiro de tudo: bipar o código já busca e preenche o resto */}
+        <div class="block sm:col-span-2">
+          <div class="flex items-center justify-between gap-2">
+            <label class="label" for="product-barcode">Código de barras</label>
+            <CameraScanButton
+              onCode={(code) => {
+                upd('barcode', code);
+                lookupCode(code);
+              }}
+            />
+          </div>
+          <input
+            id="product-barcode"
+            class="field"
+            inputMode="numeric"
+            placeholder="passe o leitor aqui, ou digite"
+            value={form.barcode}
+            onInput={(e) => {
+              const el = e.target as HTMLInputElement;
+              const v = el.value.replace(/\D/g, '').slice(0, 14);
+              el.value = v;
+              upd('barcode', v);
+            }}
+            onKeyDown={(e) => {
+              // o leitor "digita" o código e um Enter — não deixa isso enviar o
+              // form sozinho; em vez disso, busca os dados do produto
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                lookupCode((e.target as HTMLInputElement).value);
+              }
+            }}
+          />
+          {lookup.state === 'busy' && <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Buscando o produto pelo código…</p>}
+          {lookup.state === 'none' && (
+            <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado nas bases públicas — preencha manualmente.</p>
+          )}
+          {lookup.state === 'found' && (
+            <div class="mt-1.5 rounded-card border border-agua/40 bg-agua/10 p-2.5 font-sans text-[12px] text-ink">
+              <p>
+                Encontrado: <strong>{lookup.data.name}</strong>
+                {lookup.data.brand ? ` · ${lookup.data.brand}` : ''}.{' '}
+                {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estavam preenchidos. '}
+                Confira antes de salvar.
+              </p>
+              {lookup.data.image && !images.includes(lookup.data.image) && (
+                <div class="mt-2 flex items-center gap-2">
+                  <img src={lookup.data.image} alt="" class="h-12 w-12 rounded border border-ink/10 object-cover" />
+                  <button type="button" class="underline" onClick={() => setImages((l) => [...l, lookup.data.image!])}>
+                    Usar esta foto
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
         <label class="block sm:col-span-2">
           <span class="label">Nome</span>
           <input class="field" value={form.name} onInput={(e) => upd('name', (e.target as HTMLInputElement).value)} required />
@@ -297,60 +378,6 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             </button>
           </div>
         </div>
-        <div class="block">
-          <div class="flex items-center justify-between gap-2">
-            <label class="label" for="product-barcode">Código de barras</label>
-            <CameraScanButton
-              onCode={(code) => {
-                upd('barcode', code);
-                lookupCode(code);
-              }}
-            />
-          </div>
-          <input
-            id="product-barcode"
-            class="field"
-            inputMode="numeric"
-            placeholder="passe o leitor aqui, ou digite"
-            value={form.barcode}
-            onInput={(e) => {
-              const el = e.target as HTMLInputElement;
-              const v = el.value.replace(/\D/g, '').slice(0, 14);
-              el.value = v;
-              upd('barcode', v);
-            }}
-            onKeyDown={(e) => {
-              // o leitor "digita" o código e um Enter — não deixa isso enviar o
-              // form sozinho; em vez disso, busca os dados do produto
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                lookupCode((e.target as HTMLInputElement).value);
-              }
-            }}
-          />
-          {lookup.state === 'busy' && <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Buscando o produto pelo código…</p>}
-          {lookup.state === 'none' && (
-            <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado nas bases públicas — preencha manualmente.</p>
-          )}
-          {lookup.state === 'found' && (
-            <div class="mt-1.5 rounded-card border border-agua/40 bg-agua/10 p-2.5 font-sans text-[12px] text-ink">
-              <p>
-                Encontrado: <strong>{lookup.data.name}</strong>
-                {lookup.data.brand ? ` · ${lookup.data.brand}` : ''}.{' '}
-                {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estavam preenchidos. '}
-                Confira antes de salvar.
-              </p>
-              {lookup.data.image && !images.includes(lookup.data.image) && (
-                <div class="mt-2 flex items-center gap-2">
-                  <img src={lookup.data.image} alt="" class="h-12 w-12 rounded border border-ink/10 object-cover" />
-                  <button type="button" class="underline" onClick={() => setImages((l) => [...l, lookup.data.image!])}>
-                    Usar esta foto
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
       </div>
 
       <label class="block">
@@ -396,8 +423,14 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
         <div class="flex flex-wrap items-center gap-3">
           <label class="btn-outline cursor-pointer text-[13px]">
-            {uploading ? 'Enviando…' : 'Enviar do computador'}
+            {uploading ? 'Enviando…' : 'Fazer upload'}
             <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple class="hidden" onChange={onFiles} disabled={uploading} />
+          </label>
+          {/* celular/tablet: abre a câmera direto pra fotografar o produto */}
+          <label class="btn-outline hidden cursor-pointer text-[13px] [@media(pointer:coarse)]:inline-flex">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="mr-1.5" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+            Tirar foto
+            <input type="file" accept="image/*" capture="environment" class="hidden" onChange={onCameraPhoto} disabled={uploading} />
           </label>
           <span class="text-[12px] text-ink-muted">JPG, PNG, WebP ou AVIF · até 5 MB cada</span>
         </div>
@@ -425,13 +458,14 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         </label>
       </div>
 
-      <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="btn-primary" disabled={saving}>
-          {saving ? 'Salvando…' : product ? 'Salvar alterações' : 'Criar produto'}
+      {/* botões do mesmo tamanho: colunas iguais */}
+      <div class={`grid gap-3 pt-2 ${product ? 'grid-cols-3' : 'grid-cols-2'}`}>
+        <button type="submit" class="btn-primary w-full" disabled={saving}>
+          {saving ? 'Salvando…' : product ? 'Salvar' : 'Criar produto'}
         </button>
-        <a href="/admin/produtos" class="btn-outline">Cancelar</a>
+        <a href="/admin/produtos" class="btn-outline w-full">Cancelar</a>
         {product && (
-          <button type="button" onClick={remove} class="ml-auto text-sm text-red-700 hover:underline" disabled={saving}>
+          <button type="button" onClick={remove} class="btn-outline w-full" disabled={saving}>
             Excluir
           </button>
         )}

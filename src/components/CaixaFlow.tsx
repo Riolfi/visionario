@@ -49,8 +49,11 @@ export default function CaixaFlow() {
   const [lines, setLines] = useState<Line[]>([]);
   const [scan, setScan] = useState('');
   const [scanMsg, setScanMsg] = useState<{ tone: 'ok' | 'warn' | 'err'; text: string } | null>(null);
-  // leitor pela câmera (celular/tablet) — ver CameraScanner
-  const [camera, setCamera] = useState(false);
+  // Leitor pela câmera (celular/tablet). Cada abertura começa uma lista NOVA
+  // (`session`), separada da venda: os produtos lidos só entram no Caixa ao
+  // confirmar, somando ao que já estava. null = leitor fechado.
+  const [session, setSession] = useState<Line[] | null>(null);
+  const [sessionMsg, setSessionMsg] = useState<string | null>(null);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [received, setReceived] = useState('');
   const [busy, setBusy] = useState(false);
@@ -60,7 +63,12 @@ export default function CaixaFlow() {
   const [pixWait, setPixWait] = useState<PixWait | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
-  const focusScanner = () => window.setTimeout(() => scanRef.current?.focus(), 0);
+  // No PC o campo fica sempre pronto pro leitor USB. Em tela de toque, focar
+  // abriria o teclado do celular sozinho — lá o foco é só quando a pessoa toca.
+  const focusScanner = () => {
+    if (matchMedia('(pointer: coarse)').matches) return;
+    window.setTimeout(() => scanRef.current?.focus(), 0);
+  };
 
   useEffect(() => {
     focusScanner();
@@ -108,53 +116,81 @@ export default function CaixaFlow() {
     await addByCode(scan.trim());
   }
 
-  /** Busca o produto pelo código de barras e soma 1 na venda. Usado pelo
-   *  campo (leitor USB/Bluetooth ou digitação) e pela câmera. */
-  async function addByCode(code: string, fromCamera = false) {
-    if (!code || busy) return;
-    setScanMsg(null);
+  /** Produto pelo código de barras (mesma rota do leitor USB). */
+  async function findByCode(code: string): Promise<ScanResult | 'not_found' | 'error'> {
     try {
       const res = await fetch(`/api/admin/products/by-barcode?code=${encodeURIComponent(code)}`);
-      if (res.status === 404) {
-        setScanMsg({ tone: 'err', text: `Código ${code} não está cadastrado.` });
-        setScan('');
-        return;
-      }
-      if (!res.ok) {
-        setScanMsg({ tone: 'err', text: 'Erro ao buscar o produto. Tente de novo.' });
-        return;
-      }
-      const p = (await res.json()) as ScanResult;
-      setLines((cur) => {
-        const i = cur.findIndex((l) => l.product_id === p.id);
-        if (i >= 0) {
-          const next = [...cur];
-          next[i] = { ...next[i], quantity: next[i].quantity + 1 };
-          return next;
-        }
-        return [
-          ...cur,
-          {
-            product_id: p.id,
-            name: p.name,
-            unit_price_cents: p.price_cents,
-            quantity: 1,
-            stock: p.stock,
-            image: p.image,
-          },
-        ];
-      });
+      if (res.status === 404) return 'not_found';
+      if (!res.ok) return 'error';
+      return (await res.json()) as ScanResult;
+    } catch {
+      return 'error';
+    }
+  }
+
+  const toLine = (p: ScanResult, quantity = 1): Line => ({
+    product_id: p.id,
+    name: p.name,
+    unit_price_cents: p.price_cents,
+    quantity,
+    stock: p.stock,
+    image: p.image,
+  });
+
+  /** Soma `add` em `cur` (mesmo produto → soma quantidade). */
+  const mergeLines = (cur: Line[], add: Line[]) => {
+    const next = [...cur];
+    for (const l of add) {
+      const i = next.findIndex((x) => x.product_id === l.product_id);
+      if (i >= 0) next[i] = { ...next[i]!, quantity: next[i]!.quantity + l.quantity };
+      else next.push(l);
+    }
+    return next;
+  };
+
+  // ---- leitor (câmera): lista própria até confirmar ----------------------
+  async function sessionScan(code: string) {
+    const p = await findByCode(code);
+    if (p === 'not_found') return setSessionMsg(`Código ${code} não está cadastrado.`);
+    if (p === 'error') return setSessionMsg('Erro ao buscar o produto. Tente de novo.');
+    setSessionMsg(null);
+    setSession((cur) => (cur ? mergeLines(cur, [toLine(p)]) : cur));
+  }
+  const sessionQty = (id: string, qty: number) =>
+    setSession((cur) =>
+      !cur ? cur : qty <= 0 ? cur.filter((l) => l.product_id !== id) : cur.map((l) => (l.product_id === id ? { ...l, quantity: qty } : l)),
+    );
+  function confirmSession() {
+    if (!session?.length) return;
+    const count = session.reduce((s, l) => s + l.quantity, 0);
+    setLines((cur) => mergeLines(cur, session));
+    setScanMsg({ tone: 'ok', text: `${count} ${count === 1 ? 'item adicionado' : 'itens adicionados'} pelo leitor.` });
+    setSession(null);
+  }
+  function closeSession() {
+    if (session?.length && !confirm(`Descartar ${session.length === 1 ? 'o produto lido' : `os ${session.length} produtos lidos`}? Eles não entram no caixa.`)) return;
+    setSession(null);
+  }
+
+  /** Campo "Produto" (leitor USB/Bluetooth ou digitação): soma 1 na venda. */
+  async function addByCode(code: string) {
+    if (!code || busy) return;
+    setScanMsg(null);
+    const p = await findByCode(code);
+    if (p === 'not_found') {
+      setScanMsg({ tone: 'err', text: `Código ${code} não está cadastrado.` });
+      setScan('');
+    } else if (p === 'error') {
+      setScanMsg({ tone: 'err', text: 'Erro ao buscar o produto. Tente de novo.' });
+    } else {
+      setLines((cur) => mergeLines(cur, [toLine(p)]));
       setScanMsg({
         tone: p.stock <= 0 ? 'warn' : 'ok',
         text: p.stock <= 0 ? `${p.name} — sem estoque registrado` : `${p.name} adicionado`,
       });
       setScan('');
-    } catch {
-      setScanMsg({ tone: 'err', text: 'Sem conexão com o servidor.' });
-    } finally {
-      // com a câmera aberta, focar o campo abriria o teclado do celular
-      if (!fromCamera) focusScanner();
     }
+    focusScanner();
   }
 
   const setQty = (id: string, qty: number) =>
@@ -398,11 +434,72 @@ export default function CaixaFlow() {
   // ---- tela do caixa --------------------------------------------------------
   return (
     <div class="grid gap-6 lg:grid-cols-[1fr_20rem]">
-      {camera && (
+      {session && (
         <CameraScanner
-          status={scanMsg}
-          onCode={(code) => addByCode(code, true)}
-          onClose={() => setCamera(false)}
+          onCode={sessionScan}
+          onClose={closeSession}
+          panel={
+            <>
+              <div class="flex items-baseline justify-between px-[16px] pt-[14px]">
+                <p class="font-sans text-[15px] font-semibold text-ink">
+                  Lidos agora{session.length ? ` (${session.reduce((s, l) => s + l.quantity, 0)})` : ''}
+                </p>
+                {session.length > 0 && <p class="font-sans text-[15px] font-semibold text-ink">{brl(session.reduce((s, l) => s + l.unit_price_cents * l.quantity, 0))}</p>}
+              </div>
+              {sessionMsg && <p class="px-[16px] pt-[6px] font-sans text-[13px] text-red-700">{sessionMsg}</p>}
+              <div class="min-h-0 flex-1 overflow-y-auto px-[16px] py-[8px]">
+                {session.length === 0 ? (
+                  <p class="pt-[24px] text-center font-sans text-[14px] text-ink-muted">Aponte a câmera para o código de barras.</p>
+                ) : (
+                  <ul class="divide-y divide-ink/10">
+                    {session.map((l) => (
+                      <li key={l.product_id} class="flex items-center gap-[10px] py-[10px]">
+                        <div class="min-w-0 flex-1">
+                          <p class="truncate font-sans text-[15px] text-ink">{l.name}</p>
+                          <p class="font-sans text-[12px] text-ink-muted">
+                            {brl(l.unit_price_cents)} un.{l.quantity > l.stock && <span class="text-red-700"> · estoque: {l.stock}</span>}
+                          </p>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-[6px]">
+                          <button
+                            type="button"
+                            class="grid h-[36px] w-[36px] place-items-center rounded-card border border-ink/20 text-ink"
+                            aria-label={l.quantity === 1 ? 'Excluir' : 'Menos um'}
+                            onClick={() => sessionQty(l.product_id, l.quantity - 1)}
+                          >
+                            {l.quantity === 1 ? (
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+                            ) : (
+                              '−'
+                            )}
+                          </button>
+                          <span class="w-[28px] text-center font-sans text-[15px] tabular-nums">{l.quantity}</span>
+                          <button
+                            type="button"
+                            class="grid h-[36px] w-[36px] place-items-center rounded-card border border-ink/20 text-ink"
+                            aria-label="Mais um"
+                            onClick={() => sessionQty(l.product_id, l.quantity + 1)}
+                          >
+                            +
+                          </button>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div class="border-t border-ink/10 px-[16px] pb-[max(14px,env(safe-area-inset-bottom))] pt-[12px]">
+                <button
+                  type="button"
+                  class="w-full rounded-full bg-ink py-[14px] font-sans text-[16px] font-semibold text-bone disabled:opacity-40"
+                  disabled={session.length === 0}
+                  onClick={confirmSession}
+                >
+                  Confirmar leitura
+                </button>
+              </div>
+            </>
+          }
         />
       )}
       {/* coluna esquerda: leitor + itens */}
@@ -410,19 +507,20 @@ export default function CaixaFlow() {
         <form onSubmit={submitScan} class="rounded-card border border-ink/10 bg-white p-4">
           <div class="flex items-center justify-between gap-3">
             <label class="label" for="caixa-scan">
-              Passar produto no leitor
+              Produto
             </label>
             {/* só em tela de toque (celular/tablet): no PC o leitor USB já resolve */}
             <button
               type="button"
               onClick={() => {
                 setScanMsg(null);
-                setCamera(true);
+                setSessionMsg(null);
+                setSession([]); // lista nova a cada abertura
               }}
               class="hidden items-center gap-1.5 rounded-full border border-ink/20 px-3 py-1.5 font-sans text-[13px] text-ink [@media(pointer:coarse)]:inline-flex"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 9v6M10 9v6M13 9v6M16 9v6" /></svg>
-              Ler com a câmera
+              Abrir leitor
             </button>
           </div>
           <input
@@ -432,7 +530,7 @@ export default function CaixaFlow() {
             value={scan}
             inputmode="numeric"
             autocomplete="off"
-            placeholder="bipe o código de barras ou digite e aperte Enter"
+            placeholder="Digite o código de barras"
             onInput={(e) => setScan((e.target as HTMLInputElement).value)}
           />
           {scanMsg && (

@@ -20,6 +20,8 @@ interface Props {
   onClose: () => void;
   /** última mensagem do Caixa ("X adicionado", "não cadastrado") */
   status?: { tone: 'ok' | 'warn' | 'err'; text: string } | null;
+  /** texto do botão de baixo (Caixa: "Concluir leitura"; leitura única: "Cancelar") */
+  closeLabel?: string;
 }
 
 type Detector = { detect: (src: HTMLVideoElement) => Promise<{ rawValue: string }[]> };
@@ -42,7 +44,7 @@ function beep() {
   navigator.vibrate?.(60);
 }
 
-export default function CameraScanner({ onCode, onClose, status }: Props) {
+export default function CameraScanner({ onCode, onClose, status, closeLabel = 'Concluir leitura' }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -186,7 +188,7 @@ export default function CameraScanner({ onCode, onClose, status }: Props) {
           {status ? status.text : 'Aponte para o código de barras do produto'}
         </p>
         <button type="button" onClick={onClose} class="w-full rounded-full bg-white py-[14px] font-sans text-[16px] font-semibold text-ink">
-          Concluir leitura
+          {closeLabel}
         </button>
       </div>
     </div>

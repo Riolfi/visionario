@@ -2,6 +2,7 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getProducts } from '../../../lib/repo/catalog';
 import { brl } from '../../../lib/format';
+import CameraScanButton from '../../../components/CameraScanButton';
 
 export const prerender = false;
 
@@ -25,6 +26,7 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
         autocomplete="off"
       />
     </label>
+    <div class="pb-1.5"><CameraScanButton client:visible targetId="barcode-scan" /></div>
     <p id="barcode-scan-status" class="pb-2.5 font-sans text-[13px] text-ink-muted" aria-live="polite"></p>
   </div>
   <p class="mt-1.5 font-sans text-[12px] text-ink-muted">

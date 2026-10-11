@@ -1,4 +1,5 @@
 import { useState } from 'preact/hooks';
+import CameraScanButton from './CameraScanButton';
 import type { CategoryNode, Product } from '../lib/types';
 
 interface Props {
@@ -164,9 +165,13 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
           <span class="label">Estoque</span>
           <input class="field" inputMode="numeric" value={form.stock} onInput={(e) => upd('stock', (e.target as HTMLInputElement).value)} />
         </label>
-        <label class="block">
-          <span class="label">Código de barras</span>
+        <div class="block">
+          <div class="flex items-center justify-between gap-2">
+            <label class="label" for="product-barcode">Código de barras</label>
+            <CameraScanButton onCode={(code) => upd('barcode', code)} />
+          </div>
           <input
+            id="product-barcode"
             class="field"
             inputMode="numeric"
             placeholder="passe o leitor aqui, ou digite"
@@ -177,7 +182,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
               if (e.key === 'Enter') e.preventDefault();
             }}
           />
-        </label>
+        </div>
       </div>
 
       <label class="block">

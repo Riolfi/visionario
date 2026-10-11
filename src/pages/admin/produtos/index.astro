@@ -15,23 +15,21 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
     <a href="/admin/produtos/novo" class="btn-primary">Novo produto</a>
   </div>
 
-  <div class="mt-4 flex flex-wrap items-end gap-3 rounded-card border border-ink/10 bg-white p-4">
-    <label class="block min-w-[240px] flex-1">
-      <span class="label">Ler código de barras</span>
+  <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
+    <label class="label" for="barcode-scan">Código de barras</label>
+    <div class="flex items-stretch gap-2">
       <input
         id="barcode-scan"
-        class="field"
+        class="field min-w-0 flex-1"
         inputmode="numeric"
-        placeholder="passe o leitor aqui, ou digite e aperte Enter"
+        placeholder="digitar código de barras manualmente"
         autocomplete="off"
       />
-    </label>
-    <div class="pb-1.5"><CameraScanButton client:visible targetId="barcode-scan" /></div>
-    <p id="barcode-scan-status" class="pb-2.5 font-sans text-[13px] text-ink-muted" aria-live="polite"></p>
+      <CameraScanButton client:load targetId="barcode-scan" />
+    </div>
+    <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Pesquise para criar ou editar um produto</p>
+    <p id="barcode-scan-status" class="mt-1 font-sans text-[13px] text-ink-muted empty:hidden" aria-live="polite"></p>
   </div>
-  <p class="mt-1.5 font-sans text-[12px] text-ink-muted">
-    Achou o produto → abre pra editar. Não achou → abre um cadastro novo já com o código preenchido.
-  </p>
 
   <!-- table-fixed + nome truncado: cabe na tela sem rolagem lateral -->
   <div class="mt-6 rounded-card border border-ink/10 bg-white">
@@ -78,10 +76,16 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
 </AdminLayout>
 
 <script>
+  import { confirmDialog } from '../../../lib/confirm-dialog';
+
   // Excluir direto da lista — mesma API e confirmação do botão no cadastro
   document.querySelectorAll<HTMLButtonElement>('[data-delete-id]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      if (!confirm(`Excluir "${btn.dataset.deleteName}"?`)) return;
+      const ok = await confirmDialog({
+        title: 'Excluir produto?',
+        message: `"${btn.dataset.deleteName}" sai do catálogo. Isso não pode ser desfeito.`,
+      });
+      if (!ok) return;
       btn.disabled = true;
       const res = await fetch(`/api/admin/products?id=${btn.dataset.deleteId}`, { method: 'DELETE' });
       if (res.ok) return window.location.reload();

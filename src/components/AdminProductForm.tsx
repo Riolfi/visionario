@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import CameraScanButton from './CameraScanButton';
+import { confirmDialog } from '../lib/confirm-dialog';
 import type { CategoryNode, Product } from '../lib/types';
 
 interface Props {
@@ -262,10 +263,19 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
   async function remove() {
     if (!product) {
-      if (confirm('Descartar este cadastro? Nada foi salvo ainda.')) window.location.href = '/admin/produtos';
+      const discard = await confirmDialog({
+        title: 'Descartar este cadastro?',
+        message: 'Nada foi salvo ainda.',
+        confirmLabel: 'Descartar',
+      });
+      if (discard) window.location.href = '/admin/produtos';
       return;
     }
-    if (!confirm(`Excluir "${product.name}"?`)) return;
+    const ok = await confirmDialog({
+      title: 'Excluir produto?',
+      message: `"${product.name}" sai do catálogo. Isso não pode ser desfeito.`,
+    });
+    if (!ok) return;
     setSaving(true);
     const res = await fetch(`/api/admin/products?id=${product.id}`, { method: 'DELETE' });
     if (res.ok) window.location.href = '/admin/produtos';
@@ -283,8 +293,29 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       <div class="grid gap-4 sm:grid-cols-2">
         {/* primeiro de tudo: bipar o código já busca e preenche o resto */}
         <div class="block sm:col-span-2">
-          <div class="flex items-center justify-between gap-2">
-            <label class="label" for="product-barcode">Código de barras</label>
+          <label class="label" for="product-barcode">Código de barras</label>
+          <div class="flex items-stretch gap-2">
+            <input
+              id="product-barcode"
+              class="field min-w-0 flex-1"
+              inputMode="numeric"
+              placeholder="passe o leitor aqui, ou digite"
+              value={form.barcode}
+              onInput={(e) => {
+                const el = e.target as HTMLInputElement;
+                const v = el.value.replace(/\D/g, '').slice(0, 14);
+                el.value = v;
+                upd('barcode', v);
+              }}
+              onKeyDown={(e) => {
+                // o leitor "digita" o código e um Enter — não deixa isso enviar o
+                // form sozinho; em vez disso, busca os dados do produto
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  lookupCode((e.target as HTMLInputElement).value);
+                }
+              }}
+            />
             <CameraScanButton
               onCode={(code) => {
                 upd('barcode', code);
@@ -292,27 +323,6 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
               }}
             />
           </div>
-          <input
-            id="product-barcode"
-            class="field"
-            inputMode="numeric"
-            placeholder="passe o leitor aqui, ou digite"
-            value={form.barcode}
-            onInput={(e) => {
-              const el = e.target as HTMLInputElement;
-              const v = el.value.replace(/\D/g, '').slice(0, 14);
-              el.value = v;
-              upd('barcode', v);
-            }}
-            onKeyDown={(e) => {
-              // o leitor "digita" o código e um Enter — não deixa isso enviar o
-              // form sozinho; em vez disso, busca os dados do produto
-              if (e.key === 'Enter') {
-                e.preventDefault();
-                lookupCode((e.target as HTMLInputElement).value);
-              }
-            }}
-          />
           {lookup.state === 'busy' && <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Buscando o produto pelo código…</p>}
           {lookup.state === 'error' && (
             <p class="mt-1.5 font-sans text-[12px] text-amber-700">Não consegui consultar as bases de produtos agora. Tente bipar de novo.</p>

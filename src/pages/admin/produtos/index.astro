@@ -33,31 +33,42 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
     Achou o produto → abre pra editar. Não achou → abre um cadastro novo já com o código preenchido.
   </p>
 
-  <div class="mt-6 overflow-x-auto rounded-card border border-ink/10 bg-white">
-    <table class="w-full text-left text-sm">
-      <thead class="border-b border-ink/10 text-[12px] uppercase tracking-[0.1em] text-ink-muted">
+  <!-- table-fixed + nome truncado: cabe na tela sem rolagem lateral -->
+  <div class="mt-6 rounded-card border border-ink/10 bg-white">
+    <table class="w-full table-fixed text-left text-sm">
+      <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
         <tr>
-          <th class="p-3">Produto</th>
-          <th class="p-3">Categoria</th>
-          <th class="p-3 text-right">Preço</th>
-          <th class="p-3 text-right">Estoque</th>
-          <th class="p-3">Status</th>
+          <th class="px-2 py-3 sm:px-3">Produto</th>
+          <th class="hidden w-20 px-3 py-3 text-right sm:table-cell">Estoque</th>
+          <th class="w-[4.5rem] px-1 py-3 sm:w-24 sm:px-3">Status</th>
+          <th class="w-[7.5rem] px-2 py-3 sm:w-44 sm:px-3"><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody>
         {products.map((p) => (
           <tr class="border-t border-ink/10 hover:bg-bone-50">
-            <td class="p-3">
-              <a href={`/admin/produtos/${p.id}`} class="font-medium text-agua-dark">{p.name}</a>
-              <span class="block text-[12px] text-ink-muted">{p.slug}</span>
+            <td class="px-2 py-3 sm:px-3">
+              <a href={`/admin/produtos/${p.id}`} class="block truncate font-medium text-agua-dark" title={p.name}>{p.name}</a>
+              <span class="block truncate text-[12px] text-ink-muted">{brl(p.price_cents)}<span class="hidden sm:inline"> · {p.category_name}</span></span>
             </td>
-            <td class="p-3 text-ink-soft">{p.category_name}</td>
-            <td class="p-3 text-right">{brl(p.price_cents)}</td>
-            <td class:list={['p-3 text-right', p.stock <= 5 && 'text-red-700']}>{p.stock}</td>
-            <td class="p-3">
-              <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', p.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>
+            <td class:list={['hidden px-3 py-3 text-right sm:table-cell', p.stock <= 5 && 'text-red-700']}>{p.stock}</td>
+            <td class="px-1 py-3 sm:px-3">
+              <span class:list={['rounded-full px-2 py-0.5 text-[10px] uppercase sm:text-[11px]', p.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>
                 {p.is_active ? 'ativo' : 'inativo'}
               </span>
+            </td>
+            <td class="px-2 py-3 sm:px-3">
+              <div class="flex justify-end gap-1.5 sm:gap-2">
+                <a href={`/admin/produtos/${p.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
+                <button
+                  type="button"
+                  data-delete-id={p.id}
+                  data-delete-name={p.name}
+                  class="rounded-card border border-red-300 px-2 py-1 text-[12px] text-red-700 hover:bg-red-50 disabled:opacity-50 sm:px-3 sm:text-[13px]"
+                >
+                  Excluir
+                </button>
+              </div>
             </td>
           </tr>
         ))}
@@ -67,6 +78,19 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
 </AdminLayout>
 
 <script>
+  // Excluir direto da lista — mesma API e confirmação do botão no cadastro
+  document.querySelectorAll<HTMLButtonElement>('[data-delete-id]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      if (!confirm(`Excluir "${btn.dataset.deleteName}"?`)) return;
+      btn.disabled = true;
+      const res = await fetch(`/api/admin/products?id=${btn.dataset.deleteId}`, { method: 'DELETE' });
+      if (res.ok) return window.location.reload();
+      const d = await res.json().catch(() => ({}));
+      alert(d.error || 'Erro ao excluir.');
+      btn.disabled = false;
+    });
+  });
+
   const input = document.getElementById('barcode-scan') as HTMLInputElement | null;
   const status = document.getElementById('barcode-scan-status');
 

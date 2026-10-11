@@ -13,7 +13,8 @@
     "preview": "astro preview",
     "astro": "astro",
     "seed": "node --env-file=.env scripts/seed.mjs",
-    "typecheck": "astro check"
+    "typecheck": "astro check",
+    "test-user": "node --env-file=.env scripts/test-user.mjs"
   },
   "dependencies": {
     "@astrojs/preact": "^4.1.0",

@@ -6,6 +6,11 @@ import { DEFAULT_SITE_CONTENT } from './lib/site-defaults';
 import { checkStoreIdentity } from './lib/supabase';
 import { isAdmin } from './lib/repo/admin';
 
+// O que uma conta de administrador pode abrir fora de /admin: login/sair,
+// fotos enviadas e as APIs que o próprio painel chama (status do Pix na
+// Caixa, CEP). O resto é loja, e admin não compra como cliente.
+const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/cep/'];
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
 
@@ -43,6 +48,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   const authArea =
     pathname === '/entrar' || pathname === '/cadastrar' || pathname.startsWith('/auth/');
 
+  const isAdminArea = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
+  let userIsAdmin = false;
   if (hasSupabasePublic) {
     const supabase = getServerClient(context.request, context.cookies);
     context.locals.supabase = supabase;
@@ -51,6 +58,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
         data: { user },
       } = await supabase.auth.getUser();
       context.locals.user = user;
+      userIsAdmin = Boolean(user) && (await isAdmin(user!.id));
+    }
+
+    // Conta de administrador vê sempre o painel — inclusive quem já chega
+    // logado pelo cookie. A loja (páginas e APIs de cliente) fica fechada pra ela.
+    if (userIsAdmin && !isAdminArea && !ADMIN_ALLOWED.some((p) => pathname.startsWith(p))) {
+      if (pathname.startsWith('/api/')) {
+        return new Response(JSON.stringify({ error: 'Conta de administrador não compra pela loja.' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return context.redirect('/admin');
     }
 
     if (accountArea && !context.locals.user) {
@@ -63,13 +83,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
       const next = encodeURIComponent(pathname + context.url.search);
       return context.redirect(`/entrar?next=${next}`);
     }
-    // a conta do administrador é da loja, não de compras: "Minha conta"
-    // (pedidos, endereços) não se aplica — vai direto pro painel
-    if (
-      pathname === '/conta' || pathname.startsWith('/conta/')
-    ) {
-      if (context.locals.user && (await isAdmin(context.locals.user.id))) return context.redirect('/admin');
-    }
   } else if (accountArea || authArea) {
     // Modo fallback: contas de cliente desligadas
     return context.redirect('/');
@@ -80,10 +93,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // também ter uma linha em admin_users (promovido manualmente no banco).
   // Sem Supabase configurado não há como logar, então a área fica inacessível.
   // -------------------------------------------------------------------------
-  const isAdminArea = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
   if (isAdminArea) {
-    const authorized = Boolean(context.locals.user) && (await isAdmin(context.locals.user!.id));
-    if (!authorized) {
+    if (!userIsAdmin) {
       if (pathname.startsWith('/api/')) {
         const status = context.locals.user ? 403 : 401;
         const error = context.locals.user ? 'Sem permissão de administrador.' : 'Não autenticado.';

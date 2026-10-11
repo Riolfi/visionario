@@ -149,6 +149,19 @@ insert into public.admin_users (user_id)
 select id from auth.users where email = 'admin@visionario.com.br';
 ```
 
+Conta de admin **só acessa o painel**: logada (inclusive pelo cookie de uma sessão
+antiga), qualquer página da loja leva para `/admin`, e as APIs de cliente (pedido,
+checkout, conta) respondem 403.
+
+Para ver a loja como cliente, use a **conta de cliente de teste**:
+
+```bash
+npm run test-user
+```
+
+Cria `cliente-teste@visionario.test` (ou gera uma senha nova, se já existe) e mostra
+a senha só no terminal. Para outro e-mail: `npm run test-user -- outro@email`.
+
 ---
 
 ## 5. Deploy na Vercel

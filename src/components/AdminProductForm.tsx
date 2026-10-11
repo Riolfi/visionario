@@ -299,7 +299,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
               id="product-barcode"
               class="field min-w-0 flex-1"
               inputMode="numeric"
-              placeholder="passe o leitor aqui, ou digite"
+              placeholder="digitar código de barras manualmente"
               value={form.barcode}
               onInput={(e) => {
                 const el = e.target as HTMLInputElement;

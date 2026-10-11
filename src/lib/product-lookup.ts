@@ -17,7 +17,11 @@ export interface LookupResult {
 }
 
 const TIMEOUT_MS = 4000;
-const UA = `${env.brandName}-admin/1.0 (cadastro de produtos)`;
+// só ASCII: cabeçalho HTTP com acento/emoji pode derrubar o fetch no servidor
+const UA = `${env.brandName.normalize('NFD').replace(/[^\x20-\x7e]/g, '') || 'loja'}-admin/1.0 (cadastro de produtos)`;
+
+/** Houve falha de rede/servidor em alguma fonte (≠ "não achou"). */
+let hadError = false;
 
 async function getJson(url: string, headers: Record<string, string> = {}): Promise<unknown | null> {
   try {
@@ -25,9 +29,16 @@ async function getJson(url: string, headers: Record<string, string> = {}): Promi
       headers: { 'User-Agent': UA, Accept: 'application/json', ...headers },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null; // não tem o produto
+    if (!res.ok) {
+      hadError = true;
+      console.warn('[product-lookup]', new URL(url).host, res.status);
+      return null;
+    }
     return await res.json();
-  } catch {
+  } catch (e) {
+    hadError = true;
+    console.warn('[product-lookup]', new URL(url).host, e instanceof Error ? e.message : e);
     return null;
   }
 }
@@ -81,8 +92,10 @@ async function fromOpenFacts(code: string): Promise<LookupResult | null> {
   return results.find(Boolean) ?? null;
 }
 
-export async function lookupBarcode(rawCode: string): Promise<LookupResult | null> {
+export async function lookupBarcode(rawCode: string): Promise<LookupResult | null | 'error'> {
   const code = rawCode.replace(/\D/g, '');
   if (code.length < 8 || code.length > 14) return null;
-  return (await fromCosmos(code)) ?? (await fromOpenFacts(code));
+  hadError = false;
+  const found = (await fromCosmos(code)) ?? (await fromOpenFacts(code));
+  return found ?? (hadError ? 'error' : null);
 }

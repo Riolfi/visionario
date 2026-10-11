@@ -62,17 +62,64 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   // sugestão pra aceitar. Nunca mexe em preço/estoque/categoria.
   type Found = { source: string; name: string; brand: string | null; description: string | null; image: string | null };
   const [lookup, setLookup] = useState<
-    { state: 'idle' } | { state: 'busy' } | { state: 'none' } | { state: 'found'; data: Found; filled: string[] }
+    | { state: 'idle' }
+    | { state: 'busy' }
+    | { state: 'none' }
+    | { state: 'error' }
+    | { state: 'found'; data: Found; filled: string[] }
   >({ state: 'idle' });
+
+  /** Plano B: o próprio navegador consulta as bases Open Facts (liberam CORS)
+   *  — cobre o caso de o servidor não conseguir falar com elas. */
+  async function lookupInBrowser(code: string): Promise<Found | null> {
+    const hosts = ['world.openfoodfacts.org', 'world.openbeautyfacts.org', 'world.openproductsfacts.org'];
+    const fields = 'product_name_pt,product_name,generic_name_pt,generic_name,brands,quantity,image_front_url';
+    const tries = await Promise.all(
+      hosts.map(async (h) => {
+        try {
+          const r = await fetch(`https://${h}/api/v2/product/${code}.json?fields=${fields}`, { signal: AbortSignal.timeout(5000) });
+          const d = r.ok ? await r.json() : null;
+          const p = d?.status === 1 ? d.product : null;
+          const name = (p?.product_name_pt || p?.product_name || '').trim();
+          if (!name) return null;
+          const qty = (p.quantity || '').trim();
+          const generic = (p.generic_name_pt || p.generic_name || '').trim();
+          return {
+            source: h.split('.')[1]!,
+            name: qty && !name.includes(qty) ? `${name} ${qty}` : name,
+            brand: (p.brands || '').split(',')[0]?.trim() || null,
+            description: generic && generic.toLowerCase() !== name.toLowerCase() ? generic : null,
+            image: p.image_front_url || null,
+          } as Found;
+        } catch {
+          return null;
+        }
+      }),
+    );
+    return tries.find(Boolean) ?? null;
+  }
 
   async function lookupCode(raw: string) {
     const code = raw.replace(/\D/g, '');
     if (code.length < 8) return;
     setLookup({ state: 'busy' });
     try {
-      const res = await fetch(`/api/admin/products/lookup?code=${code}`);
-      const data = (await res.json()) as { found: boolean } & Found;
-      if (!data.found) {
+      let data: ({ found: boolean; reason?: string } & Found) | null = null;
+      try {
+        const res = await fetch(`/api/admin/products/lookup?code=${code}`);
+        if (res.ok) data = await res.json();
+      } catch {
+        /* cai no plano B */
+      }
+      if (!data?.found) {
+        const viaBrowser = await lookupInBrowser(code);
+        if (viaBrowser) data = { found: true, ...viaBrowser };
+      }
+      if (!data?.found) {
+        if (!data || data.reason === 'error') {
+          // nem o servidor nem o navegador conseguiram consultar
+          return setLookup({ state: 'error' });
+        }
         // bipou outro produto que não está nas bases: tira os dados do anterior
         if (code !== baseCode.current && autoFilled.current) {
           setForm((cur) => ({ ...cur, name: '', short_description: '', description: '' }));
@@ -99,7 +146,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       setForm((cur) => ({ ...cur, ...patch }));
       setLookup({ state: 'found', data, filled });
     } catch {
-      setLookup({ state: 'none' });
+      setLookup({ state: 'error' });
     }
   }
 
@@ -214,7 +261,11 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   }
 
   async function remove() {
-    if (!product || !confirm(`Excluir "${product.name}"?`)) return;
+    if (!product) {
+      if (confirm('Descartar este cadastro? Nada foi salvo ainda.')) window.location.href = '/admin/produtos';
+      return;
+    }
+    if (!confirm(`Excluir "${product.name}"?`)) return;
     setSaving(true);
     const res = await fetch(`/api/admin/products?id=${product.id}`, { method: 'DELETE' });
     if (res.ok) window.location.href = '/admin/produtos';
@@ -263,6 +314,9 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             }}
           />
           {lookup.state === 'busy' && <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Buscando o produto pelo código…</p>}
+          {lookup.state === 'error' && (
+            <p class="mt-1.5 font-sans text-[12px] text-amber-700">Não consegui consultar as bases de produtos agora. Tente bipar de novo.</p>
+          )}
           {lookup.state === 'none' && (
             <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado nas bases públicas — preencha manualmente.</p>
           )}
@@ -271,7 +325,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
               <p>
                 Encontrado: <strong>{lookup.data.name}</strong>
                 {lookup.data.brand ? ` · ${lookup.data.brand}` : ''}.{' '}
-                {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estavam preenchidos. '}
+                {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estão com os dados deste código. '}
                 Confira antes de salvar.
               </p>
               {lookup.data.image && !images.includes(lookup.data.image) && (
@@ -459,16 +513,15 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       </div>
 
       {/* botões do mesmo tamanho: colunas iguais */}
-      <div class={`grid gap-3 pt-2 ${product ? 'grid-cols-3' : 'grid-cols-2'}`}>
+      <div class="grid grid-cols-3 gap-3 pt-2">
         <button type="submit" class="btn-primary w-full" disabled={saving}>
           {saving ? 'Salvando…' : product ? 'Salvar' : 'Criar produto'}
         </button>
         <a href="/admin/produtos" class="btn-outline w-full">Cancelar</a>
-        {product && (
-          <button type="button" onClick={remove} class="btn-outline w-full" disabled={saving}>
-            Excluir
-          </button>
-        )}
+        {/* editando: apaga o produto; cadastro novo: descarta o que foi preenchido */}
+        <button type="button" onClick={remove} class="btn-outline w-full" disabled={saving}>
+          Excluir
+        </button>
       </div>
     </form>
   );

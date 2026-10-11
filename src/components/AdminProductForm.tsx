@@ -10,8 +10,18 @@ interface Props {
   initialBarcode?: string;
 }
 
+/** Máscara de dinheiro: "8990" → "89,90", "123456" → "1.234,56".
+ *  Digita-se só números, da direita pra esquerda (como em maquininha). */
+function maskMoney(raw: string): string {
+  const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
+  if (!digits) return '';
+  const cents = digits.padStart(3, '0');
+  const int = cents.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${int},${cents.slice(-2)}`;
+}
+const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '') || '0');
+
 export default function AdminProductForm({ product, tree, initialBarcode }: Props) {
-  const firstSub = tree.flatMap((r) => r.children)[0]?.id ?? '';
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -20,13 +30,15 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   const [form, setForm] = useState({
     name: product?.name ?? '',
     slug: product?.slug ?? '',
-    category_id: product?.category_id ?? firstSub,
+    // produto novo começa sem categoria — o admin escolhe (obrigatório no envio)
+    category_id: product?.category_id ?? '',
     short_description: product?.short_description ?? '',
     description: product?.description ?? '',
     ingredients: product?.ingredients ?? '',
     how_to_use: product?.how_to_use ?? '',
-    price: product ? (product.price_cents / 100).toFixed(2) : '',
-    compare_at: product?.compare_at_price_cents ? (product.compare_at_price_cents / 100).toFixed(2) : '',
+    // preços guardados já mascarados ("1.234,56"); o R$ fica fixo na frente do campo
+    price: product ? maskMoney(String(product.price_cents)) : '',
+    compare_at: product?.compare_at_price_cents ? maskMoney(String(product.compare_at_price_cents)) : '',
     stock: product ? String(product.stock) : '0',
     barcode: product?.barcode ?? initialBarcode ?? '',
     is_active: product?.is_active ?? true,
@@ -35,14 +47,19 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
   const formRef = useRef(form);
   formRef.current = form;
+  // código a que os dados da tela pertencem (o salvo, ou o último buscado) e
+  // se nome/marca/descrição vieram da busca — ver lookupCode
+  const baseCode = useRef<string | null>(product?.barcode?.replace(/\D/g, '') || null);
+  const autoFilled = useRef(false);
 
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
   }
 
   // ---- busca do produto pelo código de barras (bases públicas) ------------
-  // Preenche só o que estiver VAZIO (nome, descrição curta, descrição); a foto
-  // vira sugestão pra aceitar. Nunca mexe em preço/estoque/categoria.
+  // Preenche nome, marca e descrição: só o que estiver vazio quando é o mesmo
+  // produto; sobrescreve quando o admin bipa OUTRO produto. A foto vira
+  // sugestão pra aceitar. Nunca mexe em preço/estoque/categoria.
   type Found = { source: string; name: string; brand: string | null; description: string | null; image: string | null };
   const [lookup, setLookup] = useState<
     { state: 'idle' } | { state: 'busy' } | { state: 'none' } | { state: 'found'; data: Found; filled: string[] }
@@ -55,14 +72,30 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     try {
       const res = await fetch(`/api/admin/products/lookup?code=${code}`);
       const data = (await res.json()) as { found: boolean } & Found;
-      if (!data.found) return setLookup({ state: 'none' });
-      // formRef: o que está na tela AGORA (a pessoa pode ter digitado durante a busca)
-      const f = formRef.current;
+      if (!data.found) {
+        // bipou outro produto que não está nas bases: tira os dados do anterior
+        if (code !== baseCode.current && autoFilled.current) {
+          setForm((cur) => ({ ...cur, name: '', short_description: '', description: '' }));
+        }
+        baseCode.current = code;
+        autoFilled.current = false;
+        return setLookup({ state: 'none' });
+      }
+      autoFilled.current = true;
+      // Bipou OUTRO produto (código diferente do salvo/último buscado):
+      // sobrescreve nome, marca e descrição com o novo. Mesmo código de
+      // novo (ex.: editando um produto já cadastrado): só preenche o vazio.
+      const overwrite = code !== baseCode.current;
+      baseCode.current = code;
+      const f = formRef.current; // o que está na tela AGORA
       const patch: Partial<typeof form> = {};
       const filled: string[] = [];
-      if (!f.name.trim()) (patch.name = data.name), filled.push('nome');
-      if (!f.short_description.trim() && data.brand) (patch.short_description = `Marca: ${data.brand}`), filled.push('descrição curta');
-      if (!f.description.trim() && data.description) (patch.description = data.description), filled.push('descrição');
+      const put = (k: 'name' | 'short_description' | 'description', v: string | null, label: string) => {
+        if ((overwrite || !f[k].trim()) && (v || overwrite)) (patch[k] = v ?? ''), v && filled.push(label);
+      };
+      put('name', data.name, 'nome');
+      put('short_description', data.brand, 'marca');
+      put('description', data.description, 'descrição');
       setForm((cur) => ({ ...cur, ...patch }));
       setLookup({ state: 'found', data, filled });
     } catch {
@@ -133,9 +166,9 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
           description: form.description,
           ingredients: form.ingredients,
           how_to_use: form.how_to_use,
-          price_cents: Math.round(parseFloat(form.price.replace(',', '.')) * 100),
+          price_cents: moneyToCents(form.price),
           compare_at_price_cents: form.compare_at
-            ? Math.round(parseFloat(form.compare_at.replace(',', '.')) * 100)
+            ? moneyToCents(form.compare_at)
             : null,
           stock: parseInt(form.stock, 10) || 0,
           barcode: form.barcode.trim() || null,
@@ -182,7 +215,9 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         <label class="block">
           <span class="label">Subcategoria</span>
           <select class="field" value={form.category_id} onChange={(e) => upd('category_id', (e.target as HTMLSelectElement).value)} required>
-            {tree.length === 0 && <option value="">— crie categorias primeiro —</option>}
+            <option value="" disabled>
+              {tree.length === 0 ? '— crie categorias primeiro —' : 'Selecione a subcategoria'}
+            </option>
             {tree.map((root) => (
               <optgroup label={root.name}>
                 {root.children.length === 0 && <option disabled>(sem subcategorias)</option>}
@@ -192,17 +227,76 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
           </select>
         </label>
         <label class="block">
-          <span class="label">Preço (R$)</span>
-          <input class="field" inputMode="decimal" value={form.price} onInput={(e) => upd('price', (e.target as HTMLInputElement).value)} required />
+          <span class="label">Preço</span>
+          <span class="relative block">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-sans text-sm text-ink-muted">R$</span>
+            <input
+              class="field pl-10"
+              inputMode="numeric"
+              placeholder="0,00"
+              value={form.price}
+              onInput={(e) => {
+                const el = e.target as HTMLInputElement;
+                const v = maskMoney(el.value);
+                el.value = v;
+                upd('price', v);
+              }} required
+            />
+          </span>
         </label>
         <label class="block">
-          <span class="label">Preço "de" / comparação (R$)</span>
-          <input class="field" inputMode="decimal" value={form.compare_at} onInput={(e) => upd('compare_at', (e.target as HTMLInputElement).value)} />
+          <span class="label">Preço "de" / comparação</span>
+          <span class="relative block">
+            <span class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 font-sans text-sm text-ink-muted">R$</span>
+            <input
+              class="field pl-10"
+              inputMode="numeric"
+              placeholder="0,00"
+              value={form.compare_at}
+              onInput={(e) => {
+                const el = e.target as HTMLInputElement;
+                const v = maskMoney(el.value);
+                el.value = v;
+                upd('compare_at', v);
+              }}
+            />
+          </span>
         </label>
-        <label class="block">
-          <span class="label">Estoque</span>
-          <input class="field" inputMode="numeric" value={form.stock} onInput={(e) => upd('stock', (e.target as HTMLInputElement).value)} />
-        </label>
+        <div class="block">
+          <label class="label" for="product-stock">Estoque</label>
+          <div class="flex items-stretch gap-2">
+            <button
+              type="button"
+              class="w-12 shrink-0 rounded-card border border-ink/20 font-sans text-xl text-ink disabled:opacity-30"
+              aria-label="Diminuir estoque"
+              disabled={(parseInt(form.stock, 10) || 0) <= 0}
+              onClick={() => upd('stock', String(Math.max(0, (parseInt(form.stock, 10) || 0) - 1)))}
+            >
+              −
+            </button>
+            <input
+              id="product-stock"
+              class="field text-center"
+              inputMode="numeric"
+              value={form.stock}
+              onInput={(e) => {
+                const el = e.target as HTMLInputElement;
+                const v = el.value.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 6);
+                el.value = v;
+                upd('stock', v);
+              }}
+              onBlur={() => !form.stock && upd('stock', '0')}
+            />
+            <button
+              type="button"
+              class="w-12 shrink-0 rounded-card border border-ink/20 font-sans text-xl text-ink"
+              aria-label="Aumentar estoque"
+              onClick={() => upd('stock', String((parseInt(form.stock, 10) || 0) + 1))}
+            >
+              +
+            </button>
+          </div>
+        </div>
         <div class="block">
           <div class="flex items-center justify-between gap-2">
             <label class="label" for="product-barcode">Código de barras</label>
@@ -219,7 +313,12 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             inputMode="numeric"
             placeholder="passe o leitor aqui, ou digite"
             value={form.barcode}
-            onInput={(e) => upd('barcode', (e.target as HTMLInputElement).value)}
+            onInput={(e) => {
+              const el = e.target as HTMLInputElement;
+              const v = el.value.replace(/\D/g, '').slice(0, 14);
+              el.value = v;
+              upd('barcode', v);
+            }}
             onKeyDown={(e) => {
               // o leitor "digita" o código e um Enter — não deixa isso enviar o
               // form sozinho; em vez disso, busca os dados do produto
@@ -255,7 +354,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       </div>
 
       <label class="block">
-        <span class="label">Descrição curta</span>
+        <span class="label">Marca</span>
         <input class="field" value={form.short_description} onInput={(e) => upd('short_description', (e.target as HTMLInputElement).value)} />
       </label>
       <label class="block">

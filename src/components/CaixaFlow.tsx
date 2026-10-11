@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import CameraScanner from './CameraScanner';
 import { brl, orderLabel } from '../lib/format';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '../lib/types';
 
@@ -48,6 +49,8 @@ export default function CaixaFlow() {
   const [lines, setLines] = useState<Line[]>([]);
   const [scan, setScan] = useState('');
   const [scanMsg, setScanMsg] = useState<{ tone: 'ok' | 'warn' | 'err'; text: string } | null>(null);
+  // leitor pela câmera (celular/tablet) — ver CameraScanner
+  const [camera, setCamera] = useState(false);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [received, setReceived] = useState('');
   const [busy, setBusy] = useState(false);
@@ -102,7 +105,12 @@ export default function CaixaFlow() {
 
   async function submitScan(e: Event) {
     e.preventDefault();
-    const code = scan.trim();
+    await addByCode(scan.trim());
+  }
+
+  /** Busca o produto pelo código de barras e soma 1 na venda. Usado pelo
+   *  campo (leitor USB/Bluetooth ou digitação) e pela câmera. */
+  async function addByCode(code: string, fromCamera = false) {
     if (!code || busy) return;
     setScanMsg(null);
     try {
@@ -144,7 +152,8 @@ export default function CaixaFlow() {
     } catch {
       setScanMsg({ tone: 'err', text: 'Sem conexão com o servidor.' });
     } finally {
-      focusScanner();
+      // com a câmera aberta, focar o campo abriria o teclado do celular
+      if (!fromCamera) focusScanner();
     }
   }
 
@@ -389,12 +398,33 @@ export default function CaixaFlow() {
   // ---- tela do caixa --------------------------------------------------------
   return (
     <div class="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      {camera && (
+        <CameraScanner
+          status={scanMsg}
+          onCode={(code) => addByCode(code, true)}
+          onClose={() => setCamera(false)}
+        />
+      )}
       {/* coluna esquerda: leitor + itens */}
       <div>
         <form onSubmit={submitScan} class="rounded-card border border-ink/10 bg-white p-4">
-          <label class="label" for="caixa-scan">
-            Passar produto no leitor
-          </label>
+          <div class="flex items-center justify-between gap-3">
+            <label class="label" for="caixa-scan">
+              Passar produto no leitor
+            </label>
+            {/* só em tela de toque (celular/tablet): no PC o leitor USB já resolve */}
+            <button
+              type="button"
+              onClick={() => {
+                setScanMsg(null);
+                setCamera(true);
+              }}
+              class="hidden items-center gap-1.5 rounded-full border border-ink/20 px-3 py-1.5 font-sans text-[13px] text-ink [@media(pointer:coarse)]:inline-flex"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 9v6M10 9v6M13 9v6M16 9v6" /></svg>
+              Ler com a câmera
+            </button>
+          </div>
           <input
             id="caixa-scan"
             ref={scanRef}

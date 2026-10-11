@@ -25,6 +25,8 @@
     "@nanostores/preact": "^0.5.2",
     "@supabase/ssr": "^0.12.5",
     "@supabase/supabase-js": "^2.48.1",
+    "@zxing/browser": "^0.1.5",
+    "@zxing/library": "^0.21.3",
     "astro": "^5.13.0",
     "mercadopago": "^2.9.0",
     "nanostores": "^0.11.4",

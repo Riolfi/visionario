@@ -8,6 +8,9 @@ import AccountMenu from './AccountMenu.astro';
 const tree = await getCategoryTree();
 const path = Astro.url.pathname;
 const showAccount = hasSupabasePublic;
+// Visitante sem login vê só o botão "Entrar" (sem favoritos, sacola e perfil).
+// Sem contas configuradas (modo local), os ícones seguem como antes.
+const showShopIcons = !showAccount || Boolean(Astro.locals.user);
 const logoUrl = Astro.locals.site.brand.data.logo_url;
 const brandName = Astro.locals.brand.name;
 ---
@@ -65,8 +68,8 @@ const brandName = Astro.locals.brand.name;
     </nav>
 
     <div class="flex items-center gap-4 sm:gap-5">
-      <FavoritesLink client:load />
-      <CartButton client:load />
+      {showShopIcons && <FavoritesLink client:load />}
+      {showShopIcons && <CartButton client:load />}
       {showAccount && <AccountMenu user={Astro.locals.user} />}
       <button
         type="button"
@@ -90,7 +93,7 @@ const brandName = Astro.locals.brand.name;
           ))}
         </>
       ))}
-      <a href="/favoritos" class="py-2.5 font-sans text-sm uppercase tracking-[0.14em]">Favoritos</a>
+      {showShopIcons && <a href="/favoritos" class="py-2.5 font-sans text-sm uppercase tracking-[0.14em]">Favoritos</a>}
       <a href="/sobre" class="py-2.5 font-sans text-sm uppercase tracking-[0.14em]">Sobre</a>
       <a href="/contato" class="py-2.5 font-sans text-sm uppercase tracking-[0.14em]">Contato</a>
     </nav>

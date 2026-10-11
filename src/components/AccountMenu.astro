@@ -33,10 +33,11 @@ const firstName =
     </div>
   </details>
 ) : (
-  <a href="/entrar" class="inline-flex items-center gap-2 font-sans text-[13px] uppercase tracking-[0.14em] text-ink transition-colors hover:text-agua-dark">
-    <span class="hidden sm:inline">Entrar</span>
-    <span class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-ink/20 sm:hidden">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 20a8 8 0 0 1 16 0M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-    </span>
+  <!-- sem login: só o botão "Entrar", também no celular (sem ícone de perfil) -->
+  <a
+    href="/entrar"
+    class="inline-flex h-10 items-center rounded-full border border-ink/25 px-4 font-sans text-[13px] uppercase tracking-[0.14em] text-ink transition-colors hover:border-ink hover:bg-ink hover:text-bone"
+  >
+    Entrar
   </a>
 )}

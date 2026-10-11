@@ -80,21 +80,15 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
 </AdminLayout>
 
 <script>
-  import { confirmDialog } from '../../../lib/confirm-dialog';
+  import { deleteProductFlow } from '../../../lib/delete-product';
 
   // Excluir direto da lista — mesma API e confirmação do botão no cadastro
   document.querySelectorAll<HTMLButtonElement>('[data-delete-id]').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const ok = await confirmDialog({
-        title: 'Excluir produto?',
-        message: `"${btn.dataset.deleteName}" sai do catálogo. Isso não pode ser desfeito.`,
-      });
-      if (!ok) return;
       btn.disabled = true;
-      const res = await fetch(`/api/admin/products?id=${btn.dataset.deleteId}`, { method: 'DELETE' });
-      if (res.ok) return window.location.reload();
-      const d = await res.json().catch(() => ({}));
-      alert(d.error || 'Erro ao excluir.');
+      const r = await deleteProductFlow(btn.dataset.deleteId!, btn.dataset.deleteName!);
+      if (r === 'deleted' || r === 'deactivated') return window.location.reload();
+      if (r !== 'cancelled') alert(r.error);
       btn.disabled = false;
     });
   });

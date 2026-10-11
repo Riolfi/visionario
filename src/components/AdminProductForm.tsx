@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import CameraScanButton, { SCAN_BTN, CHECK_ICON_PATH } from './CameraScanButton';
 import { confirmDialog } from '../lib/confirm-dialog';
+import { deleteProductFlow } from '../lib/delete-product';
 import type { CategoryNode, Product } from '../lib/types';
 
 interface Props {
@@ -333,19 +334,11 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       if (discard) window.location.href = '/admin/produtos';
       return;
     }
-    const ok = await confirmDialog({
-      title: 'Excluir produto?',
-      message: `"${product.name}" sai do catálogo. Isso não pode ser desfeito.`,
-    });
-    if (!ok) return;
     setSaving(true);
-    const res = await fetch(`/api/admin/products?id=${product.id}`, { method: 'DELETE' });
-    if (res.ok) window.location.href = '/admin/produtos';
-    else {
-      const d = await res.json().catch(() => ({}));
-      setError(d.error || 'Erro ao excluir.');
-      setSaving(false);
-    }
+    const r = await deleteProductFlow(product.id, product.name);
+    if (r === 'deleted' || r === 'deactivated') return void (window.location.href = '/admin/produtos');
+    if (r !== 'cancelled') setError(r.error);
+    setSaving(false);
   }
 
   return (

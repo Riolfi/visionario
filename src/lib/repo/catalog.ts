@@ -450,14 +450,31 @@ export async function saveProduct(input: ProductInput): Promise<{ ok: true } | {
   return wrote ? { ok: true } : { ok: false, error: 'Não foi possível gravar em .data/ (filesystem somente-leitura?).' };
 }
 
-export async function deleteProduct(id: string): Promise<{ ok: boolean; error?: string }> {
+export async function deleteProduct(id: string): Promise<{ ok: boolean; error?: string; inUse?: boolean }> {
   const sb = supabaseAdmin();
   if (hasSupabase && sb) {
     const { error } = await sb.from('products').delete().eq('id', id);
+    // 23503 = FK: o produto está em order_items (já foi vendido) — o histórico
+    // de pedidos precisa dele, então não pode sumir do banco
+    if (error?.code === '23503') return { ok: false, inUse: true, error: 'Este produto já tem pedidos e não pode ser excluído.' };
     return error ? { ok: false, error: error.message } : { ok: true };
   }
   const catalog = await readCatalog();
   catalog.products = catalog.products.filter((p) => p.id !== id);
+  const wrote = await writeCatalog(catalog);
+  return wrote ? { ok: true } : { ok: false, error: 'Não foi possível gravar em .data/.' };
+}
+
+/** Tira o produto da loja sem apagar (para produto que já tem pedidos). */
+export async function deactivateProduct(id: string): Promise<{ ok: boolean; error?: string }> {
+  const sb = supabaseAdmin();
+  if (hasSupabase && sb) {
+    const { error } = await sb.from('products').update({ is_active: false }).eq('id', id);
+    return error ? { ok: false, error: error.message } : { ok: true };
+  }
+  const catalog = await readCatalog();
+  const p = catalog.products.find((x) => x.id === id);
+  if (p) p.is_active = false;
   const wrote = await writeCatalog(catalog);
   return wrote ? { ok: true } : { ok: false, error: 'Não foi possível gravar em .data/.' };
 }

@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import {
   saveProduct,
   deleteProduct,
+  deactivateProduct,
   getSubcategories,
   type ProductInput,
 } from '../../../lib/repo/catalog';
@@ -84,7 +85,13 @@ export const POST: APIRoute = async ({ request }) => {
 export const DELETE: APIRoute = async ({ request, url }) => {
   const id = url.searchParams.get('id') || (await request.json().catch(() => ({})))?.id;
   if (!id) return json({ error: 'id obrigatório.' }, 400);
+  // ?deactivate=1: produto com pedidos sai da loja sem ser apagado
+  if (url.searchParams.get('deactivate') === '1') {
+    const r = await deactivateProduct(String(id));
+    return r.ok ? json({ ok: true, deactivated: true }) : json({ error: r.error }, 500);
+  }
   const result = await deleteProduct(String(id));
+  if (result.inUse) return json({ error: result.error, inUse: true }, 409);
   if (!result.ok) return json({ error: result.error }, 500);
   return json({ ok: true });
 };

@@ -72,6 +72,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     sendOrderStatusEmail(order, 'pending').catch(() => {});
 
     return json({
+      id: order.id,
       order_number: order.order_number,
       subtotal_cents: order.subtotal_cents,
       shipping_cents: order.shipping_cents,

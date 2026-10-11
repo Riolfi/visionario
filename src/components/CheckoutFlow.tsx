@@ -72,7 +72,7 @@ export default function CheckoutFlow({
   const [cepLoading, setCepLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [order, setOrder] = useState<{ order_number: string; total_cents: number } | null>(null);
+  const [order, setOrder] = useState<{ id: string; order_number: string; total_cents: number } | null>(null);
   const [pix, setPix] = useState<{ qrCode: string; qrCodeBase64: string; ticketUrl: string } | null>(null);
   const brickMounted = useRef(false);
 
@@ -183,7 +183,7 @@ export default function CheckoutFlow({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao criar o pedido.');
-      setOrder({ order_number: data.order_number, total_cents: data.total_cents });
+      setOrder({ id: data.id, order_number: data.order_number, total_cents: data.total_cents });
       setShipping({ cents: data.shipping_cents, label: data.shipping_label });
       setStep('payment');
 
@@ -214,7 +214,7 @@ export default function CheckoutFlow({
       const res = await fetch('/api/payments', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ order_number: order.order_number, formData: { payment_method_id: 'simulado' } }),
+        body: JSON.stringify({ order_id: order.id, formData: { payment_method_id: 'simulado' } }),
       });
       const data = await res.json();
       if (data.status === 'approved') {
@@ -265,7 +265,7 @@ export default function CheckoutFlow({
             const res = await fetch('/api/payments', {
               method: 'POST',
               headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ order_number: order!.order_number, formData }),
+              body: JSON.stringify({ order_id: order!.id, formData }),
             });
             const data = await res.json();
             if (data.status === 'approved') {
@@ -294,7 +294,7 @@ export default function CheckoutFlow({
   useEffect(() => {
     if (step !== 'pix' || !order) return;
     const id = window.setInterval(async () => {
-      const res = await fetch(`/api/payments/status?n=${order.order_number}`);
+      const res = await fetch(`/api/payments/status?id=${order.id}`);
       const data = await res.json();
       if (data.status === 'paid' && data.redirect) {
         clearCart();

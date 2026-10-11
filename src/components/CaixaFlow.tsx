@@ -28,6 +28,7 @@ interface Done {
 }
 
 interface PixWait {
+  order_id: string;
   order_number: string;
   total_cents: number;
   pix: { qrCode: string; qrCodeBase64: string; ticketUrl: string } | null;
@@ -67,7 +68,7 @@ export default function CaixaFlow() {
     if (!pixWait) return;
     const id = window.setInterval(async () => {
       try {
-        const res = await fetch(`/api/payments/status?n=${pixWait.order_number}`);
+        const res = await fetch(`/api/payments/status?id=${pixWait.order_id}`);
         const data = (await res.json().catch(() => ({}))) as { status?: string };
         if (data.status === 'paid') {
           window.clearInterval(id);
@@ -185,6 +186,7 @@ export default function CaixaFlow() {
         const data = (await res.json().catch(() => ({}))) as {
           error?: string;
           status?: string;
+          order_id?: string;
           order_number?: string;
           total_cents?: number;
           pix?: PixWait['pix'];
@@ -204,6 +206,7 @@ export default function CaixaFlow() {
         }
         // pending: mostra o QR e espera a confirmação (polling acima)
         setPixWait({
+          order_id: data.order_id ?? '',
           order_number: data.order_number,
           total_cents: data.total_cents ?? total,
           pix: data.pix ?? null,

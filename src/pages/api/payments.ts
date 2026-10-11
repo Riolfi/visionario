@@ -1,11 +1,12 @@
 import type { APIRoute } from 'astro';
-import { getOrderByNumber, setOrderStatus } from '../../lib/repo/orders';
+import { getOrderById, setOrderStatus } from '../../lib/repo/orders';
 import { processPayment, type BrickFormData } from '../../lib/mercadopago';
 import { fulfillPaidOrder } from '../../lib/fulfillment';
 import type { PaymentMethod } from '../../lib/types';
 
 interface Body {
-  order_number?: string;
+  /** uuid do pedido — nunca o número exibido (#13453), que é adivinhável */
+  order_id?: string;
   formData?: BrickFormData;
 }
 
@@ -17,14 +18,14 @@ export const POST: APIRoute = async ({ request }) => {
     return json({ error: 'Requisição inválida.' }, 400);
   }
 
-  const orderNumber = (body.order_number || '').trim();
-  if (!orderNumber) return json({ error: 'Pedido não informado.' }, 400);
+  const orderId = (body.order_id || '').trim();
+  if (!orderId) return json({ error: 'Pedido não informado.' }, 400);
 
-  const order = await getOrderByNumber(orderNumber);
+  const order = await getOrderById(orderId);
   if (!order) return json({ error: 'Pedido não encontrado.' }, 404);
 
   if (order.status === 'paid') {
-    return json({ status: 'approved', redirect: `/pedido/confirmado?n=${order.order_number}` });
+    return json({ status: 'approved', redirect: `/pedido/confirmado?id=${order.id}` });
   }
   if (order.status === 'cancelled') {
     return json({ error: 'Este pedido foi cancelado.' }, 409);
@@ -41,7 +42,7 @@ export const POST: APIRoute = async ({ request }) => {
       return json({
         status: 'approved',
         simulated: result.status === 'simulado',
-        redirect: `/pedido/confirmado?n=${order.order_number}`,
+        redirect: `/pedido/confirmado?id=${order.id}`,
       });
     }
 
@@ -54,6 +55,7 @@ export const POST: APIRoute = async ({ request }) => {
     return json({
       status: 'pending',
       pix: result.pix ?? null,
+      order_id: order.id,
       order_number: order.order_number,
     });
   } catch (err) {

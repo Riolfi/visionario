@@ -2,14 +2,15 @@
 import { orderLabel } from '../../lib/format';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import WaveDivider from '../../components/WaveDivider.astro';
-import { getOrderByNumber } from '../../lib/repo/orders';
+import { getOrderById } from '../../lib/repo/orders';
 import { brl } from '../../lib/format';
 import { hasSupabasePublic } from '../../lib/env';
 
 export const prerender = false;
 
-const orderNumber = Astro.url.searchParams.get('n') || '';
-const order = orderNumber ? await getOrderByNumber(orderNumber) : null;
+// pelo uuid (?id=), nunca pelo número exibido: esta página mostra e-mail,
+// itens e endereço, e o número (#13453) é curto o bastante pra ser varrido
+const order = await getOrderById(Astro.url.searchParams.get('id') || '');
 
 const showAccountCta =
   hasSupabasePublic && !Astro.locals.user && order && !order.user_id;

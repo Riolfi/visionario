@@ -54,7 +54,7 @@ export const POST: APIRoute = async ({ request }) => {
 
       if (result.status === 'approved' || result.status === 'simulado') {
         await fulfillPaidOrder(order.order_number, { paymentId: result.paymentId, method: 'pix' });
-        return json({ ok: true, status: 'approved', order_number: order.order_number, total_cents: order.total_cents });
+        return json({ ok: true, status: 'approved', order_id: order.id, order_number: order.order_number, total_cents: order.total_cents });
       }
 
       if (result.status === 'rejected') {
@@ -66,6 +66,7 @@ export const POST: APIRoute = async ({ request }) => {
       return json({
         ok: true,
         status: 'pending',
+        order_id: order.id,
         order_number: order.order_number,
         total_cents: order.total_cents,
         pix: result.pix ?? null,

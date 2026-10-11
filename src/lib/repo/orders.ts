@@ -261,6 +261,23 @@ async function newOrderNumber(): Promise<string> {
   return generateOrderNumber(7);
 }
 
+/** Busca pelo id interno (uuid). É a chave das páginas/rotas PÚBLICAS do
+ *  pedido (confirmação, status do pagamento): o número exibido (#13453) é
+ *  curto e adivinhável, o uuid não. */
+export async function getOrderById(id: string): Promise<Order | null> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
+  const sb = supabaseAdmin();
+  if (hasSupabase && sb) {
+    const { data: row, error } = await sb.from('orders').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
+    if (!row) return null;
+    const { data: items } = await sb.from('order_items').select('*').eq('order_id', row.id);
+    return rowToOrder(row, items ?? []);
+  }
+  const orders = await readOrders();
+  return orders.find((o) => o.id === id) ?? null;
+}
+
 export async function getOrderByNumber(orderNumber: string): Promise<Order | null> {
   const sb = supabaseAdmin();
   if (hasSupabase && sb) {

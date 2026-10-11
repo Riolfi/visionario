@@ -1,9 +1,10 @@
 import type { APIRoute } from 'astro';
-import { getOrderByNumber } from '../../../lib/repo/orders';
+import { getOrderById } from '../../../lib/repo/orders';
 
+// Público (checkout e Caixa consultam enquanto o Pix não compensa): busca
+// pelo uuid do pedido, nunca pelo número exibido (#13453), que é adivinhável.
 export const GET: APIRoute = async ({ url }) => {
-  const orderNumber = url.searchParams.get('n') || '';
-  const order = await getOrderByNumber(orderNumber);
+  const order = await getOrderById(url.searchParams.get('id') || '');
   if (!order) {
     return new Response(JSON.stringify({ error: 'not_found' }), {
       status: 404,
@@ -13,7 +14,7 @@ export const GET: APIRoute = async ({ url }) => {
   return new Response(
     JSON.stringify({
       status: order.status,
-      redirect: order.status === 'paid' ? `/pedido/confirmado?n=${order.order_number}` : null,
+      redirect: order.status === 'paid' ? `/pedido/confirmado?id=${order.id}` : null,
     }),
     { headers: { 'content-type': 'application/json' } },
   );

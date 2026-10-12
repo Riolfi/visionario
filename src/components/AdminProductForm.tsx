@@ -372,7 +372,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
               }}
             />
           </div>
-          <div class="mt-2">
+          <div class="mt-2 flex justify-end">
             <CameraScanButton
               onCode={(code) => {
                 upd('barcode', code);

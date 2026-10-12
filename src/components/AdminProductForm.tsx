@@ -83,6 +83,22 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   // se nome/marca/descrição vieram da busca — ver lookupCode
   const baseCode = useRef<string | null>(product?.barcode?.replace(/\D/g, '') || null);
   const autoFilled = useRef(false);
+  // foto que veio da base pública (pra trocar se o admin bipar outro produto)
+  const autoImage = useRef<string | null>(null);
+
+  // "Produto já cadastrado": chega com ?cadastrado=1 (o cadastro novo achou o
+  // código na loja e abriu este). Fica 40s e some com fade.
+  const [notice, setNotice] = useState<'off' | 'on' | 'fading'>('off');
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('cadastrado') !== '1') return;
+    url.searchParams.delete('cadastrado');
+    history.replaceState(null, '', url); // recarregar não mostra de novo
+    setNotice('on');
+    const fade = setTimeout(() => setNotice('fading'), 40_000);
+    const hide = setTimeout(() => setNotice('off'), 40_500);
+    return () => (clearTimeout(fade), clearTimeout(hide));
+  }, []);
 
   // campos obrigatórios vazios na última tentativa de salvar (ficam em vermelho)
   const [invalid, setInvalid] = useState<Set<string>>(new Set());
@@ -145,6 +161,16 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     if (code.length < 8) return;
     setLookup({ state: 'busy' });
     try {
+      // cadastro novo: se o código já é de um produto da loja, abre o cadastro
+      // dele pra editar (com o aviso "Produto já cadastrado")
+      if (!product) {
+        const own = await fetch(`/api/admin/products/by-barcode?code=${code}`).catch(() => null);
+        if (own?.ok) {
+          const { id } = (await own.json()) as { id: string };
+          window.location.href = `/admin/produtos/${id}?cadastrado=1`;
+          return;
+        }
+      }
       let data: ({ found: boolean; reason?: string } & Found) | null = null;
       try {
         const res = await fetch(`/api/admin/products/lookup?code=${code}`);
@@ -181,10 +207,19 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       const put = (k: 'name' | 'short_description' | 'description', v: string | null, label: string) => {
         if ((overwrite || !f[k].trim()) && (v || overwrite)) (patch[k] = v ?? ''), v && filled.push(label);
       };
-      put('name', data.name, 'nome');
-      put('short_description', data.brand, 'marca');
-      put('description', data.description, 'descrição');
+      put('name', data.name, 'Nome');
+      put('short_description', data.brand, 'Marca');
+      put('description', data.description, 'Descrição');
       setForm((cur) => ({ ...cur, ...patch }));
+      const prevImage = overwrite ? autoImage.current : null;
+      const newImage = data.image;
+      setImages((list) => {
+        let next = prevImage ? list.filter((u) => u !== prevImage) : list;
+        if (newImage && !next.includes(newImage)) next = [...next, newImage];
+        return next;
+      });
+      if (newImage && !images.includes(newImage)) filled.push('Foto');
+      autoImage.current = newImage;
       setLookup({ state: 'found', data, filled });
     } catch {
       setLookup({ state: 'error' });
@@ -348,6 +383,15 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       <div class="grid gap-4 sm:grid-cols-2">
         {/* primeiro de tudo: bipar o código já busca e preenche o resto */}
         <div class="sm:col-span-2">
+          {notice !== 'off' && (
+            <div
+              role="status"
+              class={`notice-in mb-2 inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 font-sans text-[12px] text-green-800 transition-opacity duration-500 ${notice === 'fading' ? 'opacity-0' : ''}`}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+              Produto já cadastrado
+            </div>
+          )}
           <FieldLabel text="Código de barras" htmlFor="product-barcode" required />
           <div class="flex items-stretch gap-2">
             <input
@@ -388,22 +432,11 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Produto não encontrado - Preenchimento manual.</p>
           )}
           {lookup.state === 'found' && (
-            <div class="mt-1.5 rounded-card border border-agua/40 bg-agua/10 p-2.5 font-sans text-[12px] text-ink">
-              <p>
-                Encontrado: <strong>{lookup.data.name || 'sem nome na base, digite o nome'}</strong>
-                {lookup.data.brand ? ` · ${lookup.data.brand}` : ''}.{' '}
-                {lookup.filled.length ? `Preenchi: ${lookup.filled.join(', ')}. ` : 'Os campos já estão com os dados deste código. '}
-                Confira antes de salvar.
-              </p>
-              {lookup.data.image && !images.includes(lookup.data.image) && (
-                <div class="mt-2 flex items-center gap-2">
-                  <img src={lookup.data.image} alt="" class="h-12 w-12 rounded border border-ink/10 object-cover" />
-                  <button type="button" class="underline" onClick={() => setImages((l) => [...l, lookup.data.image!])}>
-                    Usar esta foto
-                  </button>
-                </div>
-              )}
-            </div>
+            <p class="mt-1.5 rounded-card border border-agua/40 bg-agua/10 p-2.5 font-sans text-[12px] text-ink">
+              {lookup.filled.length
+                ? `Campos preenchidos automaticamente: ${lookup.filled.join(', ')}. Confira antes de salvar.`
+                : 'Os campos já estão com os dados deste código. Confira antes de salvar.'}
+            </p>
           )}
         </div>
         <div class="sm:col-span-2">

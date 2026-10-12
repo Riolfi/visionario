@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import CameraScanButton from './CameraScanButton';
+import ImageStrip from './ImageStrip';
 import { confirmDialog } from '../lib/confirm-dialog';
 import { deleteProductFlow } from '../lib/delete-product';
 import type { CategoryNode, Product } from '../lib/types';
@@ -21,6 +22,9 @@ function maskMoney(raw: string): string {
   const int = cents.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${int},${cents.slice(-2)}`;
 }
+/** Máximo de fotos por produto. */
+const MAX_IMAGES = 5;
+
 const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '') || '0');
 
 /** Rótulo do campo: * vermelho quando obrigatório, "(opcional)" apagado quando não. */
@@ -54,6 +58,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>(product?.images ?? []);
   const [urlInput, setUrlInput] = useState('');
+  const full = images.length >= MAX_IMAGES;
   const [form, setForm] = useState({
     name: product?.name ?? '',
     slug: product?.slug ?? '',
@@ -215,7 +220,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       const newImage = data.image;
       setImages((list) => {
         let next = prevImage ? list.filter((u) => u !== prevImage) : list;
-        if (newImage && !next.includes(newImage)) next = [...next, newImage];
+        if (newImage && !next.includes(newImage) && next.length < MAX_IMAGES) next = [...next, newImage];
         return next;
       });
       if (newImage && !images.includes(newImage)) filled.push('Foto');
@@ -233,22 +238,10 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
   function addUrl() {
     const url = urlInput.trim();
-    if (url && !images.includes(url)) setImages((list) => [...list, url]);
+    if (!url || images.includes(url)) return setUrlInput('');
+    if (images.length >= MAX_IMAGES) return setError(`Máximo de ${MAX_IMAGES} imagens por produto.`);
+    setImages((list) => [...list, url]);
     setUrlInput('');
-  }
-
-  function removeImage(url: string) {
-    setImages((list) => list.filter((u) => u !== url));
-  }
-
-  function moveImage(i: number, dir: -1 | 1) {
-    setImages((list) => {
-      const next = [...list];
-      const j = i + dir;
-      if (j < 0 || j >= next.length) return list;
-      [next[i], next[j]] = [next[j]!, next[i]!];
-      return next;
-    });
   }
 
   async function onFiles(e: Event) {
@@ -282,10 +275,20 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
   /** Uma foto por requisição: várias juntas estouravam o limite do servidor
    *  ("Request Entity Too Large"). As que subirem ficam, mesmo se uma falhar. */
-  async function uploadFiles(files: File[], input: HTMLInputElement) {
-    if (!files.length) return;
-    setUploading(true);
+  async function uploadFiles(selected: File[], input: HTMLInputElement) {
+    if (!selected.length) return;
+    const room = MAX_IMAGES - images.length;
+    const files = selected.slice(0, Math.max(0, room));
     setError(null);
+    if (files.length < selected.length) {
+      setError(
+        room <= 0
+          ? `Máximo de ${MAX_IMAGES} imagens por produto. Remova uma para adicionar outra.`
+          : `Máximo de ${MAX_IMAGES} imagens: enviei só ${files.length} de ${selected.length}.`,
+      );
+    }
+    if (!files.length) return void (input.value = '');
+    setUploading(true);
     const failed: string[] = [];
     for (const original of files) {
       try {
@@ -566,41 +569,24 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
       <div>
         <span class="label">Imagens do produto</span>
-        <p class="mb-2 text-[12px] text-ink-muted">
-          A primeira imagem é a capa. Envie arquivos do computador ou cole links —
-          o que estiver na lista abaixo é o que vai para a loja.
-        </p>
-
-        {images.length > 0 && (
-          <ul class="mb-3 grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {images.map((url, i) => (
-              <li key={url} class="group relative overflow-hidden rounded-card border border-ink/10 bg-bone-100">
-                <img src={url} alt="" class="aspect-square w-full object-cover" loading="lazy" />
-                {i === 0 && (
-                  <span class="absolute left-1 top-1 rounded bg-ink/80 px-1.5 py-0.5 text-[10px] uppercase text-bone">Capa</span>
-                )}
-                <div class="absolute inset-x-0 bottom-0 flex justify-between bg-ink/70 p-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-                  <button type="button" class="px-1 text-bone disabled:opacity-30" onClick={() => moveImage(i, -1)} disabled={i === 0} aria-label="Mover para a esquerda">‹</button>
-                  <button type="button" class="px-1 text-bone" onClick={() => removeImage(url)} aria-label="Remover">✕</button>
-                  <button type="button" class="px-1 text-bone disabled:opacity-30" onClick={() => moveImage(i, 1)} disabled={i === images.length - 1} aria-label="Mover para a direita">›</button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+        <p class="text-[12px] text-ink-muted">Adicione até cinco imagens utilizando um ou mais meios.</p>
+        <ul class="mb-3 mt-1 text-[12px] text-ink-muted">
+          <li><strong class="font-semibold text-ink-soft">Formatos aceitos:</strong> JPG, PNG, WebP ou AVIF</li>
+          <li><strong class="font-semibold text-ink-soft">Limite de tamanho:</strong> 5 MB (cada imagem)</li>
+        </ul>
 
         <div class="flex flex-wrap items-center gap-3">
-          <label class="btn-outline cursor-pointer text-[13px]">
-            {uploading ? 'Enviando…' : 'Fazer upload'}
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple class="hidden" onChange={onFiles} disabled={uploading} />
+          <label class={`btn-outline text-[13px] ${full ? 'pointer-events-none opacity-40' : 'cursor-pointer'}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 15v4h14v-4" /></svg>
+            {uploading ? 'Enviando…' : 'Selecionar'}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple class="hidden" onChange={onFiles} disabled={uploading || full} />
           </label>
           {/* celular/tablet: abre a câmera direto pra fotografar o produto */}
-          <label class="btn-outline hidden cursor-pointer text-[13px] [@media(pointer:coarse)]:inline-flex">
+          <label class={`btn-outline hidden text-[13px] [@media(pointer:coarse)]:inline-flex ${full ? 'pointer-events-none opacity-40' : 'cursor-pointer'}`}>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="mr-1.5" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
-            Tirar foto
-            <input type="file" accept="image/*" capture="environment" class="hidden" onChange={onCameraPhoto} disabled={uploading} />
+            Abrir Câmera
+            <input type="file" accept="image/*" capture="environment" class="hidden" onChange={onCameraPhoto} disabled={uploading || full} />
           </label>
-          <span class="text-[12px] text-ink-muted">JPG, PNG, WebP ou AVIF · até 5 MB cada</span>
         </div>
 
         <div class="mt-2 flex gap-2">
@@ -608,11 +594,17 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             class="field text-[13px]"
             placeholder="ou cole uma URL de imagem e clique em Adicionar"
             value={urlInput}
+            disabled={full}
             onInput={(e) => setUrlInput((e.target as HTMLInputElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }}
           />
-          <button type="button" class="btn-outline shrink-0 text-[13px]" onClick={addUrl}>Adicionar</button>
+          <button type="button" class="btn-outline shrink-0 text-[13px] disabled:pointer-events-none disabled:opacity-40" onClick={addUrl} disabled={full}>Adicionar</button>
         </div>
+
+        <ImageStrip images={images} onChange={setImages} />
+        {images.length > 1 && (
+          <p class="text-[12px] text-ink-muted">A primeira é a capa. Arraste para o lado para mudar a ordem.</p>
+        )}
       </div>
 
       <div class="flex gap-6">

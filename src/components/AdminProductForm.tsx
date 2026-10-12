@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
-import CameraScanButton, { SCAN_BTN, CHECK_ICON_PATH } from './CameraScanButton';
+import CameraScanButton from './CameraScanButton';
 import { confirmDialog } from '../lib/confirm-dialog';
 import { deleteProductFlow } from '../lib/delete-product';
 import type { CategoryNode, Product } from '../lib/types';
@@ -371,10 +371,6 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
                 }
               }}
             />
-            <button type="button" class={SCAN_BTN} onClick={() => lookupCode(form.barcode)}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={CHECK_ICON_PATH} /></svg>
-              Enviar
-            </button>
           </div>
           <div class="mt-2">
             <CameraScanButton

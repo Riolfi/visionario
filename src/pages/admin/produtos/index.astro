@@ -30,7 +30,7 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
         Enviar
       </button>
     </div>
-    <div class="mt-2"><CameraScanButton client:load targetId="barcode-scan" /></div>
+    <div class="mt-2 flex justify-end"><CameraScanButton client:load targetId="barcode-scan" /></div>
     <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Pesquise para criar ou editar um produto</p>
     <p id="barcode-scan-status" class="mt-1 font-sans text-[13px] text-ink-muted empty:hidden" aria-live="polite"></p>
   </div>

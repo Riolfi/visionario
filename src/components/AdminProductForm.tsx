@@ -257,13 +257,15 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     await uploadFiles(files, input);
   }
 
-  /** Foto tirada na hora pelo celular: vem com 3–8 MB (passa do limite de
-   *  5 MB do upload) — reduz pra 1600px de lado maior em JPEG antes de enviar. */
   async function onCameraPhoto(e: Event) {
     const input = e.target as HTMLInputElement;
-    const file = input.files?.[0];
-    if (!file) return;
-    setUploading(true);
+    await uploadFiles(input.files?.[0] ? [input.files[0]] : [], input);
+  }
+
+  /** Foto de celular vem com 3–8 MB: reduz pra 1600px de lado maior em JPEG
+   *  antes de enviar (passa do limite do upload e do corpo da requisição). */
+  async function shrink(file: File): Promise<File> {
+    if (file.size < 1024 * 1024) return file; // pequena: vai como está
     try {
       const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions);
       const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
@@ -272,30 +274,40 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       canvas.height = Math.round(bmp.height * scale);
       canvas.getContext('2d')!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
       const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
-      const photo = blob ? new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' }) : file;
-      await uploadFiles([photo], input);
+      return blob ? new File([blob], `foto-${Date.now()}.jpg`, { type: 'image/jpeg' }) : file;
     } catch {
-      await uploadFiles([file], input); // não deu pra reduzir: tenta o original
+      return file; // não deu pra reduzir: tenta o original
     }
   }
 
+  /** Uma foto por requisição: várias juntas estouravam o limite do servidor
+   *  ("Request Entity Too Large"). As que subirem ficam, mesmo se uma falhar. */
   async function uploadFiles(files: File[], input: HTMLInputElement) {
     if (!files.length) return;
     setUploading(true);
     setError(null);
-    try {
-      const fd = new FormData();
-      files.forEach((f) => fd.append('files', f));
-      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Falha no upload.');
-      setImages((list) => [...list, ...data.urls.filter((u: string) => !list.includes(u))]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Falha no upload.');
-    } finally {
-      setUploading(false);
-      input.value = '';
+    const failed: string[] = [];
+    for (const original of files) {
+      try {
+        const fd = new FormData();
+        fd.append('files', await shrink(original));
+        const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+        const data = await res.json().catch(() => null); // erro do servidor pode vir em texto
+        if (!res.ok || !data?.urls) {
+          failed.push(data?.error || (res.status === 413 ? 'imagem grande demais' : `erro ${res.status}`));
+          continue;
+        }
+        setImages((list) => [...list, ...data.urls.filter((u: string) => !list.includes(u))]);
+      } catch {
+        failed.push('falha de conexão');
+      }
     }
+    if (failed.length) {
+      const n = failed.length;
+      setError(`${n === files.length ? 'Nenhuma foto enviada' : `${n} de ${files.length} fotos não foram enviadas`}: ${[...new Set(failed)].join('; ')}.`);
+    }
+    setUploading(false);
+    input.value = '';
   }
 
   async function submit(e: Event) {
@@ -567,7 +579,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
                 {i === 0 && (
                   <span class="absolute left-1 top-1 rounded bg-ink/80 px-1.5 py-0.5 text-[10px] uppercase text-bone">Capa</span>
                 )}
-                <div class="absolute inset-x-0 bottom-0 flex justify-between bg-ink/70 p-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div class="absolute inset-x-0 bottom-0 flex justify-between bg-ink/70 p-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
                   <button type="button" class="px-1 text-bone disabled:opacity-30" onClick={() => moveImage(i, -1)} disabled={i === 0} aria-label="Mover para a esquerda">‹</button>
                   <button type="button" class="px-1 text-bone" onClick={() => removeImage(url)} aria-label="Remover">✕</button>
                   <button type="button" class="px-1 text-bone disabled:opacity-30" onClick={() => moveImage(i, 1)} disabled={i === images.length - 1} aria-label="Mover para a direita">›</button>

@@ -11,11 +11,17 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
 
 <AdminLayout title="Produtos">
   <div class="flex items-center justify-between">
-    <p class="font-sans text-sm text-ink-muted">{products.length} produtos no catálogo</p>
+    <p id="product-count" class="font-sans text-sm text-ink-muted" data-total={products.length}>{products.length} produtos no catálogo</p>
     <a href="/admin/produtos/novo" class="btn-primary">Novo produto</a>
   </div>
 
   <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
+    <h2 class="mb-3 font-display text-lg">Pesquise para criar ou editar um produto</h2>
+    <label class="label" for="name-search">Nome</label>
+    <span class="relative mb-4 block">
+      <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input id="name-search" class="field pl-11" type="search" placeholder="Pesquise pelo nome do produto…" autocomplete="off" />
+    </span>
     <label class="label" for="barcode-scan">Código de barras</label>
     <div class="flex items-stretch gap-2">
       <input
@@ -31,7 +37,6 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
       </button>
     </div>
     <div class="mt-2 flex justify-end"><CameraScanButton client:load targetId="barcode-scan" /></div>
-    <p class="mt-1.5 font-sans text-[12px] text-ink-muted">Pesquise para criar ou editar um produto</p>
     <p id="barcode-scan-status" class="mt-1 font-sans text-[13px] text-ink-muted empty:hidden" aria-live="polite"></p>
   </div>
 
@@ -48,7 +53,7 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
       </thead>
       <tbody>
         {products.map((p) => (
-          <tr class="border-t border-ink/10 hover:bg-bone-50">
+          <tr class="product-row border-t border-ink/10 hover:bg-bone-50" data-name={p.name} data-barcode={p.barcode ?? ''}>
             <td class="px-2 py-3 sm:px-3">
               <a href={`/admin/produtos/${p.id}`} class="block truncate font-medium text-agua-dark" title={p.name}>{p.name}</a>
               <span class="block truncate text-[12px] text-ink-muted">{brl(p.price_cents)}<span class="hidden sm:inline"> · {p.category_name}</span></span>
@@ -76,6 +81,7 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
         ))}
       </tbody>
     </table>
+    <p id="no-results" class="hidden p-4 text-sm text-ink-muted">Nenhum produto encontrado. Para cadastrar, digite ou leia o código de barras e toque em Enviar.</p>
   </div>
 </AdminLayout>
 
@@ -92,6 +98,30 @@ const products = await getProducts({ includeInactive: true, sort: 'novidades' })
       btn.disabled = false;
     });
   });
+
+  // Filtro da lista enquanto digita: nome (todas as palavras, sem acento e
+  // sem diferenciar maiúscula) e código de barras (contém os dígitos).
+  const fold = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const nameInput = document.getElementById('name-search') as HTMLInputElement;
+  const codeInput = document.getElementById('barcode-scan') as HTMLInputElement;
+  const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>('tr.product-row'));
+  const count = document.getElementById('product-count')!;
+  function filter() {
+    const words = fold(nameInput.value).split(/\s+/).filter(Boolean);
+    const digits = codeInput.value.replace(/\D/g, '');
+    let shown = 0;
+    for (const row of rows) {
+      const name = fold(row.dataset.name ?? '');
+      const ok = words.every((w) => name.includes(w)) && (!digits || (row.dataset.barcode ?? '').includes(digits));
+      row.hidden = !ok;
+      if (ok) shown++;
+    }
+    const total = Number(count.dataset.total);
+    count.textContent = shown === total ? `${total} produtos no catálogo` : `${shown} de ${total} produtos`;
+    document.getElementById('no-results')!.classList.toggle('hidden', shown > 0);
+  }
+  nameInput.addEventListener('input', filter);
+  codeInput.addEventListener('input', filter);
 
   const input = document.getElementById('barcode-scan') as HTMLInputElement | null;
   const status = document.getElementById('barcode-scan-status');

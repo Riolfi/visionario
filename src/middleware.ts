@@ -110,7 +110,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   // (o dono abre tudo). Sem Supabase não há como logar: área inacessível.
   // -------------------------------------------------------------------------
   if (isAdminArea) {
-    if (access && !canAccess(access, pathname)) {
+    if (access && !canAccess(access, pathname, context.request.method)) {
       if (pathname.startsWith('/api/')) {
         return new Response(JSON.stringify({ error: 'Sem permissão para esta seção.' }), {
           status: 403,

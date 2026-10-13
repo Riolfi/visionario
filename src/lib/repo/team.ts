@@ -1,73 +1,97 @@
 import { hasSupabase } from '../env';
 import { supabaseAdmin } from '../supabase';
-import { SECTION_KEYS, type AdminRole, type AdminSection } from './admin';
+import type { AdminAccess } from '../rbac';
 import { listAuthUsers } from './customers';
+import { roleRules } from './roles';
 
-/** Equipe do painel (admin_users + dados da conta). Só o dono chega aqui. */
+/**
+ * Equipe do painel (admin_users + cargo). Quem chega aqui tem a regra
+ * equipe.gerenciar; as travas contra escalada de privilégio ficam aqui:
+ * ninguém mexe no próprio acesso, só o Dono dá ou tira o cargo Dono, e quem
+ * não é Dono só atribui cargos com regras que ele mesmo tem.
+ */
 
 export interface TeamMember {
   id: string;
   email: string;
   name: string;
-  role: AdminRole;
-  permissions: AdminSection[];
+  role_id: string | null;
+  role_name: string;
+  is_owner: boolean;
   last_sign_in_at: string | null;
 }
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 
-const cleanPermissions = (raw: unknown[]): AdminSection[] =>
-  SECTION_KEYS.filter((k) => raw.includes(k));
-
 export async function listTeam(): Promise<TeamMember[]> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return [];
-  const [{ data: rows }, users, { data: profiles }] = await Promise.all([
+  const [{ data: rows }, users, { data: profiles }, { data: roles }] = await Promise.all([
     sb.from('admin_users').select('*'),
     listAuthUsers(),
     sb.from('profiles').select('id, full_name'),
+    sb.from('admin_roles').select('id, name, is_owner'),
   ]);
   const byId = new Map(users.map((u) => [u.id, u]));
   const names = new Map((profiles ?? []).map((p) => [p.id, p.full_name]));
+  const roleById = new Map((roles ?? []).map((r) => [r.id, r]));
   return (rows ?? [])
     .map((r) => {
-      const u = byId.get(r.user_id);
-      const role: AdminRole = r.role === 'equipe' ? 'equipe' : 'dono';
+      const role = r.role_id ? roleById.get(r.role_id) : null;
+      // antes da migration 0016 (sem role_id): o "dono" do modelo anterior
+      const legacyOwner = !roles && r.role !== 'equipe';
       return {
         id: r.user_id,
-        email: u?.email ?? '—',
+        email: byId.get(r.user_id)?.email ?? '—',
         name: names.get(r.user_id) || '',
-        role,
-        permissions: role === 'dono' ? [...SECTION_KEYS] : cleanPermissions(r.permissions ?? []),
-        last_sign_in_at: u?.last_sign_in_at ?? null,
+        role_id: r.role_id ?? null,
+        role_name: role?.name ?? (legacyOwner ? 'Dono' : 'Sem cargo'),
+        is_owner: role?.is_owner ?? legacyOwner,
+        last_sign_in_at: byId.get(r.user_id)?.last_sign_in_at ?? null,
       };
     })
-    .sort((a, b) => (a.role === b.role ? a.email.localeCompare(b.email) : a.role === 'dono' ? -1 : 1));
+    .sort((a, b) => Number(b.is_owner) - Number(a.is_owner) || a.email.localeCompare(b.email));
 }
 
 async function ownerCount(): Promise<number> {
   const sb = supabaseAdmin()!;
-  const { data } = await sb.from('admin_users').select('*');
-  return (data ?? []).filter((r) => r.role !== 'equipe').length;
+  const { data } = await sb.from('admin_users').select('role_id, admin_roles(is_owner)');
+  return (data ?? []).filter((r) => (r.admin_roles as unknown as { is_owner: boolean } | null)?.is_owner).length;
 }
 
-export async function createMember(input: {
-  name: string;
-  email: string;
-  password: string;
-  role: AdminRole;
-  permissions: unknown[];
-}): Promise<Result> {
+/** O cargo cabe no acesso de quem está atribuindo? (sem escalada) */
+async function checkAssignable(actor: AdminAccess, roleId: string): Promise<string | null> {
+  const role = await roleRules(roleId);
+  if (!role) return 'Cargo inválido.';
+  if (actor.isOwner) return null;
+  if (role.isOwner) return 'Só o Dono pode dar o cargo Dono.';
+  const extra = role.rules.filter((r) => !actor.rules.includes(r));
+  return extra.length ? 'Esse cargo tem acessos que você não tem — só o Dono pode atribuí-lo.' : null;
+}
+
+/** Quem não é Dono só mexe em membros com acesso menor ou igual ao seu. */
+async function checkManageable(actor: AdminAccess, memberRoleId: string | null): Promise<string | null> {
+  if (actor.isOwner || !memberRoleId) return null;
+  const role = await roleRules(memberRoleId);
+  if (!role) return null;
+  if (role.isOwner) return 'Só o Dono pode alterar outro Dono.';
+  return role.rules.every((r) => actor.rules.includes(r)) ? null : 'Esse membro tem acessos que você não tem — só o Dono pode alterá-lo.';
+}
+
+export async function createMember(
+  actor: AdminAccess,
+  input: { name: string; email: string; password: string; roleId: string },
+): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' };
-  const permissions = input.role === 'dono' ? [] : cleanPermissions(input.permissions);
+  const block = await checkAssignable(actor, input.roleId);
+  if (block) return { ok: false, error: block };
 
   // Nunca promove uma conta que já existe: qualquer pessoa pode se cadastrar
   // na loja com o e-mail de um futuro funcionário (não há prova de posse do
-  // e-mail), e a sessão dela viraria admin. Equipe = sempre conta nova, com a
-  // senha definida pelo dono.
+  // e-mail), e a sessão dela viraria admin. Equipe = sempre conta nova.
   if ((await listAuthUsers()).some((u) => u.email?.toLowerCase() === email)) {
     return { ok: false, error: 'Esse e-mail já tem uma conta na loja. Use outro e-mail para a conta da equipe.' };
   }
@@ -81,27 +105,33 @@ export async function createMember(input: {
   if (error || !data.user) return { ok: false, error: error?.message ?? 'Não foi possível criar a conta.' };
   const userId = data.user.id;
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
-  const { error: e2 } = await sb.from('admin_users').insert({ user_id: userId, role: input.role, permissions });
+  const { error: e2 } = await sb.from('admin_users').insert({ user_id: userId, role_id: input.roleId });
   if (e2) {
     await sb.auth.admin.deleteUser(userId); // não deixa conta solta sem acesso
     return { ok: false, error: e2.message };
   }
-  return { ok: true };
+  return { ok: true, message: 'Membro criado.' };
 }
 
 export async function updateMember(
-  actorId: string,
+  actor: AdminAccess & { userId: string },
   userId: string,
-  input: { name: string; email: string; password: string; role: AdminRole; permissions: unknown[] },
+  input: { name: string; email: string; password: string; roleId: string },
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
+  if (userId === actor.userId) return { ok: false, error: 'Para alterar os seus dados, use "Meu perfil". O seu cargo só outro Dono altera.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
-  const wasOwner = row.role !== 'equipe';
-  if (wasOwner && input.role === 'equipe') {
-    if (userId === actorId) return { ok: false, error: 'Você não pode tirar o seu próprio papel de dono.' };
-    if ((await ownerCount()) <= 1) return { ok: false, error: 'A loja precisa ter pelo menos um dono.' };
+  const manage = await checkManageable(actor, row.role_id);
+  if (manage) return { ok: false, error: manage };
+
+  if (input.roleId !== row.role_id) {
+    const block = await checkAssignable(actor, input.roleId);
+    if (block) return { ok: false, error: block };
+    const wasOwner = row.role_id ? (await roleRules(row.role_id))?.isOwner : false;
+    const willBeOwner = (await roleRules(input.roleId))?.isOwner;
+    if (wasOwner && !willBeOwner && (await ownerCount()) <= 1) return { ok: false, error: 'A loja precisa ter pelo menos um Dono.' };
   }
 
   const auth: { email?: string; email_confirm?: boolean; password?: string } = {};
@@ -120,22 +150,25 @@ export async function updateMember(
     if (error) return { ok: false, error: /already|registered|exists/i.test(error.message) ? 'Esse e-mail já é usado por outra conta.' : error.message };
   }
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
-  const permissions = input.role === 'dono' ? [] : cleanPermissions(input.permissions);
-  const { error } = await sb.from('admin_users').update({ role: input.role, permissions }).eq('user_id', userId);
-  return error ? { ok: false, error: error.message } : { ok: true };
+  const { error } = await sb.from('admin_users').update({ role_id: input.roleId }).eq('user_id', userId);
+  return error ? { ok: false, error: error.message } : { ok: true, message: 'Alterações salvas.' };
 }
 
 /**
  * Tira da equipe. Conta só de equipe é apagada; conta que já comprou na loja
  * continua existindo como cliente (o histórico de pedidos não se perde).
  */
-export async function removeMember(actorId: string, userId: string): Promise<Result> {
+export async function removeMember(actor: AdminAccess & { userId: string }, userId: string): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
-  if (userId === actorId) return { ok: false, error: 'Você não pode excluir a sua própria conta.' };
+  if (userId === actor.userId) return { ok: false, error: 'Você não pode excluir a sua própria conta.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
-  if (row.role !== 'equipe' && (await ownerCount()) <= 1) return { ok: false, error: 'A loja precisa ter pelo menos um dono.' };
+  const manage = await checkManageable(actor, row.role_id);
+  if (manage) return { ok: false, error: manage };
+  if (row.role_id && (await roleRules(row.role_id))?.isOwner && (await ownerCount()) <= 1) {
+    return { ok: false, error: 'A loja precisa ter pelo menos um Dono.' };
+  }
 
   const { error } = await sb.from('admin_users').delete().eq('user_id', userId);
   if (error) return { ok: false, error: error.message };

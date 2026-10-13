@@ -11,6 +11,9 @@ interface Props {
   tree: CategoryNode[];
   /** código de barras já lido antes de chegar aqui (veio de um scan sem produto encontrado) */
   initialBarcode?: string;
+  /** cargo pode salvar / excluir (o servidor confere de novo) */
+  canEdit?: boolean;
+  canDelete?: boolean;
 }
 
 /** Máscara de dinheiro: "8990" → "89,90", "123456" → "1.234,56".
@@ -96,7 +99,7 @@ const REQUIRED = [
   ['description', 'descrição completa'],
 ] as const;
 
-export default function AdminProductForm({ product, tree, initialBarcode }: Props) {
+export default function AdminProductForm({ product, tree, initialBarcode, canEdit = true, canDelete = true }: Props) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -691,15 +694,24 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       </div>
 
       {/* botões do mesmo tamanho: colunas iguais */}
+      {!canEdit && (
+        <p class="rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">Somente leitura: seu cargo não permite alterar produtos.</p>
+      )}
       <div class="grid grid-cols-3 gap-3 pt-2">
-        <button type="submit" class="btn-primary w-full" disabled={saving}>
-          {saving ? 'Salvando…' : product ? 'Salvar' : 'Criar produto'}
+        {canEdit && (
+          <button type="submit" class="btn-primary w-full" disabled={saving}>
+            {saving ? 'Salvando…' : product ? 'Salvar' : 'Criar produto'}
+          </button>
+        )}
+        <button type="button" onClick={canEdit ? cancel : () => (window.location.href = '/admin/produtos')} class="btn-outline w-full">
+          {canEdit ? 'Cancelar' : 'Voltar'}
         </button>
-        <button type="button" onClick={cancel} class="btn-outline w-full">Cancelar</button>
         {/* editando: apaga o produto; cadastro novo: descarta o que foi preenchido */}
-        <button type="button" onClick={remove} class="btn-outline w-full" disabled={saving}>
-          Excluir
-        </button>
+        {(product ? canDelete : canEdit) && (
+          <button type="button" onClick={remove} class="btn-outline w-full" disabled={saving}>
+            Excluir
+          </button>
+        )}
       </div>
     </form>
   );

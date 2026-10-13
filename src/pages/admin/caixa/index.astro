@@ -3,6 +3,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import CaixaFlow from '../../../components/CaixaFlow.tsx';
 import { hasSupabase } from '../../../lib/env';
 import { getProducts } from '../../../lib/repo/catalog';
+import { can } from '../../../lib/rbac';
 
 export const prerender = false;
 
@@ -27,7 +28,7 @@ const products = hasSupabase
         Não emite cupom fiscal.
       </p>
       <div class="mt-6">
-        <CaixaFlow client:load products={products} />
+        <CaixaFlow client:load products={products} canCancel={can(Astro.locals.admin, 'caixa.cancelar')} />
       </div>
     </>
   ) : (

@@ -15,6 +15,9 @@ const initialBarcode = isNew ? (Astro.url.searchParams.get('barcode') ?? undefin
 if (!isNew && !product) {
   return Astro.redirect('/admin/produtos');
 }
+import { can } from '../../../lib/rbac';
+const canEdit = can(Astro.locals.admin, 'produtos.editar');
+const canDelete = can(Astro.locals.admin, 'produtos.excluir');
 ---
 
 <AdminLayout title={isNew ? 'Novo produto' : 'Produto'}>
@@ -22,6 +25,6 @@ if (!isNew && !product) {
     ← Produtos
   </a>
   <div class="mt-4">
-    <AdminProductForm client:load product={product} tree={tree} initialBarcode={initialBarcode} />
+    <AdminProductForm client:load product={product} tree={tree} initialBarcode={initialBarcode} canEdit={canEdit} canDelete={canDelete} />
   </div>
 </AdminLayout>

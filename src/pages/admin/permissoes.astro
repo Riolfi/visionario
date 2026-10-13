@@ -1,0 +1,128 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { RULES, SCREENS } from '../../lib/rbac';
+import { listPermissions, listRoles } from '../../lib/repo/roles';
+import { takeFlash } from '../../lib/flash';
+
+export const prerender = false;
+
+const flash = takeFlash(Astro.cookies);
+let loadError = '';
+const [permissions, roles] = await Promise.all([
+  listPermissions().catch((e) => ((loadError = e.message), [])),
+  listRoles().catch(() => []),
+]);
+const usedBy = (permId: string) => roles.filter((r) => r.permission_ids.includes(permId)).map((r) => r.name);
+---
+
+<AdminLayout title="Permissões">
+  <div class="max-w-4xl space-y-6">
+    <p class="text-sm text-ink-soft">
+      Cada tela tem permissões, e cada permissão é um grupo de regras que você liga ou desliga.
+      Depois, em <a href="/admin/cargos" class="underline">Cargos</a>, junte as permissões que cada função da equipe precisa.
+      As regras são conferidas pelo servidor: ninguém faz o que o cargo não permite, nem pela tela nem pela API.
+    </p>
+
+    {flash && (
+      <p role="status" class:list={['rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+    )}
+    {loadError && (
+      <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+        Não foi possível carregar ({loadError}). Rode a migration <code>0016_roles_permissions.sql</code> no Supabase.
+      </p>
+    )}
+
+    {SCREENS.map((screen) => {
+      const rules = RULES.filter((r) => r.screen === screen.key);
+      const perms = permissions.filter((p) => p.screen === screen.key);
+      return (
+        <section id={`tela-${screen.key}`} class="scroll-mt-24 rounded-card border border-ink/10 bg-white">
+          <header class="border-b border-ink/10 px-4 py-3">
+            <h2 class="font-display text-lg">{screen.label}</h2>
+            <p class="text-[12px] text-ink-muted">{rules.length} {rules.length === 1 ? 'regra' : 'regras'} nesta tela</p>
+          </header>
+          <ul class="divide-y divide-ink/10">
+            {perms.map((p) => (
+              <li>
+                <details>
+                  <summary class="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
+                    <span class="min-w-0">
+                      <span class="block font-sans text-sm font-semibold">{p.name}</span>
+                      <span class="block text-[12px] text-ink-muted">
+                        {p.rules.length} de {rules.length} regras · {usedBy(p.id).length ? `cargos: ${usedBy(p.id).join(', ')}` : 'nenhum cargo usa'}
+                      </span>
+                    </span>
+                    <span class="rounded-card border border-ink/20 px-3 py-1 text-[13px]">Editar</span>
+                  </summary>
+                  <div class="border-t border-ink/10 p-4">
+                    <form method="POST" action="/api/admin/permissions" class="space-y-4">
+                      <input type="hidden" name="acao" value="salvar" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="screen" value={screen.key} />
+                      <div class="grid gap-4 sm:grid-cols-2">
+                        <label class="block"><span class="label">Nome</span><input class="field" name="name" value={p.name} required minlength="2" maxlength="80" /></label>
+                        <label class="block"><span class="label">Descrição</span><input class="field" name="description" value={p.description} maxlength="200" /></label>
+                      </div>
+                      <fieldset class="space-y-2">
+                        <legend class="label">Regras</legend>
+                        {rules.map((r) => (
+                          <label class="flex cursor-pointer items-start gap-3 rounded-card border border-ink/10 p-3 hover:bg-bone-50">
+                            <input type="checkbox" name="rules" value={r.key} checked={p.rules.includes(r.key)} class="peer sr-only" />
+                            <span class="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-agua" aria-hidden="true"></span>
+                            <span>
+                              <span class="block text-sm font-medium">{r.label}</span>
+                              <span class="block text-[12px] text-ink-muted">{r.help}</span>
+                            </span>
+                          </label>
+                        ))}
+                      </fieldset>
+                      <button class="btn-primary">Salvar permissão</button>
+                    </form>
+                    <form method="POST" action="/api/admin/permissions" class="mt-3" data-confirm={`Excluir a permissão "${p.name}"?|${usedBy(p.id).length ? `Os cargos ${usedBy(p.id).join(', ')} perdem essas regras.` : 'Nenhum cargo usa esta permissão.'}|Excluir`}>
+                      <input type="hidden" name="acao" value="excluir" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="screen" value={screen.key} />
+                      <button class="rounded-card border border-red-300 px-3 py-1.5 text-[13px] text-red-700 hover:bg-red-50">Excluir permissão</button>
+                    </form>
+                  </div>
+                </details>
+              </li>
+            ))}
+            <li>
+              <details>
+                <summary class="cursor-pointer px-4 py-3 font-sans text-sm text-agua-dark">+ Nova permissão em {screen.label}</summary>
+                <form method="POST" action="/api/admin/permissions" class="space-y-4 border-t border-ink/10 p-4">
+                  <input type="hidden" name="acao" value="salvar" />
+                  <input type="hidden" name="screen" value={screen.key} />
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block"><span class="label">Nome</span><input class="field" name="name" required minlength="2" maxlength="80" placeholder="Ex.: Consultar pedidos" /></label>
+                    <label class="block"><span class="label">Descrição</span><input class="field" name="description" maxlength="200" /></label>
+                  </div>
+                  <fieldset class="space-y-2">
+                    <legend class="label">Regras</legend>
+                    {rules.map((r) => (
+                      <label class="flex cursor-pointer items-start gap-3 rounded-card border border-ink/10 p-3 hover:bg-bone-50">
+                        <input type="checkbox" name="rules" value={r.key} class="peer sr-only" />
+                        <span class="relative mt-0.5 h-5 w-9 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-agua" aria-hidden="true"></span>
+                        <span>
+                          <span class="block text-sm font-medium">{r.label}</span>
+                          <span class="block text-[12px] text-ink-muted">{r.help}</span>
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                  <button class="btn-primary">Criar permissão</button>
+                </form>
+              </details>
+            </li>
+          </ul>
+        </section>
+      );
+    })}
+  </div>
+</AdminLayout>
+
+<script>
+  import { enableConfirmForms } from '../../lib/confirm-forms';
+  enableConfirmForms();
+</script>

@@ -9,6 +9,7 @@ import {
 import { processPayment } from '../../../lib/mercadopago';
 import { fulfillPaidOrder } from '../../../lib/fulfillment';
 import type { PaymentMethod } from '../../../lib/types';
+import { can } from '../../../lib/rbac';
 
 /**
  * POST /api/admin/caixa
@@ -29,7 +30,7 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, locals }) => {
   let body: Record<string, unknown>;
   try {
     body = (await request.json()) as Record<string, unknown>;
@@ -89,6 +90,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   // --- cancelar venda já paga (devolve estoque) ---
   if (body.action === 'cancel') {
+    if (!can(locals.admin, 'caixa.cancelar')) return json({ error: 'Seu cargo não permite cancelar vendas.' }, 403);
     const orderNumber = String(body.order_number || '').trim();
     if (!orderNumber) return json({ error: 'Pedido não informado.' }, 400);
     try {

@@ -1,7 +1,7 @@
 ---
 import '../styles/global.css';
 import ThemeVars from '../components/ThemeVars.astro';
-import { ADMIN_SECTIONS } from '../lib/repo/admin';
+import { can, visibleScreens } from '../lib/rbac';
 import { unreadNotificationCount } from '../lib/repo/notifications';
 
 interface Props {
@@ -12,14 +12,17 @@ const path = Astro.url.pathname;
 const brandName = Astro.locals.brand.name;
 const logoUrl = Astro.locals.site.brand.data.logo_url;
 
-// só as seções liberadas pra essa pessoa; Usuários é do dono
+// só as telas que essa pessoa pode abrir; Permissões e Cargos são do Dono
 const access = Astro.locals.admin;
-const nav: { href: string; label: string }[] = ADMIN_SECTIONS.filter(
-  (s) => !access || access.permissions.includes(s.key),
-).map(({ href, label }) => ({ href, label }));
-if (!access || access.role === 'dono') nav.push({ href: '/admin/usuarios', label: 'Usuários' });
+const nav: { href: string; label: string }[] = access
+  ? visibleScreens(access)
+      .filter((s) => s.key !== 'notificacoes') // fica no sino do cabeçalho
+      .map(({ href, label }) => ({ href, label }))
+  : [];
+if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' }, { href: '/admin/cargos', label: 'Cargos' });
+const showBell = can(access, 'notificacoes.ver');
 
-const unread = await unreadNotificationCount();
+const unread = showBell ? await unreadNotificationCount() : 0;
 
 const isActive = (href: string) =>
   path === href || (href !== '/admin' && path.startsWith(href));
@@ -109,7 +112,7 @@ const isActive = (href: string) =>
             </button>
             <h1 class="font-display text-2xl">{title}</h1>
           </div>
-          <a
+          {showBell && (<a
             href="/admin/notificacoes"
             class="relative rounded-card p-1.5 text-ink hover:bg-bone-200"
             aria-label={unread ? `Notificações: ${unread} não lida${unread > 1 ? 's' : ''}` : 'Notificações'}
@@ -117,11 +120,11 @@ const isActive = (href: string) =>
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
             {unread > 0 && (
-              <span class="absolute -right-0.5 -top-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-600 px-1 font-sans text-[10px] font-bold leading-none text-white">
+              <span class="absolute -bottom-0.5 -left-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-600 px-1 font-sans text-[10px] font-bold leading-none text-white ring-2 ring-bone">
                 {unread > 99 ? '99+' : unread}
               </span>
             )}
-          </a>
+          </a>)}
         </header>
         <main class="p-4 sm:p-6">
           <slot />

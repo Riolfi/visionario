@@ -1,0 +1,127 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { SCREENS } from '../../lib/rbac';
+import { listPermissions, listRoles, type Permission } from '../../lib/repo/roles';
+import { takeFlash } from '../../lib/flash';
+
+export const prerender = false;
+
+const flash = takeFlash(Astro.cookies);
+let loadError = '';
+const [roles, permissions] = await Promise.all([
+  listRoles().catch((e) => ((loadError = e.message), [])),
+  listPermissions().catch(() => [] as Permission[]),
+]);
+// permissões agrupadas por tela, na ordem do menu
+const groups = SCREENS.map((s) => ({ screen: s, perms: permissions.filter((p) => p.screen === s.key) })).filter((g) => g.perms.length);
+---
+
+<AdminLayout title="Cargos">
+  <div class="max-w-4xl space-y-4">
+    <p class="text-sm text-ink-soft">
+      O cargo define o que cada pessoa da equipe pode fazer. Marque as <a href="/admin/permissoes" class="underline">permissões</a> de cada cargo
+      e atribua o cargo em <a href="/admin/usuarios?aba=equipe" class="underline">Usuários › Equipe</a>.
+    </p>
+
+    {flash && (
+      <p role="status" class:list={['rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+    )}
+    {loadError && (
+      <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+        Não foi possível carregar ({loadError}). Rode a migration <code>0016_roles_permissions.sql</code> no Supabase.
+      </p>
+    )}
+
+    <details class="rounded-card border border-ink/10 bg-white">
+      <summary class="cursor-pointer px-4 py-3 font-sans text-sm font-semibold">+ Novo cargo</summary>
+      <form method="POST" action="/api/admin/roles" class="space-y-4 border-t border-ink/10 p-4">
+        <input type="hidden" name="acao" value="salvar" />
+        <div class="grid gap-4 sm:grid-cols-2">
+          <label class="block"><span class="label">Nome</span><input class="field" name="name" required minlength="2" maxlength="60" placeholder="Ex.: Atendente" /></label>
+          <label class="block"><span class="label">Descrição</span><input class="field" name="description" maxlength="200" /></label>
+        </div>
+        <fieldset class="space-y-3">
+          <legend class="label">Permissões</legend>
+          {groups.map((g) => (
+            <div>
+              <p class="mb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-ink-muted">{g.screen.label}</p>
+              <div class="grid gap-2 sm:grid-cols-2">
+                {g.perms.map((p) => (
+                  <label class="flex items-start gap-2 rounded-card border border-ink/10 p-2.5 text-sm hover:bg-bone-50">
+                    <input type="checkbox" name="permissions" value={p.id} class="mt-1" />
+                    <span><span class="block font-medium">{p.name}</span>{p.description && <span class="block text-[12px] text-ink-muted">{p.description}</span>}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </fieldset>
+        <button class="btn-primary">Criar cargo</button>
+      </form>
+    </details>
+
+    <ul class="space-y-3">
+      {roles.map((r) => (
+        <li class="rounded-card border border-ink/10 bg-white">
+          {r.is_owner ? (
+            <div class="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+              <span>
+                <span class="block font-sans text-sm font-semibold">{r.name} 🔒</span>
+                <span class="block text-[12px] text-ink-muted">Acesso total, inclusive Permissões e Cargos. Não pode ser alterado nem excluído · {r.members} {r.members === 1 ? 'pessoa' : 'pessoas'}</span>
+              </span>
+            </div>
+          ) : (
+            <details>
+              <summary class="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <span class="min-w-0">
+                  <span class="block font-sans text-sm font-semibold">{r.name}</span>
+                  <span class="block text-[12px] text-ink-muted">
+                    {r.permission_ids.length} {r.permission_ids.length === 1 ? 'permissão' : 'permissões'} · {r.members} {r.members === 1 ? 'pessoa' : 'pessoas'}{r.description && ` · ${r.description}`}
+                  </span>
+                </span>
+                <span class="rounded-card border border-ink/20 px-3 py-1 text-[13px]">Editar</span>
+              </summary>
+              <div class="border-t border-ink/10 p-4">
+                <form method="POST" action="/api/admin/roles" class="space-y-4">
+                  <input type="hidden" name="acao" value="salvar" />
+                  <input type="hidden" name="id" value={r.id} />
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block"><span class="label">Nome</span><input class="field" name="name" value={r.name} required minlength="2" maxlength="60" /></label>
+                    <label class="block"><span class="label">Descrição</span><input class="field" name="description" value={r.description} maxlength="200" /></label>
+                  </div>
+                  <fieldset class="space-y-3">
+                    <legend class="label">Permissões</legend>
+                    {groups.map((g) => (
+                      <div>
+                        <p class="mb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-ink-muted">{g.screen.label}</p>
+                        <div class="grid gap-2 sm:grid-cols-2">
+                          {g.perms.map((p) => (
+                            <label class="flex items-start gap-2 rounded-card border border-ink/10 p-2.5 text-sm hover:bg-bone-50">
+                              <input type="checkbox" name="permissions" value={p.id} checked={r.permission_ids.includes(p.id)} class="mt-1" />
+                              <span><span class="block font-medium">{p.name}</span>{p.description && <span class="block text-[12px] text-ink-muted">{p.description}</span>}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </fieldset>
+                  <button class="btn-primary">Salvar cargo</button>
+                </form>
+                <form method="POST" action="/api/admin/roles" class="mt-3" data-confirm={`Excluir o cargo "${r.name}"?|${r.members ? `${r.members} ${r.members === 1 ? 'pessoa fica' : 'pessoas ficam'} sem cargo e sem acesso às telas até receber outro.` : 'Ninguém usa este cargo.'}|Excluir`}>
+                  <input type="hidden" name="acao" value="excluir" />
+                  <input type="hidden" name="id" value={r.id} />
+                  <button class="rounded-card border border-red-300 px-3 py-1.5 text-[13px] text-red-700 hover:bg-red-50">Excluir cargo</button>
+                </form>
+              </div>
+            </details>
+          )}
+        </li>
+      ))}
+    </ul>
+  </div>
+</AdminLayout>
+
+<script>
+  import { enableConfirmForms } from '../../lib/confirm-forms';
+  enableConfirmForms();
+</script>

@@ -53,7 +53,7 @@ const TRASH_ICON = (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
 );
 
-export default function CaixaFlow({ products = [] }: { products?: ScanResult[] }) {
+export default function CaixaFlow({ products = [], canCancel = true }: { products?: ScanResult[]; canCancel?: boolean }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [scan, setScan] = useState('');
   const [nameQuery, setNameQuery] = useState('');
@@ -405,7 +405,7 @@ export default function CaixaFlow({ products = [] }: { products?: ScanResult[] }
           <button type="button" class="btn-primary w-full" onClick={resetSale}>
             Nova venda
           </button>
-          {!cancelled && (
+          {!cancelled && canCancel && (
             <button
               type="button"
               class="font-sans text-[13px] text-red-700 underline disabled:opacity-50"

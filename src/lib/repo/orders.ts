@@ -436,3 +436,30 @@ export async function setOrderStatus(
   await writeOrders(orders);
   return order;
 }
+
+/**
+ * Mudança de status pelo painel (Pedidos): acompanha o estoque numa transação
+ * no banco (RPC `change_order_status`, migration 0014) — cancelar pedido pago
+ * devolve os itens; marcar como pago baixa. Sem a migration, cai no update
+ * simples de antes.
+ */
+export async function changeOrderStatus(
+  orderNumber: string,
+  status: OrderStatus,
+  opts: { trackingCode?: string | null } = {},
+): Promise<{ order: Order | null; error?: string }> {
+  const sb = supabaseAdmin();
+  if (hasSupabase && sb) {
+    const { data, error } = await sb.rpc('change_order_status', {
+      p_order_number: orderNumber,
+      p_status: status,
+      p_tracking: opts.trackingCode === undefined ? null : (opts.trackingCode ?? ''),
+    });
+    if (!error) return { order: data === 'not_found' ? null : await getOrderByNumber(orderNumber) };
+    // função ainda não existe (migration 0014 não rodou): comportamento antigo
+    if (error.code !== 'PGRST202' && !/change_order_status/.test(error.message)) {
+      return { order: null, error: error.message };
+    }
+  }
+  return { order: await setOrderStatus(orderNumber, status, opts) };
+}

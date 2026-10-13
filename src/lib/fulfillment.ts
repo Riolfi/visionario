@@ -1,4 +1,5 @@
 import { confirmOrderPayment } from './repo/orders';
+import { createNotification } from './repo/notifications';
 import { sendOrderConfirmation } from './email';
 import type { PaymentMethod } from './types';
 
@@ -11,7 +12,23 @@ export async function fulfillPaidOrder(
   orderNumber: string,
   opts: { paymentId: string | null; method: PaymentMethod },
 ) {
-  const { order, outcome } = await confirmOrderPayment(orderNumber, opts);
+  let result: Awaited<ReturnType<typeof confirmOrderPayment>>;
+  try {
+    result = await confirmOrderPayment(orderNumber, opts);
+  } catch (err) {
+    // pago, mas outra venda levou a última unidade antes: o dinheiro entrou e
+    // o pedido não pôde ser confirmado — o dono precisa estornar ou repor
+    const msg = err instanceof Error ? err.message : String(err);
+    if (/estoque/i.test(msg)) {
+      await createNotification({
+        kind: 'pagamento_sem_estoque',
+        message: `O pedido #${orderNumber} foi pago, mas um dos produtos acabou antes da confirmação. Reponha o estoque e marque como pago em Pedidos, ou estorne o pagamento.`,
+        order_number: orderNumber,
+      });
+    }
+    throw err;
+  }
+  const { order, outcome } = result;
 
   // venda de balcão não tem e-mail de cliente (fica "Consumidor" / vazio) —
   // não faz sentido tentar enviar confirmação

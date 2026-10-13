@@ -60,7 +60,7 @@ export function canAccess(access: AdminAccess, pathname: string): boolean {
   const has = (...keys: AdminSection[]) => keys.some((k) => access.permissions.includes(k));
   const under = (...prefixes: string[]) => prefixes.some((p) => pathname === p || pathname.startsWith(p + '/'));
 
-  if (under('/admin/perfil', '/api/admin/profile')) return true; // o próprio perfil
+  if (under('/admin/perfil', '/api/admin/profile', '/admin/notificacoes')) return true; // perfil e avisos
   if (under('/admin/usuarios', '/api/admin/users', '/api/admin/customers')) return false; // só dono
   if (pathname === '/admin' || pathname === '/admin/') return has('painel');
   if (under('/admin/caixa', '/api/admin/caixa')) return has('caixa');

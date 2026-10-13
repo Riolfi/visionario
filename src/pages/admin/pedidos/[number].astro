@@ -27,8 +27,9 @@ const statuses = Object.entries({ pending: 'Aguardando pagamento', paid: 'Pago �
   )}
   {updateError && (
     <p class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
-      Não foi possível atualizar. Rode a migration <code>0003_order_status.sql</code> no Supabase
-      (adiciona os status "enviado"/"entregue" e o campo de rastreio).
+      {Astro.url.searchParams.get('motivo') === 'estoque'
+        ? 'Não dá para marcar como pago: falta estoque de um dos produtos. Reponha o estoque e tente de novo.'
+        : 'Não foi possível atualizar o status. Tente de novo.'}
     </p>
   )}
 

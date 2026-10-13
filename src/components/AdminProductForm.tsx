@@ -153,9 +153,14 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   const [invalid, setInvalid] = useState<Set<string>>(new Set());
 
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
-    setForm((f) => ({ ...f, [k]: v }));
+    setForm((f) => {
+      const next = { ...f, [k]: v };
+      if (k === 'stock' && (parseInt(String(v), 10) || 0) <= 0) next.is_active = false;
+      return next;
+    });
     if (invalid.has(k)) setInvalid((cur) => new Set([...cur].filter((x) => x !== k)));
   }
+  const outOfStock = (parseInt(form.stock, 10) || 0) <= 0;
   const bad = (k: string) => (invalid.has(k) ? ' border-red-500' : '');
 
   // ---- busca do produto pelo código de barras (bases públicas) ------------
@@ -397,7 +402,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
           compare_at_price_cents: offerCents ? priceCents : null,
           stock: parseInt(form.stock, 10) || 0,
           barcode: form.barcode.trim() || null,
-          is_active: form.is_active,
+          is_active: form.is_active && !outOfStock,
           is_bestseller: form.is_bestseller,
           images,
         }),
@@ -668,10 +673,16 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         )}
       </div>
 
-      <div class="flex gap-6">
-        <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={form.is_active} onChange={(e) => upd('is_active', (e.target as HTMLInputElement).checked)} />
+      <div class="flex flex-wrap gap-x-6 gap-y-2">
+        <label class={`flex items-center gap-2 text-sm ${outOfStock ? 'cursor-not-allowed opacity-50' : ''}`}>
+          <input
+            type="checkbox"
+            checked={form.is_active && !outOfStock}
+            disabled={outOfStock}
+            onChange={(e) => upd('is_active', (e.target as HTMLInputElement).checked)}
+          />
           Ativo (visível na loja)
+          {outOfStock && <span class="text-[12px] text-ink-muted">— sem estoque não pode ficar ativo</span>}
         </label>
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={form.is_bestseller} onChange={(e) => upd('is_bestseller', (e.target as HTMLInputElement).checked)} />

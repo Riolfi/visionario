@@ -2,8 +2,21 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import CaixaFlow from '../../../components/CaixaFlow.tsx';
 import { hasSupabase } from '../../../lib/env';
+import { getProducts } from '../../../lib/repo/catalog';
 
 export const prerender = false;
+
+// catálogo pra busca por nome no Caixa (o preço cobrado sai do banco na venda)
+const products = hasSupabase
+  ? (await getProducts({ includeInactive: true })).map((p) => ({
+      id: p.id,
+      name: p.name,
+      price_cents: p.price_cents,
+      stock: p.stock,
+      is_active: p.is_active,
+      image: p.images[0] ?? null,
+    }))
+  : [];
 ---
 
 <AdminLayout title="Caixa">
@@ -14,7 +27,7 @@ export const prerender = false;
         Não emite cupom fiscal.
       </p>
       <div class="mt-6">
-        <CaixaFlow client:load />
+        <CaixaFlow client:load products={products} />
       </div>
     </>
   ) : (

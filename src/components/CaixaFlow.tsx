@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import CameraScanner from './CameraScanner';
+import { CHECK_ICON_PATH, SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
 import { brl, orderLabel } from '../lib/format';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '../lib/types';
 
@@ -45,9 +46,18 @@ function parseReaisToCents(raw: string): number | null {
   return Math.round(n * 100);
 }
 
-export default function CaixaFlow() {
+/** minúsculas e sem acento, pra busca por nome */
+const fold = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+const TRASH_ICON = (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" /></svg>
+);
+
+export default function CaixaFlow({ products = [] }: { products?: ScanResult[] }) {
   const [lines, setLines] = useState<Line[]>([]);
   const [scan, setScan] = useState('');
+  const [nameQuery, setNameQuery] = useState('');
+  const hasCamera = useHasCamera();
   const [scanMsg, setScanMsg] = useState<{ tone: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   // Leitor pela câmera (celular/tablet). Cada abertura começa uma lista NOVA
   // (`session`), separada da venda: os produtos lidos só entram no Caixa ao
@@ -137,6 +147,33 @@ export default function CaixaFlow() {
     image: p.image,
   });
 
+  // ---- limite de estoque: venda + leitura em andamento nunca passam do estoque
+  const saleQty = (id: string) => lines.find((l) => l.product_id === id)?.quantity ?? 0;
+  const sessionQtyOf = (id: string) => session?.find((l) => l.product_id === id)?.quantity ?? 0;
+  /** Motivo pra NÃO deixar pôr mais uma unidade (ou null se pode). */
+  function stockBlock(p: ScanResult, extra = 0): string | null {
+    if (p.stock <= 0) return `${p.name} está sem estoque.`;
+    if (saleQty(p.id) + extra >= p.stock) {
+      return `${p.name} já atingiu o limite do estoque (${p.stock} ${p.stock === 1 ? 'unidade' : 'unidades'}).`;
+    }
+    return null;
+  }
+
+  // busca por nome: todas as palavras no nome, sem acento/maiúscula
+  const matches = useMemo(() => {
+    const words = fold(nameQuery).split(/\s+/).filter(Boolean);
+    if (!words.length) return [];
+    return products.filter((p) => words.every((w) => fold(p.name).includes(w))).slice(0, 8);
+  }, [nameQuery, products]);
+
+  function addFromSearch(p: ScanResult) {
+    const block = stockBlock(p);
+    if (block) return setScanMsg({ tone: 'err', text: block });
+    setLines((cur) => mergeLines(cur, [toLine(p)]));
+    setScanMsg({ tone: 'ok', text: `${p.name} adicionado` });
+    setNameQuery('');
+  }
+
   /** Soma `add` em `cur` (mesmo produto → soma quantidade). */
   const mergeLines = (cur: Line[], add: Line[]) => {
     const next = [...cur];
@@ -153,18 +190,23 @@ export default function CaixaFlow() {
     const p = await findByCode(code);
     if (p === 'not_found') return setSessionMsg(`Código ${code} não está cadastrado.`);
     if (p === 'error') return setSessionMsg('Erro ao buscar o produto. Tente de novo.');
+    const block = stockBlock(p, sessionQtyOf(p.id));
+    if (block) return setSessionMsg(block);
     setSessionMsg(null);
     setSession((cur) => (cur ? mergeLines(cur, [toLine(p)]) : cur));
   }
   const sessionQty = (id: string, qty: number) =>
     setSession((cur) =>
-      !cur ? cur : qty <= 0 ? cur.filter((l) => l.product_id !== id) : cur.map((l) => (l.product_id === id ? { ...l, quantity: qty } : l)),
+      !cur
+        ? cur
+        : qty <= 0
+          ? cur.filter((l) => l.product_id !== id)
+          : cur.map((l) => (l.product_id === id ? { ...l, quantity: Math.min(qty, l.stock - saleQty(id)) } : l)),
     );
   function confirmSession() {
     if (!session?.length) return;
-    const count = session.reduce((s, l) => s + l.quantity, 0);
     setLines((cur) => mergeLines(cur, session));
-    setScanMsg({ tone: 'ok', text: `${count} ${count === 1 ? 'item adicionado' : 'itens adicionados'} pelo leitor.` });
+    setScanMsg(null);
     setSession(null);
   }
   function closeSession() {
@@ -183,11 +225,12 @@ export default function CaixaFlow() {
     } else if (p === 'error') {
       setScanMsg({ tone: 'err', text: 'Erro ao buscar o produto. Tente de novo.' });
     } else {
-      setLines((cur) => mergeLines(cur, [toLine(p)]));
-      setScanMsg({
-        tone: p.stock <= 0 ? 'warn' : 'ok',
-        text: p.stock <= 0 ? `${p.name} — sem estoque registrado` : `${p.name} adicionado`,
-      });
+      const block = stockBlock(p);
+      if (block) setScanMsg({ tone: 'err', text: block });
+      else {
+        setLines((cur) => mergeLines(cur, [toLine(p)]));
+        setScanMsg({ tone: 'ok', text: `${p.name} adicionado` });
+      }
       setScan('');
     }
     focusScanner();
@@ -197,9 +240,8 @@ export default function CaixaFlow() {
     setLines((cur) =>
       qty <= 0
         ? cur.filter((l) => l.product_id !== id)
-        : cur.map((l) => (l.product_id === id ? { ...l, quantity: qty } : l)),
+        : cur.map((l) => (l.product_id === id ? { ...l, quantity: Math.max(1, Math.min(qty, l.stock)) } : l)),
     );
-  const removeLine = (id: string) => setLines((cur) => cur.filter((l) => l.product_id !== id));
 
   function resetSale() {
     setLines([]);
@@ -476,8 +518,9 @@ export default function CaixaFlow() {
                           <span class="w-[28px] text-center font-sans text-[15px] tabular-nums">{l.quantity}</span>
                           <button
                             type="button"
-                            class="grid h-[36px] w-[36px] place-items-center rounded-card border border-ink/20 text-ink"
+                            class="grid h-[36px] w-[36px] place-items-center rounded-card border border-ink/20 text-ink disabled:opacity-30"
                             aria-label="Mais um"
+                            disabled={l.quantity + saleQty(l.product_id) >= l.stock}
                             onClick={() => sessionQty(l.product_id, l.quantity + 1)}
                           >
                             +
@@ -502,37 +545,95 @@ export default function CaixaFlow() {
           }
         />
       )}
-      {/* coluna esquerda: leitor + itens */}
-      <div>
+      {/* coluna esquerda: leitor + itens. min-w-0 nas duas colunas: sem ele a
+          grade alargava a página no celular ao entrar o 1º produto (a tela
+          ficava "com zoom" depois do leitor) */}
+      <div class="min-w-0">
         <form onSubmit={submitScan} class="rounded-card border border-ink/10 bg-white p-4">
-          <div class="flex items-center justify-between gap-3">
-            <label class="label" for="caixa-scan">
-              Produto
-            </label>
-            {/* só em tela de toque (celular/tablet): no PC o leitor USB já resolve */}
+          <h2 class="mb-3 font-display text-lg">Pesquise para adicionar um produto à venda</h2>
+          <label class="label" for="caixa-name">Nome</label>
+          <span class="relative block">
+            <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input
+              id="caixa-name"
+              class="field pl-11"
+              type="search"
+              value={nameQuery}
+              placeholder="Pesquise pelo nome do produto…"
+              autocomplete="off"
+              onInput={(e) => setNameQuery((e.target as HTMLInputElement).value)}
+              onKeyDown={(e) => {
+                // Enter com um resultado só: já adiciona
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (matches.length === 1) addFromSearch(matches[0]!);
+                }
+              }}
+            />
+          </span>
+          {nameQuery.trim() && (
+            <ul class="mt-2 max-h-72 divide-y divide-ink/10 overflow-y-auto rounded-card border border-ink/10">
+              {matches.length === 0 && <li class="p-3 font-sans text-[13px] text-ink-muted">Nenhum produto com esse nome.</li>}
+              {matches.map((p) => {
+                const block = stockBlock(p);
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      class="flex w-full items-center gap-3 p-2.5 text-left hover:bg-bone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      disabled={!!block}
+                      onClick={() => addFromSearch(p)}
+                    >
+                      <span class="h-10 w-10 shrink-0 overflow-hidden rounded-card bg-bone-200">
+                        {p.image && <img src={p.image} alt="" class="h-full w-full object-cover" />}
+                      </span>
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate font-sans text-sm text-ink">{p.name}</span>
+                        <span class="block font-sans text-[12px] text-ink-muted">
+                          {brl(p.price_cents)} · {p.stock <= 0 ? 'sem estoque' : block ? 'limite do estoque atingido' : `${p.stock - saleQty(p.id)} disponível`}
+                        </span>
+                      </span>
+                      {!block && <span class="shrink-0 font-sans text-[13px] text-agua-dark">+ Adicionar</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          <label class="label mt-4" for="caixa-scan">Código de barras</label>
+          <div class="flex items-stretch gap-2">
+            <input
+              id="caixa-scan"
+              ref={scanRef}
+              class="field min-w-0 flex-1"
+              value={scan}
+              inputmode="numeric"
+              autocomplete="off"
+              placeholder="digitar código de barras manualmente"
+              onInput={(e) => setScan((e.target as HTMLInputElement).value)}
+            />
+            <button type="submit" class={SCAN_BTN}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={CHECK_ICON_PATH} /></svg>
+              Enviar
+            </button>
+          </div>
+          <div class="mt-2 flex justify-end">
             <button
               type="button"
+              class={SCAN_BTN}
+              disabled={!hasCamera}
+              title={hasCamera ? 'Ler o código com a câmera' : 'Nenhuma câmera encontrada neste aparelho'}
               onClick={() => {
                 setScanMsg(null);
                 setSessionMsg(null);
                 setSession([]); // lista nova a cada abertura
               }}
-              class="hidden items-center gap-1.5 rounded-full border border-ink/20 px-3 py-1.5 font-sans text-[13px] text-ink [@media(pointer:coarse)]:inline-flex"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 9v6M10 9v6M13 9v6M16 9v6" /></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d={SCAN_ICON_PATH} /></svg>
               Abrir leitor
             </button>
           </div>
-          <input
-            id="caixa-scan"
-            ref={scanRef}
-            class="field text-lg"
-            value={scan}
-            inputmode="numeric"
-            autocomplete="off"
-            placeholder="Digite o código de barras"
-            onInput={(e) => setScan((e.target as HTMLInputElement).value)}
-          />
           {scanMsg && (
             <p
               class={`mt-2 font-sans text-[13px] ${
@@ -559,28 +660,28 @@ export default function CaixaFlow() {
               {lines.map((l) => {
                 const over = l.quantity > l.stock;
                 return (
-                  <li key={l.product_id} class="flex items-center gap-3 p-3">
+                  <li key={l.product_id} class="flex flex-wrap items-center gap-x-3 gap-y-2 p-3 sm:flex-nowrap">
                     <div class="h-12 w-12 shrink-0 overflow-hidden rounded-card bg-bone-200">
                       {l.image && <img src={l.image} alt="" class="h-full w-full object-cover" />}
                     </div>
-                    <div class="min-w-0 flex-1">
+                    <div class="min-w-0 flex-1 basis-[calc(100%-4.5rem)] sm:basis-auto">
                       <p class="truncate font-sans text-sm font-medium text-ink">{l.name}</p>
                       <p class="font-sans text-[12px] text-ink-muted">
                         {brl(l.unit_price_cents)} un.
                         {over && <span class="text-red-700"> · estoque: {l.stock}</span>}
                       </p>
                     </div>
-                    <div class="flex items-center gap-1">
+                    <div class="ml-auto flex items-center gap-1 sm:ml-0">
                       <button
                         type="button"
-                        class="grid h-7 w-7 place-items-center rounded-card border border-ink/20 text-ink hover:border-ink"
-                        aria-label="Menos um"
+                        class={`grid h-8 w-8 place-items-center rounded-card border text-ink hover:border-ink ${l.quantity === 1 ? 'border-red-300 text-red-700' : 'border-ink/20'}`}
+                        aria-label={l.quantity === 1 ? 'Remover da venda' : 'Menos um'}
                         onClick={() => setQty(l.product_id, l.quantity - 1)}
                       >
-                        −
+                        {l.quantity === 1 ? TRASH_ICON : '−'}
                       </button>
                       <input
-                        class="h-7 w-10 rounded-card border border-ink/20 text-center font-sans text-sm"
+                        class="h-8 w-10 rounded-card border border-ink/20 text-center font-sans text-sm"
                         value={l.quantity}
                         inputmode="numeric"
                         onInput={(e) => {
@@ -590,8 +691,10 @@ export default function CaixaFlow() {
                       />
                       <button
                         type="button"
-                        class="grid h-7 w-7 place-items-center rounded-card border border-ink/20 text-ink hover:border-ink"
+                        class="grid h-8 w-8 place-items-center rounded-card border border-ink/20 text-ink hover:border-ink disabled:opacity-30 disabled:hover:border-ink/20"
                         aria-label="Mais um"
+                        disabled={l.quantity >= l.stock}
+                        title={l.quantity >= l.stock ? `Limite do estoque (${l.stock})` : undefined}
                         onClick={() => setQty(l.product_id, l.quantity + 1)}
                       >
                         +
@@ -600,13 +703,6 @@ export default function CaixaFlow() {
                     <p class="w-20 shrink-0 text-right font-sans text-sm font-semibold">
                       {brl(l.unit_price_cents * l.quantity)}
                     </p>
-                    <button
-                      type="button"
-                      class="shrink-0 font-sans text-[12px] text-ink-muted underline hover:text-red-700"
-                      onClick={() => removeLine(l.product_id)}
-                    >
-                      remover
-                    </button>
                   </li>
                 );
               })}
@@ -616,7 +712,7 @@ export default function CaixaFlow() {
       </div>
 
       {/* coluna direita: fechamento */}
-      <aside class="h-max rounded-card border border-ink/10 bg-white p-4 lg:sticky lg:top-6">
+      <aside class="h-max min-w-0 rounded-card border border-ink/10 bg-white p-4 lg:sticky lg:top-6">
         <div class="flex items-baseline justify-between">
           <span class="font-sans text-[13px] text-ink-muted">
             {count} {count === 1 ? 'item' : 'itens'}

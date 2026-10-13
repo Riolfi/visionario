@@ -18,16 +18,9 @@ export const SCAN_BTN =
 /** Ícone de check do botão "Enviar". */
 export const CHECK_ICON_PATH = 'M5 12.5l4.5 4.5L19 7.5';
 
-interface Props {
-  onCode?: (code: string) => void;
-  targetId?: string;
-  class?: string;
-}
-
-export default function CameraScanButton({ onCode, targetId, class: cls = '' }: Props) {
-  const [open, setOpen] = useState(false);
+/** O aparelho tem câmera? Atualiza sozinho se uma webcam for (des)conectada. */
+export function useHasCamera(): boolean {
   const [hasCamera, setHasCamera] = useState(false);
-
   useEffect(() => {
     const md = navigator.mediaDevices;
     if (!md?.enumerateDevices || !md.getUserMedia) return; // sem câmera ou fora de https
@@ -37,6 +30,21 @@ export default function CameraScanButton({ onCode, targetId, class: cls = '' }: 
     md.addEventListener('devicechange', check);
     return () => md.removeEventListener('devicechange', check);
   }, []);
+  return hasCamera;
+}
+
+/** Ícone do leitor de código de barras. */
+export const SCAN_ICON_PATH = 'M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 9v6M10 9v6M13 9v6M16 9v6';
+
+interface Props {
+  onCode?: (code: string) => void;
+  targetId?: string;
+  class?: string;
+}
+
+export default function CameraScanButton({ onCode, targetId, class: cls = '' }: Props) {
+  const [open, setOpen] = useState(false);
+  const hasCamera = useHasCamera();
 
   const deliver = (code: string) => {
     setOpen(false);

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { setOrderStatus } from '../../../lib/repo/orders';
+import { changeOrderStatus } from '../../../lib/repo/orders';
 import { sendOrderStatusEmail } from '../../../lib/email';
 import { ORDER_STATUS_LABELS, type OrderStatus } from '../../../lib/types';
 
@@ -16,12 +16,14 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     return redirect(`/admin/pedidos/${orderNumber}?erro=1`);
   }
 
-  const order = await setOrderStatus(orderNumber, status, {
+  const { order, error } = await changeOrderStatus(orderNumber, status, {
     trackingCode: status === 'shipped' ? trackingCode : undefined,
   });
 
   if (!order) {
-    return redirect(`/admin/pedidos/${orderNumber}?erro=update`);
+    // falta de estoque ao marcar como pago: mostra o motivo
+    const estoque = error && /estoque/i.test(error) ? '&motivo=estoque' : '';
+    return redirect(`/admin/pedidos/${orderNumber}?erro=update${estoque}`);
   }
 
   if (notify) {

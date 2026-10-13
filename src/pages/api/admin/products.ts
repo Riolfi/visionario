@@ -58,7 +58,8 @@ function parseInput(raw: Record<string, unknown>): { ok: true; value: ProductInp
       compare_at_price_cents,
       stock: Math.max(0, Math.round(Number(raw.stock) || 0)),
       barcode: String(raw.barcode || '').trim() || null,
-      is_active: raw.is_active === true || raw.is_active === 'on' || raw.is_active === 'true',
+      // estoque 0 nunca fica ativo na loja (o banco também garante: migration 0014)
+      is_active: (raw.is_active === true || raw.is_active === 'on' || raw.is_active === 'true') && Math.round(Number(raw.stock) || 0) > 0,
       is_bestseller: raw.is_bestseller === true || raw.is_bestseller === 'on' || raw.is_bestseller === 'true',
       images,
     },

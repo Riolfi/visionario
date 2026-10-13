@@ -46,6 +46,45 @@ function FieldLabel({ text, htmlFor, required }: { text: string; htmlFor: string
   );
 }
 
+/** Aviso discreto em pílula (verde com ✓ ou vermelho com !). */
+type Notice = { id: number; text: string; tone: 'ok' | 'erro'; fading: boolean } | null;
+
+function NoticePill({ notice, class: cls = '' }: { notice: Notice; class?: string }) {
+  if (!notice) return null;
+  const ok = notice.tone === 'ok';
+  return (
+    <div
+      role={ok ? 'status' : 'alert'}
+      class={`notice-in inline-flex items-center gap-1.5 rounded-full border px-3 py-1 font-sans text-[12px] transition-opacity duration-500 ${ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'} ${notice.fading ? 'opacity-0' : ''} ${cls}`}
+    >
+      {ok ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#dc2626" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M12 5v9" /><path d="M12 19h.01" /></svg>
+      )}
+      {notice.text}
+    </div>
+  );
+}
+
+/** Mostra um aviso por `ms` e some com fade; mostrar de novo reinicia o tempo. */
+function useTimedNotice(ms = 40_000) {
+  const [notice, setNotice] = useState<Notice>(null);
+  const timers = useRef<number[]>([]);
+  const clear = () => timers.current.forEach((t) => clearTimeout(t));
+  const show = (text: string, tone: 'ok' | 'erro') => {
+    clear();
+    setNotice({ id: Date.now(), text, tone, fading: false }); // id novo: a animação de entrada repete
+    timers.current = [
+      window.setTimeout(() => setNotice((n) => n && { ...n, fading: true }), ms),
+      window.setTimeout(() => setNotice(null), ms + 500),
+    ];
+  };
+  const hide = () => (clear(), setNotice(null));
+  useEffect(() => clear, []);
+  return [notice, show, hide] as const;
+}
+
 /** Campos obrigatórios, na ordem da tela — o nome aparece na mensagem de erro. */
 const REQUIRED = [
   ['barcode', 'código de barras'],
@@ -97,19 +136,18 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   // foto que veio da base pública (pra trocar se o admin bipar outro produto)
   const autoImage = useRef<string | null>(null);
 
-  // "Produto já cadastrado": chega com ?cadastrado=1 (o cadastro novo achou o
-  // código na loja e abriu este). Fica 40s e some com fade.
-  const [notice, setNotice] = useState<'off' | 'on' | 'fading'>('off');
+  // Aviso no topo (acima do código de barras): "Produto já cadastrado" (chega
+  // com ?cadastrado=1) e "Produto salvo com sucesso!". 40s e some com fade.
+  const [topNotice, showTopNotice] = useTimedNotice();
   useEffect(() => {
     const url = new URL(window.location.href);
     if (url.searchParams.get('cadastrado') !== '1') return;
     url.searchParams.delete('cadastrado');
     history.replaceState(null, '', url); // recarregar não mostra de novo
-    setNotice('on');
-    const fade = setTimeout(() => setNotice('fading'), 40_000);
-    const hide = setTimeout(() => setNotice('off'), 40_500);
-    return () => (clearTimeout(fade), clearTimeout(hide));
+    showTopNotice('Produto já cadastrado', 'ok');
   }, []);
+  // aviso embaixo do campo de link (ex.: ✓ sem link colado)
+  const [urlNotice, showUrlNotice, hideUrlNotice] = useTimedNotice();
 
   // campos obrigatórios vazios na última tentativa de salvar (ficam em vermelho)
   const [invalid, setInvalid] = useState<Set<string>>(new Set());
@@ -244,7 +282,9 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
 
   function addUrl() {
     const url = urlInput.trim();
-    if (!url || images.includes(url)) return setUrlInput('');
+    if (!url) return showUrlNotice('Cole o link da imagem antes de adicionar.', 'erro');
+    hideUrlNotice();
+    if (images.includes(url)) return setUrlInput('');
     if (images.length >= MAX_IMAGES) return setError(`Máximo de ${MAX_IMAGES} imagens por produto.`);
     setImages((list) => [...list, url]);
     setUrlInput('');
@@ -364,7 +404,10 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao salvar.');
-      window.location.href = '/admin/produtos';
+      // cadastro novo volta pra lista; edição fica na tela com o aviso
+      if (!product) return void (window.location.href = '/admin/produtos');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showTopNotice('Produto salvo com sucesso!', 'ok');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar.');
     } finally {
@@ -405,15 +448,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
       <div class="grid gap-4 sm:grid-cols-2">
         {/* primeiro de tudo: bipar o código já busca e preenche o resto */}
         <div class="sm:col-span-2">
-          {notice !== 'off' && (
-            <div
-              role="status"
-              class={`notice-in mb-2 inline-flex items-center gap-1.5 rounded-full border border-green-200 bg-green-50 px-3 py-1 font-sans text-[12px] text-green-800 transition-opacity duration-500 ${notice === 'fading' ? 'opacity-0' : ''}`}
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
-              Produto já cadastrado
-            </div>
-          )}
+          <NoticePill key={topNotice?.id} notice={topNotice} class="mb-2" />
           <FieldLabel text="Código de barras" htmlFor="product-barcode" required />
           <div class="flex items-stretch gap-2">
             <input
@@ -613,7 +648,10 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
                 aria-label="Link da imagem"
                 value={urlInput}
                 autoFocus
-                onInput={(e) => setUrlInput((e.target as HTMLInputElement).value)}
+                onInput={(e) => {
+                  setUrlInput((e.target as HTMLInputElement).value);
+                  hideUrlNotice();
+                }}
                 onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }}
               />
               <button type="button" class={IMG_BTN} onClick={addUrl} aria-label="Adicionar imagem pelo link">
@@ -622,6 +660,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
             </>
           )}
         </div>
+        {showUrl && <NoticePill key={urlNotice?.id} notice={urlNotice} class="mt-2" />}
 
         <ImageStrip images={images} onChange={setImages} />
         {images.length > 1 && (

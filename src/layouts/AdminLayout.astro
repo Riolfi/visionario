@@ -8,6 +8,7 @@ interface Props {
 const { title } = Astro.props;
 const path = Astro.url.pathname;
 const brandName = Astro.locals.brand.name;
+const logoUrl = Astro.locals.site.brand.data.logo_url;
 
 const nav = [
   { href: '/admin', label: 'Painel' },
@@ -32,24 +33,34 @@ const isActive = (href: string) =>
     <meta name="robots" content="noindex, nofollow" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <ThemeVars />
-    <title>{title} · Admin {brandName}</title>
+    <title>{title} · Área Administrativa {brandName}</title>
   </head>
   <body class="bg-bone-50">
     <div id="admin-shell" class="group flex min-h-screen">
+      <!-- menu recolhido no desktop (escolha guardada): aplica antes de pintar -->
+      <script is:inline>
+        try {
+          if (localStorage.getItem('admin-menu') === 'fechado') document.getElementById('admin-shell').classList.add('is-collapsed');
+        } catch (e) {}
+      </script>
       <!-- Celular: o menu lateral vira gaveta (abre no ☰); a partir de sm fica fixo -->
       <div data-admin-close class="fixed inset-0 z-30 hidden bg-ink/40 group-[.is-open]:block sm:!hidden" aria-hidden="true"></div>
       <aside
         id="admin-sidebar"
-        class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 -translate-x-full flex-col overflow-y-auto border-r border-ink/10 bg-bone px-4 py-6 transition-transform duration-200 group-[.is-open]:translate-x-0 sm:static sm:z-auto sm:w-56 sm:translate-x-0 sm:transition-none"
+        class="fixed inset-y-0 left-0 z-40 flex w-64 shrink-0 -translate-x-full flex-col overflow-y-auto border-r border-ink/10 bg-bone px-4 py-6 transition-transform duration-200 group-[.is-open]:translate-x-0 sm:sticky sm:top-0 sm:z-auto sm:h-screen sm:w-56 sm:translate-x-0 sm:transition-none sm:group-[.is-collapsed]:hidden"
       >
         <div class="flex items-start justify-between">
-          <div>
-            <p class="px-2 font-display text-xl lowercase">{brandName}</p>
-            <p class="mt-1 px-2 font-sans text-[11px] uppercase tracking-[0.14em] text-ink-muted">Admin</p>
+          <div class="px-2">
+            {logoUrl ? (
+              <img src={logoUrl} alt={brandName} class="h-10 w-auto max-w-[180px] object-contain" />
+            ) : (
+              <p class="font-display text-xl lowercase">{brandName}</p>
+            )}
+            <p class="mt-1.5 font-sans text-[11px] uppercase tracking-[0.14em] text-ink-muted">Área Administrativa</p>
           </div>
           <button type="button" data-admin-close class="rounded-card px-2 py-1 text-xl leading-none text-ink-muted sm:hidden" aria-label="Fechar menu">✕</button>
         </div>
-        <nav class="mt-8 flex flex-col gap-1" aria-label="Menu do admin">
+        <nav class="mt-8 flex flex-col gap-1" aria-label="Menu da área administrativa">
           {nav.map((item) => (
             <a
               href={item.href}
@@ -71,15 +82,17 @@ const isActive = (href: string) =>
       </aside>
 
       <div class="min-w-0 flex-1">
-        <header class="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-bone px-4 py-4 sm:px-6">
+        <!-- fixo no topo: o ☰ fica sempre ao alcance, mesmo rolando a página -->
+        <header class="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-bone px-4 py-4 sm:px-6">
           <div class="flex items-center gap-3">
             <button
               type="button"
               data-admin-toggle
-              class="-ml-1 rounded-card p-1.5 text-ink hover:bg-bone-200 sm:hidden"
+              class="-ml-1 rounded-card p-1.5 text-ink hover:bg-bone-200"
               aria-controls="admin-sidebar"
               aria-expanded="false"
-              aria-label="Abrir menu"
+              aria-label="Abrir ou fechar o menu"
+              title="Abrir/fechar menu (Ctrl+B)"
             >
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
             </button>
@@ -94,11 +107,28 @@ const isActive = (href: string) =>
     <script>
       const shell = document.getElementById('admin-shell')!;
       const toggle = document.querySelector<HTMLButtonElement>('[data-admin-toggle]')!;
+      const desktop = window.matchMedia('(min-width: 640px)');
       const setOpen = (open: boolean) => {
         shell.classList.toggle('is-open', open);
         toggle.setAttribute('aria-expanded', String(open));
       };
-      toggle.addEventListener('click', () => setOpen(!shell.classList.contains('is-open')));
+      // desktop: recolhe/abre o menu fixo e guarda a escolha; celular: gaveta
+      const toggleMenu = () => {
+        if (!desktop.matches) return setOpen(!shell.classList.contains('is-open'));
+        const collapsed = shell.classList.toggle('is-collapsed');
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        try {
+          localStorage.setItem('admin-menu', collapsed ? 'fechado' : 'aberto');
+        } catch {}
+      };
+      if (desktop.matches) toggle.setAttribute('aria-expanded', String(!shell.classList.contains('is-collapsed')));
+      toggle.addEventListener('click', toggleMenu);
+      document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+          e.preventDefault();
+          toggleMenu();
+        }
+      });
       document.querySelectorAll('[data-admin-close]').forEach((el) => el.addEventListener('click', () => setOpen(false)));
       document.addEventListener('keydown', (e) => e.key === 'Escape' && setOpen(false));
     </script>

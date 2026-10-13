@@ -14,7 +14,9 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
-    return redirect(`/entrar?erro=1&next=${encodeURIComponent(next)}`);
+    // conta desativada/bloqueada pela loja (ban no Supabase Auth)
+    const erro = error.code === 'user_banned' ? 'conta' : '1';
+    return redirect(`/entrar?erro=${erro}&next=${encodeURIComponent(next)}`);
   }
   // vincula pedidos feitos como convidado antes de a conta existir
   if (data.user?.id && data.user.email) {

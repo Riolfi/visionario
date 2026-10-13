@@ -1,6 +1,7 @@
 ---
 import '../styles/global.css';
 import ThemeVars from '../components/ThemeVars.astro';
+import { ADMIN_SECTIONS } from '../lib/repo/admin';
 
 interface Props {
   title: string;
@@ -10,15 +11,12 @@ const path = Astro.url.pathname;
 const brandName = Astro.locals.brand.name;
 const logoUrl = Astro.locals.site.brand.data.logo_url;
 
-const nav = [
-  { href: '/admin', label: 'Painel' },
-  { href: '/admin/caixa', label: 'Caixa' },
-  { href: '/admin/produtos', label: 'Produtos' },
-  { href: '/admin/pedidos', label: 'Pedidos' },
-  { href: '/admin/ofertas', label: 'Ofertas' },
-  { href: '/admin/categorias', label: 'Categorias' },
-  { href: '/admin/site', label: 'Conteúdo' },
-];
+// só as seções liberadas pra essa pessoa; Usuários é do dono
+const access = Astro.locals.admin;
+const nav: { href: string; label: string }[] = ADMIN_SECTIONS.filter(
+  (s) => !access || access.permissions.includes(s.key),
+).map(({ href, label }) => ({ href, label }));
+if (!access || access.role === 'dono') nav.push({ href: '/admin/usuarios', label: 'Usuários' });
 
 const isActive = (href: string) =>
   path === href || (href !== '/admin' && path.startsWith(href));
@@ -74,7 +72,17 @@ const isActive = (href: string) =>
             </a>
           ))}
         </nav>
-        <form method="POST" action="/auth/sair" class="mt-auto pt-6">
+        <a
+          href="/admin/perfil"
+          aria-current={isActive('/admin/perfil') ? 'page' : undefined}
+          class:list={[
+            'mt-auto rounded-card px-3 py-2 font-sans text-sm transition-colors',
+            isActive('/admin/perfil') ? 'bg-ink text-bone' : 'text-ink-soft hover:bg-bone-200',
+          ]}
+        >
+          Meu perfil
+        </a>
+        <form method="POST" action="/auth/sair" class="pt-1">
           <button class="w-full rounded-card px-3 py-2 text-left font-sans text-sm text-ink-muted hover:bg-bone-200">
             Sair
           </button>

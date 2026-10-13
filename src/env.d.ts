@@ -29,5 +29,7 @@ declare namespace App {
     site: import('./lib/types').SiteContent;
     brand: { name: string };
     accent: string | null;
+    /** acesso à área administrativa (null = não é da equipe) */
+    admin: import('./lib/repo/admin').AdminAccess | null;
   }
 }

@@ -1,0 +1,96 @@
+---
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import { ADMIN_SECTIONS } from '../../lib/repo/admin';
+import { supabaseAdmin } from '../../lib/supabase';
+
+export const prerender = false;
+
+const user = Astro.locals.user!;
+const access = Astro.locals.admin!;
+const sb = supabaseAdmin();
+const { data: profile } = sb
+  ? await sb.from('profiles').select('full_name, phone').eq('id', user.id).maybeSingle()
+  : { data: null };
+
+const OK: Record<string, string> = {
+  dados: 'Dados salvos.',
+  email: 'E-mail alterado. Use o novo e-mail no próximo login.',
+  senha: 'Senha alterada.',
+};
+const ERRO: Record<string, string> = {
+  nome: 'Informe o nome (mínimo 2 letras).',
+  email: 'E-mail inválido.',
+  'mesmo-email': 'Esse já é o seu e-mail.',
+  'email-em-uso': 'Esse e-mail já é usado por outra conta.',
+  'senha-atual': 'Senha atual incorreta.',
+  'senha-curta': 'A nova senha precisa ter pelo menos 8 caracteres.',
+  'senha-diferente': 'A confirmação não bate com a nova senha.',
+  falha: 'Não foi possível salvar. Tente de novo.',
+};
+const ok = OK[Astro.url.searchParams.get('ok') ?? ''];
+const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
+const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const sections = access.role === 'dono' ? 'Todas, inclusive Usuários' : ADMIN_SECTIONS.filter((s) => access.permissions.includes(s.key)).map((s) => s.label).join(', ') || 'Nenhuma';
+---
+
+<AdminLayout title="Meu perfil">
+  <div class="max-w-2xl space-y-6">
+    {ok && <p role="status" class="rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p>}
+    {erro && <p role="alert" class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
+
+    <section class="rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Conta</h2>
+      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-sans text-sm">
+        <dt class="text-ink-muted">E-mail</dt><dd class="break-all">{user.email}</dd>
+        <dt class="text-ink-muted">Papel</dt><dd>{access.role === 'dono' ? 'Dono' : 'Equipe'}</dd>
+        <dt class="text-ink-muted">Acesso</dt><dd>{sections}</dd>
+        <dt class="text-ink-muted">Criada em</dt><dd>{fmt(user.created_at)}</dd>
+        <dt class="text-ink-muted">Último login</dt><dd>{fmt(user.last_sign_in_at)}</dd>
+      </dl>
+    </section>
+
+    <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Dados pessoais</h2>
+      <input type="hidden" name="acao" value="dados" />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="block"><span class="label">Nome</span><input class="field" name="full_name" value={profile?.full_name ?? ''} required minlength="2" autocomplete="name" /></label>
+        <label class="block"><span class="label">Telefone</span><input class="field" name="phone" value={profile?.phone ?? ''} inputmode="tel" autocomplete="tel" /></label>
+      </div>
+      <button class="btn-primary">Salvar dados</button>
+    </form>
+
+    <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Trocar e-mail</h2>
+      <input type="hidden" name="acao" value="email" />
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="block"><span class="label">Novo e-mail</span><input class="field" type="email" name="email" required autocomplete="email" /></label>
+        <label class="block"><span class="label">Senha atual</span><input class="field" type="password" name="senha_atual" required autocomplete="current-password" /></label>
+      </div>
+      <button class="btn-primary">Trocar e-mail</button>
+    </form>
+
+    <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Trocar senha</h2>
+      <input type="hidden" name="acao" value="senha" />
+      <div class="grid gap-4 sm:grid-cols-3">
+        <label class="block"><span class="label">Senha atual</span><input class="field" type="password" name="senha_atual" required autocomplete="current-password" /></label>
+        <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" /></label>
+        <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+      </div>
+      <p class="text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
+      <button class="btn-primary">Trocar senha</button>
+    </form>
+
+    <form method="POST" action="/api/admin/profile" class="rounded-card border border-ink/10 bg-white p-5" data-confirm="Sair de todos os aparelhos?|Você vai precisar entrar de novo em todos eles, inclusive neste.|Sair de todos">
+      <h2 class="font-display text-lg">Sessões</h2>
+      <p class="mt-1 text-sm text-ink-soft">Perdeu um aparelho ou entrou num computador que não é seu? Encerre todas as sessões.</p>
+      <input type="hidden" name="acao" value="sair-todos" />
+      <button class="btn-outline mt-4">Sair de todos os aparelhos</button>
+    </form>
+  </div>
+</AdminLayout>
+
+<script>
+  import { enableConfirmForms } from '../../lib/confirm-forms';
+  enableConfirmForms();
+</script>

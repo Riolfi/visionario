@@ -1,0 +1,183 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { ADMIN_SECTIONS } from '../../../lib/repo/admin';
+import { listTeam } from '../../../lib/repo/team';
+import { CUSTOMER_STATUS_LABELS, listCustomers } from '../../../lib/repo/customers';
+import { takeFlash } from '../../../lib/flash';
+import { brl } from '../../../lib/format';
+
+export const prerender = false;
+
+const aba = Astro.url.searchParams.get('aba') === 'clientes' ? 'clientes' : 'equipe';
+const me = Astro.locals.user!.id;
+const flash = takeFlash(Astro.cookies);
+let loadError = '';
+const team = aba === 'equipe' ? await listTeam().catch((e) => ((loadError = e.message), [])) : [];
+const customers = aba === 'clientes' ? await listCustomers().catch((e) => ((loadError = e.message), [])) : [];
+const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
+const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone-200 text-ink-muted', bloqueado: 'bg-red-50 text-red-700' };
+---
+
+<AdminLayout title="Usuários">
+  <nav class="mb-5 flex gap-1 border-b border-ink/10" aria-label="Abas">
+    {[['equipe', 'Equipe'], ['clientes', 'Clientes']].map(([key, label]) => (
+      <a
+        href={`/admin/usuarios?aba=${key}`}
+        aria-current={aba === key ? 'page' : undefined}
+        class:list={['-mb-px border-b-2 px-4 py-2 font-sans text-sm', aba === key ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-muted hover:text-ink']}
+      >
+        {label}
+      </a>
+    ))}
+  </nav>
+
+  {flash && (
+    <p role="status" class:list={['mb-4 rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>
+      {flash.text}
+    </p>
+  )}
+  {loadError && <p class="mb-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Não foi possível carregar: {loadError}</p>}
+
+  {aba === 'equipe' && (
+    <div class="space-y-4">
+      <details class="rounded-card border border-ink/10 bg-white">
+        <summary class="cursor-pointer px-4 py-3 font-sans text-sm font-semibold">+ Novo membro da equipe</summary>
+        <form method="POST" action="/api/admin/users" class="member-form space-y-4 border-t border-ink/10 p-4">
+          <input type="hidden" name="acao" value="criar" />
+          <div class="grid gap-4 sm:grid-cols-3">
+            <label class="block"><span class="label">Nome</span><input class="field" name="name" required /></label>
+            <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" required autocomplete="off" /></label>
+            <label class="block"><span class="label">Senha inicial</span><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" /></label>
+          </div>
+          <p class="text-[12px] text-ink-muted">Se o e-mail já tiver conta (ex.: um cliente), ela ganha acesso ao painel com a senha que já usa — a senha inicial é ignorada.</p>
+          <fieldset>
+            <legend class="label">Papel</legend>
+            <label class="mr-4 inline-flex items-center gap-2 text-sm"><input type="radio" name="role" value="equipe" checked /> Equipe (só as seções marcadas)</label>
+            <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="role" value="dono" /> Dono (acesso total, inclusive Usuários)</label>
+          </fieldset>
+          <fieldset class="perms">
+            <legend class="label">Pode acessar</legend>
+            <div class="flex flex-wrap gap-x-4 gap-y-2">
+              {ADMIN_SECTIONS.map((s) => (
+                <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="permissions" value={s.key} /> {s.label}</label>
+              ))}
+            </div>
+          </fieldset>
+          <button class="btn-primary">Criar membro</button>
+        </form>
+      </details>
+
+      <ul class="space-y-3">
+        {team.map((m) => (
+          <li class="rounded-card border border-ink/10 bg-white">
+            <details>
+              <summary class="flex cursor-pointer flex-wrap items-center justify-between gap-2 px-4 py-3">
+                <span class="min-w-0">
+                  <span class="block truncate font-sans text-sm font-semibold">{m.name || m.email}{m.id === me && ' (você)'}</span>
+                  <span class="block truncate text-[12px] text-ink-muted">{m.email} · último login {fmt(m.last_sign_in_at)}</span>
+                </span>
+                <span class="flex items-center gap-2">
+                  <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', m.role === 'dono' ? 'bg-blush-light text-blush' : 'bg-bone-200 text-ink-soft']}>{m.role === 'dono' ? 'Dono' : 'Equipe'}</span>
+                  <span class="rounded-card border border-ink/20 px-3 py-1 text-[13px]">Editar</span>
+                </span>
+              </summary>
+              <div class="border-t border-ink/10 p-4">
+                <p class="mb-3 text-[12px] text-ink-muted">Acesso: {m.role === 'dono' ? 'todas as seções' : ADMIN_SECTIONS.filter((s) => m.permissions.includes(s.key)).map((s) => s.label).join(', ') || 'nenhuma seção'}</p>
+                <form method="POST" action="/api/admin/users" class="member-form space-y-4">
+                  <input type="hidden" name="acao" value="editar" />
+                  <input type="hidden" name="id" value={m.id} />
+                  <div class="grid gap-4 sm:grid-cols-3">
+                    <label class="block"><span class="label">Nome</span><input class="field" name="name" value={m.name} /></label>
+                    <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={m.email} required /></label>
+                    <label class="block"><span class="label">Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" /></label>
+                  </div>
+                  <fieldset>
+                    <legend class="label">Papel</legend>
+                    <label class="mr-4 inline-flex items-center gap-2 text-sm"><input type="radio" name="role" value="equipe" checked={m.role === 'equipe'} disabled={m.id === me} /> Equipe</label>
+                    <label class="inline-flex items-center gap-2 text-sm"><input type="radio" name="role" value="dono" checked={m.role === 'dono'} /> Dono</label>
+                    {m.id === me && <input type="hidden" name="role" value="dono" />}
+                  </fieldset>
+                  <fieldset class="perms">
+                    <legend class="label">Pode acessar</legend>
+                    <div class="flex flex-wrap gap-x-4 gap-y-2">
+                      {ADMIN_SECTIONS.map((s) => (
+                        <label class="inline-flex items-center gap-2 text-sm"><input type="checkbox" name="permissions" value={s.key} checked={m.permissions.includes(s.key)} /> {s.label}</label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  <button class="btn-primary">Salvar</button>
+                </form>
+                {m.id !== me && (
+                  <form method="POST" action="/api/admin/users" class="mt-3" data-confirm={`Excluir ${m.name || m.email} da equipe?|A pessoa perde o acesso ao painel. Se a conta nunca comprou na loja, ela é apagada.|Excluir`}>
+                    <input type="hidden" name="acao" value="excluir" />
+                    <input type="hidden" name="id" value={m.id} />
+                    <button class="rounded-card border border-red-300 px-3 py-1.5 text-[13px] text-red-700 hover:bg-red-50">Excluir da equipe</button>
+                  </form>
+                )}
+              </div>
+            </details>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+
+  {aba === 'clientes' && (
+    <div>
+      <input id="busca-cliente" class="field mb-4" type="search" placeholder="Buscar por nome ou e-mail" autocomplete="off" />
+      <div class="rounded-card border border-ink/10 bg-white">
+        <table class="w-full table-fixed text-left text-sm">
+          <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+            <tr>
+              <th class="px-3 py-3">Cliente</th>
+              <th class="hidden w-20 px-3 py-3 text-right sm:table-cell">Pedidos</th>
+              <th class="hidden w-28 px-3 py-3 text-right md:table-cell">Total gasto</th>
+              <th class="w-24 px-3 py-3">Conta</th>
+              <th class="w-16 px-3 py-3"><span class="sr-only">Ver</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {customers.map((c) => (
+              <tr class="cliente border-t border-ink/10" data-busca={`${c.name} ${c.email}`.toLowerCase()}>
+                <td class="px-3 py-3">
+                  <span class="block truncate font-medium">{c.name || '—'}</span>
+                  <span class="block truncate text-[12px] text-ink-muted">{c.email}</span>
+                </td>
+                <td class="hidden px-3 py-3 text-right sm:table-cell">{c.orders}</td>
+                <td class="hidden px-3 py-3 text-right md:table-cell">{brl(c.spent_cents)}</td>
+                <td class="px-3 py-3"><span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span></td>
+                <td class="px-3 py-3 text-right"><a href={`/admin/usuarios/clientes/${c.id}`} class="text-agua-dark underline">Ver</a></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!customers.length && !loadError && <p class="p-4 text-sm text-ink-muted">Nenhum cliente cadastrado ainda.</p>}
+      </div>
+    </div>
+  )}
+</AdminLayout>
+
+<script>
+  import { enableConfirmForms } from '../../../lib/confirm-forms';
+  enableConfirmForms();
+
+  // papel "Dono" tem acesso a tudo: as caixas de seção ficam desativadas
+  document.querySelectorAll<HTMLFormElement>('.member-form').forEach((form) => {
+    const sync = () => {
+      const dono = (form.querySelector<HTMLInputElement>('input[name=role]:checked')?.value ?? '') === 'dono';
+      form.querySelector<HTMLFieldSetElement>('.perms')!.disabled = dono;
+      form.querySelector<HTMLElement>('.perms')!.style.opacity = dono ? '0.4' : '';
+    };
+    form.addEventListener('change', sync);
+    sync();
+  });
+
+  // busca de clientes na própria página
+  const busca = document.getElementById('busca-cliente') as HTMLInputElement | null;
+  busca?.addEventListener('input', () => {
+    const q = busca.value.trim().toLowerCase();
+    document.querySelectorAll<HTMLElement>('tr.cliente').forEach((tr) => {
+      tr.hidden = !!q && !tr.dataset.busca!.includes(q);
+    });
+  });
+</script>

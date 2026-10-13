@@ -27,7 +27,9 @@ const nextQs = `next=${encodeURIComponent(next)}`;
         <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
           {erro === 'callback'
             ? 'Não conseguimos concluir o login. Tente de novo.'
-            : 'E-mail ou senha incorretos.'}
+            : erro === 'conta'
+              ? 'Esta conta está desativada ou bloqueada. Fale com a loja para saber mais.'
+              : 'E-mail ou senha incorretos.'}
         </p>
       )}
 

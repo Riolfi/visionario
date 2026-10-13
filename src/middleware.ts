@@ -4,7 +4,8 @@ import { env, hasSupabasePublic } from './lib/env';
 import { getSiteContent } from './lib/repo/site';
 import { DEFAULT_SITE_CONTENT } from './lib/site-defaults';
 import { checkStoreIdentity } from './lib/supabase';
-import { isAdmin } from './lib/repo/admin';
+import { canAccess, getAdminAccess, homeFor, type AdminAccess } from './lib/repo/admin';
+import { getCustomerStatus } from './lib/repo/customers';
 
 // O que uma conta de administrador pode abrir fora de /admin: login/sair,
 // fotos enviadas e as APIs que o próprio painel chama (status do Pix na
@@ -49,7 +50,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
     pathname === '/entrar' || pathname === '/cadastrar' || pathname.startsWith('/auth/');
 
   const isAdminArea = pathname.startsWith('/admin') || pathname.startsWith('/api/admin');
-  let userIsAdmin = false;
+  let access: AdminAccess | null = null;
+  context.locals.admin = null;
   if (hasSupabasePublic) {
     const supabase = getServerClient(context.request, context.cookies);
     context.locals.supabase = supabase;
@@ -58,19 +60,33 @@ export const onRequest = defineMiddleware(async (context, next) => {
         data: { user },
       } = await supabase.auth.getUser();
       context.locals.user = user;
-      userIsAdmin = Boolean(user) && (await isAdmin(user!.id));
+      access = user ? await getAdminAccess(user.id) : null;
+      context.locals.admin = access;
+
+      // cliente com a conta desativada/bloqueada: encerra a sessão e barra
+      if (user && !access && !pathname.startsWith('/auth/') && (await getCustomerStatus(user.id)) !== 'ativo') {
+        await supabase.auth.signOut();
+        context.locals.user = null;
+        if (pathname.startsWith('/api/')) {
+          return new Response(JSON.stringify({ error: 'Conta desativada ou bloqueada.' }), {
+            status: 403,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return context.redirect('/entrar?erro=conta');
+      }
     }
 
     // Conta de administrador vê sempre o painel — inclusive quem já chega
     // logado pelo cookie. A loja (páginas e APIs de cliente) fica fechada pra ela.
-    if (userIsAdmin && !isAdminArea && !ADMIN_ALLOWED.some((p) => pathname.startsWith(p))) {
+    if (access && !isAdminArea && !ADMIN_ALLOWED.some((p) => pathname.startsWith(p))) {
       if (pathname.startsWith('/api/')) {
         return new Response(JSON.stringify({ error: 'Conta de administrador não compra pela loja.' }), {
           status: 403,
           headers: { 'content-type': 'application/json' },
         });
       }
-      return context.redirect('/admin');
+      return context.redirect(homeFor(access));
     }
 
     if (accountArea && !context.locals.user) {
@@ -90,11 +106,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
 
   // -------------------------------------------------------------------------
   // Área administrativa — mesma conta de cliente (Supabase Auth), precisa
-  // também ter uma linha em admin_users (promovido manualmente no banco).
-  // Sem Supabase configurado não há como logar, então a área fica inacessível.
+  // também ter uma linha em admin_users. A equipe só abre as seções liberadas
+  // (o dono abre tudo). Sem Supabase não há como logar: área inacessível.
   // -------------------------------------------------------------------------
   if (isAdminArea) {
-    if (!userIsAdmin) {
+    if (access && !canAccess(access, pathname)) {
+      if (pathname.startsWith('/api/')) {
+        return new Response(JSON.stringify({ error: 'Sem permissão para esta seção.' }), {
+          status: 403,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return context.redirect(homeFor(access));
+    }
+    if (!access) {
       if (pathname.startsWith('/api/')) {
         const status = context.locals.user ? 403 : 401;
         const error = context.locals.user ? 'Sem permissão de administrador.' : 'Não autenticado.';

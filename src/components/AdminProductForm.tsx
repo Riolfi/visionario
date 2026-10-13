@@ -140,14 +140,18 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
   const autoImage = useRef<string | null>(null);
 
   // Aviso no topo (acima do código de barras): "Produto já cadastrado" (chega
-  // com ?cadastrado=1) e "Produto salvo com sucesso!". 40s e some com fade.
+  // com ?cadastrado=1) e "Produto salvo com sucesso!" (?salvo=1 ou ao salvar).
+  // 40s e some com fade.
   const [topNotice, showTopNotice] = useTimedNotice();
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (url.searchParams.get('cadastrado') !== '1') return;
+    const cadastrado = url.searchParams.get('cadastrado') === '1';
+    const salvo = url.searchParams.get('salvo') === '1';
+    if (!cadastrado && !salvo) return;
     url.searchParams.delete('cadastrado');
+    url.searchParams.delete('salvo');
     history.replaceState(null, '', url); // recarregar não mostra de novo
-    showTopNotice('Produto já cadastrado', 'ok');
+    showTopNotice(salvo ? 'Produto salvo com sucesso!' : 'Produto já cadastrado', 'ok');
   }, []);
   // aviso embaixo do campo de link (ex.: ✓ sem link colado)
   const [urlNotice, showUrlNotice, hideUrlNotice] = useTimedNotice();
@@ -386,8 +390,33 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
       return window.scrollTo({ top: 0, behavior: 'smooth' });
     }
     setInvalid(new Set());
-    setSaving(true);
     setError(null);
+
+    // código de barras de outro produto: não deixa salvar (o servidor confere de novo)
+    const barcodeTaken = () => {
+      setInvalid(new Set(['barcode']));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showTopNotice('Código de barras já cadastrado em outro produto.', 'erro');
+    };
+    const code = form.barcode.trim();
+    const own = await fetch(`/api/admin/products/by-barcode?code=${encodeURIComponent(code)}`).catch(() => null);
+    if (own?.ok) {
+      const found = (await own.json().catch(() => null)) as { id?: string } | null;
+      if (found?.id && found.id !== product?.id) return barcodeTaken();
+    }
+
+    // sempre confirma como o produto vai ficar na loja
+    const active = form.is_active && !outOfStock;
+    const confirmed = await confirmDialog({
+      title: `Deseja salvar como ${active ? 'ativo' : 'inativo'}?`,
+      message: active ? 'O produto vai aparecer na loja.' : 'O produto não vai aparecer na loja.',
+      confirmLabel: 'Sim',
+      cancelLabel: 'Não',
+      tone: 'primary',
+    });
+    if (!confirmed) return;
+
+    setSaving(true);
     try {
       const res = await fetch('/api/admin/products', {
         method: 'POST',
@@ -410,10 +439,11 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
           images,
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (data.code === 'barcode_dup') return barcodeTaken();
       if (!res.ok) throw new Error(data.error || 'Erro ao salvar.');
-      // cadastro novo volta pra lista; edição fica na tela com o aviso
-      if (!product) return void (window.location.href = '/admin/produtos');
+      // cadastro novo: vai para a edição do produto criado, com o aviso
+      if (!product) return void (window.location.href = `/admin/produtos/${data.id}?salvo=1`);
       window.scrollTo({ top: 0, behavior: 'smooth' });
       showTopNotice('Produto salvo com sucesso!', 'ok');
     } catch (err) {

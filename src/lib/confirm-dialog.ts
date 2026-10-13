@@ -8,6 +8,8 @@ export function confirmDialog(opts: {
   message?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  /** 'danger' (padrão, vermelho) ou 'primary' (escuro) */
+  tone?: 'danger' | 'primary';
 }): Promise<boolean> {
   const dialog = document.createElement('dialog');
   dialog.className =
@@ -27,7 +29,9 @@ export function confirmDialog(opts: {
   if (opts.message) msg.textContent = opts.message;
   else msg.remove();
   dialog.querySelector('[data-cancel]')!.textContent = opts.cancelLabel ?? 'Cancelar';
-  dialog.querySelector('[data-ok]')!.textContent = opts.confirmLabel ?? 'Excluir';
+  const ok = dialog.querySelector<HTMLElement>('[data-ok]')!;
+  ok.textContent = opts.confirmLabel ?? 'Excluir';
+  if (opts.tone === 'primary') ok.className = 'rounded-card bg-ink px-4 py-2 font-sans text-sm text-bone hover:bg-ink-soft';
 
   return new Promise((resolve) => {
     const close = (result: boolean) => {

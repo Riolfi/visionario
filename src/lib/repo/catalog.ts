@@ -400,24 +400,32 @@ export interface ProductInput {
   images: string[];
 }
 
-export async function saveProduct(input: ProductInput): Promise<{ ok: true } | { ok: false; error: string }> {
+export async function saveProduct(
+  input: ProductInput,
+): Promise<{ ok: true; id?: string } | { ok: false; error: string; code?: 'barcode_dup' }> {
   const sb = supabaseAdmin();
   const barcode = input.barcode?.trim() || null;
 
   if (barcode) {
     const dupe = await getProductByBarcode(barcode);
     if (dupe && dupe.id !== input.id) {
-      return { ok: false, error: `Código de barras já cadastrado em "${dupe.name}".` };
+      return { ok: false, code: 'barcode_dup', error: 'Código de barras já cadastrado em outro produto.' };
     }
   }
 
   if (hasSupabase && sb) {
     const payload = { ...input, barcode, updated_at: new Date().toISOString() };
-    const { error } = input.id
-      ? await sb.from('products').update(payload).eq('id', input.id)
-      : await sb.from('products').insert(payload);
-    if (error) return { ok: false, error: error.message };
-    return { ok: true };
+    const { data, error } = input.id
+      ? await sb.from('products').update(payload).eq('id', input.id).select('id').single()
+      : await sb.from('products').insert(payload).select('id').single();
+    if (error) {
+      // corrida: outro cadastro levou o mesmo código entre a conferência e o insert (único no banco)
+      if (/barcode/i.test(error.message) && /duplicate|unique/i.test(error.message)) {
+        return { ok: false, code: 'barcode_dup', error: 'Código de barras já cadastrado em outro produto.' };
+      }
+      return { ok: false, error: error.message };
+    }
+    return { ok: true, id: data.id };
   }
 
   // Fallback: edita o catalog.json local

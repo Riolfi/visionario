@@ -79,8 +79,8 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   const result = await saveProduct(parsed.value);
-  if (!result.ok) return json({ error: result.error }, 500);
-  return json({ ok: true });
+  if (!result.ok) return json({ error: result.error, code: result.code }, result.code === 'barcode_dup' ? 409 : 500);
+  return json({ ok: true, id: result.id ?? parsed.value.id });
 };
 
 export const DELETE: APIRoute = async ({ request, url }) => {

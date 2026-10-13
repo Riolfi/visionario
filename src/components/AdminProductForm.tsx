@@ -22,6 +22,11 @@ function maskMoney(raw: string): string {
   const int = cents.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${int},${cents.slice(-2)}`;
 }
+/** Botões de adicionar imagem: ocupam a coluna inteira; padding menor que o
+ *  .btn pra caber três por linha no celular. */
+const IMG_BTN =
+  'btn-outline h-12 w-full min-w-0 gap-1 whitespace-nowrap px-1.5 py-0 text-[11px] tracking-[0.02em] sm:gap-1.5 sm:px-2 sm:text-[13px] sm:tracking-[0.06em] [&>svg]:shrink-0';
+
 /** Máximo de fotos por produto. */
 const MAX_IMAGES = 5;
 
@@ -58,6 +63,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
   const [error, setError] = useState<string | null>(null);
   const [images, setImages] = useState<string[]>(product?.images ?? []);
   const [urlInput, setUrlInput] = useState('');
+  const [showUrl, setShowUrl] = useState(false);
   const full = images.length >= MAX_IMAGES;
   const [form, setForm] = useState({
     name: product?.name ?? '',
@@ -242,6 +248,7 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
     if (images.length >= MAX_IMAGES) return setError(`Máximo de ${MAX_IMAGES} imagens por produto.`);
     setImages((list) => [...list, url]);
     setUrlInput('');
+    setShowUrl(false);
   }
 
   async function onFiles(e: Event) {
@@ -571,34 +578,49 @@ export default function AdminProductForm({ product, tree, initialBarcode }: Prop
         <span class="label">Imagens do produto</span>
         <p class="text-[12px] text-ink-muted">Adicione até cinco imagens utilizando um ou mais meios.</p>
         <ul class="mb-3 mt-1 text-[12px] text-ink-muted">
-          <li><strong class="font-semibold text-ink-soft">Formatos aceitos:</strong> JPG, PNG, WebP ou AVIF</li>
-          <li><strong class="font-semibold text-ink-soft">Limite de tamanho:</strong> 5 MB (cada imagem)</li>
+          <li>Formatos aceitos: JPG, PNG, WebP ou AVIF</li>
+          <li>Limite de tamanho: 5 MB (cada imagem)</li>
         </ul>
 
-        <div class="flex flex-wrap items-center gap-3">
-          <label class={`btn-outline text-[13px] ${full ? 'pointer-events-none opacity-40' : 'cursor-pointer'}`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 15v4h14v-4" /></svg>
-            {uploading ? 'Enviando…' : 'Selecionar'}
-            <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple class="hidden" onChange={onFiles} disabled={uploading || full} />
-          </label>
-          {/* celular/tablet: abre a câmera direto pra fotografar o produto */}
-          <label class={`btn-outline hidden text-[13px] [@media(pointer:coarse)]:inline-flex ${full ? 'pointer-events-none opacity-40' : 'cursor-pointer'}`}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="mr-1.5" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
+        {/* Câmera (só em tela de toque), Selecionar e URL na mesma linha, colunas
+            iguais; o campo do link aparece embaixo ao tocar em URL */}
+        <div class="grid grid-cols-2 gap-2 [@media(pointer:coarse)]:grid-cols-3">
+          <label class={`${IMG_BTN} hidden [@media(pointer:coarse)]:inline-flex ${full ? 'pointer-events-none opacity-40' : 'cursor-pointer'}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></svg>
             Abrir Câmera
             <input type="file" accept="image/*" capture="environment" class="hidden" onChange={onCameraPhoto} disabled={uploading || full} />
           </label>
-        </div>
-
-        <div class="mt-2 flex gap-2">
-          <input
-            class="field text-[13px]"
-            placeholder="ou cole uma URL de imagem e clique em Adicionar"
-            value={urlInput}
+          <label class={`${IMG_BTN} ${full ? 'pointer-events-none opacity-40' : 'cursor-pointer'}`}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 15v4h14v-4" /></svg>
+            {uploading ? 'Enviando…' : 'Selecionar'}
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple class="hidden" onChange={onFiles} disabled={uploading || full} />
+          </label>
+          <button
+            type="button"
+            class={`${IMG_BTN} disabled:pointer-events-none disabled:opacity-40 ${showUrl ? 'border-ink bg-bone-200' : ''}`}
+            onClick={() => setShowUrl((v) => !v)}
             disabled={full}
-            onInput={(e) => setUrlInput((e.target as HTMLInputElement).value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }}
-          />
-          <button type="button" class="btn-outline shrink-0 text-[13px] disabled:pointer-events-none disabled:opacity-40" onClick={addUrl} disabled={full}>Adicionar</button>
+            aria-expanded={showUrl}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1" /></svg>
+            URL
+          </button>
+          {showUrl && !full && (
+            <>
+              <input
+                class="field h-12 min-w-0 py-0 text-[13px] [@media(pointer:coarse)]:col-span-2"
+                placeholder="cole o link da imagem"
+                aria-label="Link da imagem"
+                value={urlInput}
+                autoFocus
+                onInput={(e) => setUrlInput((e.target as HTMLInputElement).value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addUrl(); } }}
+              />
+              <button type="button" class={IMG_BTN} onClick={addUrl} aria-label="Adicionar imagem pelo link">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5" /></svg>
+              </button>
+            </>
+          )}
         </div>
 
         <ImageStrip images={images} onChange={setImages} />

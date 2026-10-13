@@ -9,7 +9,6 @@ export const prerender = false;
 const products = await getProducts({ includeInactive: true, sort: 'novidades' });
 import { can } from '../../../lib/rbac';
 const canEdit = can(Astro.locals.admin, 'produtos.editar');
-const canDelete = can(Astro.locals.admin, 'produtos.excluir');
 ---
 
 <AdminLayout title="Produtos">
@@ -19,7 +18,7 @@ const canDelete = can(Astro.locals.admin, 'produtos.excluir');
   </div>
 
   <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
-    <h2 class="mb-3 font-display text-lg">Pesquise para criar ou editar um produto</h2>
+    <h2 class="mb-3 font-display text-lg">Pesquisar produto</h2>
     <label class="label" for="name-search">Nome</label>
     <span class="relative mb-4 block">
       <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -48,15 +47,21 @@ const canDelete = can(Astro.locals.admin, 'produtos.excluir');
     <table class="w-full table-fixed text-left text-sm">
       <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
         <tr>
+          <th class="w-14 py-3 pl-2 sm:w-16 sm:pl-3">Prévia</th>
           <th class="px-2 py-3 sm:px-3">Produto</th>
           <th class="hidden w-20 px-3 py-3 text-right sm:table-cell">Estoque</th>
           <th class="w-[4.5rem] px-1 py-3 sm:w-24 sm:px-3">Status</th>
-          <th class="w-[7.5rem] px-2 py-3 sm:w-44 sm:px-3"><span class="sr-only">Ações</span></th>
+          <th class="w-[4.5rem] px-2 py-3 sm:w-24 sm:px-3"><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody>
         {products.map((p) => (
           <tr class="product-row border-t border-ink/10 hover:bg-bone-50" data-name={p.name} data-barcode={p.barcode ?? ''}>
+            <td class="py-2 pl-2 sm:pl-3">
+              <span class="block h-10 w-10 overflow-hidden rounded-card bg-bone-200 sm:h-11 sm:w-11">
+                {p.images[0] && <img src={p.images[0]} alt="" loading="lazy" class="h-full w-full object-cover" />}
+              </span>
+            </td>
             <td class="px-2 py-3 sm:px-3">
               <a href={`/admin/produtos/${p.id}`} class="block truncate font-medium text-agua-dark" title={p.name}>{p.name}</a>
               <span class="block truncate text-[12px] text-ink-muted">{brl(p.price_cents)}<span class="hidden sm:inline"> · {p.category_name}</span></span>
@@ -68,18 +73,8 @@ const canDelete = can(Astro.locals.admin, 'produtos.excluir');
               </span>
             </td>
             <td class="px-2 py-3 sm:px-3">
-              <div class="flex justify-end gap-1.5 sm:gap-2">
+              <div class="flex justify-end">
                 <a href={`/admin/produtos/${p.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">{canEdit ? 'Editar' : 'Ver'}</a>
-                {canDelete && (
-                <button
-                  type="button"
-                  data-delete-id={p.id}
-                  data-delete-name={p.name}
-                  class="rounded-card border border-red-300 px-2 py-1 text-[12px] text-red-700 hover:bg-red-50 disabled:opacity-50 sm:px-3 sm:text-[13px]"
-                >
-                  Excluir
-                </button>
-                )}
               </div>
             </td>
           </tr>
@@ -91,19 +86,6 @@ const canDelete = can(Astro.locals.admin, 'produtos.excluir');
 </AdminLayout>
 
 <script>
-  import { deleteProductFlow } from '../../../lib/delete-product';
-
-  // Excluir direto da lista — mesma API e confirmação do botão no cadastro
-  document.querySelectorAll<HTMLButtonElement>('[data-delete-id]').forEach((btn) => {
-    btn.addEventListener('click', async () => {
-      btn.disabled = true;
-      const r = await deleteProductFlow(btn.dataset.deleteId!, btn.dataset.deleteName!);
-      if (r === 'deleted' || r === 'deactivated') return window.location.reload();
-      if (r !== 'cancelled') alert(r.error);
-      btn.disabled = false;
-    });
-  });
-
   // Filtro da lista enquanto digita: nome (todas as palavras, sem acento e
   // sem diferenciar maiúscula) e código de barras (contém os dígitos).
   const fold = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();

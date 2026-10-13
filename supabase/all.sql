@@ -1091,3 +1091,7 @@ end $$;
 update public.admin_users
   set role_id = (select id from public.admin_roles where is_owner)
   where role_id is null and role = 'dono';
+
+-- a partir daqui o acesso vem só do cargo: zera os campos do modelo anterior
+-- (um ex-"dono" sem cargo não pode voltar a ter acesso total)
+update public.admin_users set role = 'equipe', permissions = '{}' where role_id is not null;

@@ -70,10 +70,13 @@ async function checkAssignable(actor: AdminAccess, roleId: string): Promise<stri
 }
 
 /** Quem não é Dono só mexe em membros com acesso menor ou igual ao seu. */
-async function checkManageable(actor: AdminAccess, memberRoleId: string | null): Promise<string | null> {
-  if (actor.isOwner || !memberRoleId) return null;
-  const role = await roleRules(memberRoleId);
-  if (!role) return null;
+async function checkManageable(actor: AdminAccess, memberRoleId: string | null | undefined): Promise<string | null> {
+  if (actor.isOwner) return null;
+  // sem cargo (depois da 0016) não tem acesso nenhum: pode receber um cargo.
+  // Qualquer outra coisa que não dê pra conferir: barra (falha fechada).
+  if (memberRoleId === null) return null;
+  const role = memberRoleId ? await roleRules(memberRoleId) : null;
+  if (!role) return 'Só o Dono pode alterar esse membro.';
   if (role.isOwner) return 'Só o Dono pode alterar outro Dono.';
   return role.rules.every((r) => actor.rules.includes(r)) ? null : 'Esse membro tem acessos que você não tem — só o Dono pode alterá-lo.';
 }
@@ -105,7 +108,7 @@ export async function createMember(
   if (error || !data.user) return { ok: false, error: error?.message ?? 'Não foi possível criar a conta.' };
   const userId = data.user.id;
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
-  const { error: e2 } = await sb.from('admin_users').insert({ user_id: userId, role_id: input.roleId });
+  const { error: e2 } = await sb.from('admin_users').insert({ user_id: userId, role_id: input.roleId, role: 'equipe', permissions: [] });
   if (e2) {
     await sb.auth.admin.deleteUser(userId); // não deixa conta solta sem acesso
     return { ok: false, error: e2.message };
@@ -150,7 +153,7 @@ export async function updateMember(
     if (error) return { ok: false, error: /already|registered|exists/i.test(error.message) ? 'Esse e-mail já é usado por outra conta.' : error.message };
   }
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
-  const { error } = await sb.from('admin_users').update({ role_id: input.roleId }).eq('user_id', userId);
+  const { error } = await sb.from('admin_users').update({ role_id: input.roleId, role: 'equipe', permissions: [] }).eq('user_id', userId); // campos antigos zerados
   return error ? { ok: false, error: error.message } : { ok: true, message: 'Alterações salvas.' };
 }
 

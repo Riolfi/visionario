@@ -53,15 +53,19 @@ export async function getAdminAccess(userId: string): Promise<AdminAccess | null
     return { isOwner: false, roleId: role.id, roleName: role.name, rules: [...rules] };
   }
 
-  // sem cargo: modelo anterior (antes da 0016) ou membro ainda sem cargo
+  // Depois da 0016 (coluna role_id existe), sem cargo = sem acesso. Os campos
+  // antigos (role/permissions) NÃO valem mais: um ex-"dono" rebaixado cujo
+  // cargo fosse excluído voltaria a ter acesso total.
+  if (row.role_id === null) return { isOwner: false, roleId: null, roleName: 'Sem cargo', rules: [] };
+
+  // antes da 0016 (sem a coluna role_id): modelo anterior (0013)
   if (row.role === 'equipe') {
     const legacy = (row.permissions ?? []) as string[];
     const rules = new Set<RuleKey>(['notificacoes.ver']);
     legacy.forEach((s) => LEGACY[s]?.forEach((r) => rules.add(r)));
     return { isOwner: false, roleId: null, roleName: 'Equipe', rules: [...rules] };
   }
-  if (row.role === 'dono' || row.role === undefined) return OWNER(null);
-  return { isOwner: false, roleId: null, roleName: 'Sem cargo', rules: [] };
+  return OWNER(null); // 'dono' ou sem a coluna role (antes da 0013)
 }
 
 export async function isAdmin(userId: string): Promise<boolean> {

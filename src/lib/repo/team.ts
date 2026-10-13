@@ -64,29 +64,29 @@ export async function createMember(input: {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' };
   const permissions = input.role === 'dono' ? [] : cleanPermissions(input.permissions);
 
-  // e-mail que já tem conta (ex.: um cliente): promove a conta existente
-  const existing = (await listAuthUsers()).find((u) => u.email?.toLowerCase() === email);
-  let userId = existing?.id;
-  let message: string | undefined;
-  if (existing) {
-    const { data: already } = await sb.from('admin_users').select('user_id').eq('user_id', existing.id).maybeSingle();
-    if (already) return { ok: false, error: 'Essa pessoa já está na equipe.' };
-    message = 'Esse e-mail já tinha conta: ela agora tem acesso ao painel com a senha que já usava.';
-  } else {
-    if (input.password.length < 8) return { ok: false, error: 'A senha inicial precisa ter pelo menos 8 caracteres.' };
-    const { data, error } = await sb.auth.admin.createUser({
-      email,
-      password: input.password,
-      email_confirm: true,
-      user_metadata: { full_name: input.name },
-    });
-    if (error || !data.user) return { ok: false, error: error?.message ?? 'Não foi possível criar a conta.' };
-    userId = data.user.id;
+  // Nunca promove uma conta que já existe: qualquer pessoa pode se cadastrar
+  // na loja com o e-mail de um futuro funcionário (não há prova de posse do
+  // e-mail), e a sessão dela viraria admin. Equipe = sempre conta nova, com a
+  // senha definida pelo dono.
+  if ((await listAuthUsers()).some((u) => u.email?.toLowerCase() === email)) {
+    return { ok: false, error: 'Esse e-mail já tem uma conta na loja. Use outro e-mail para a conta da equipe.' };
   }
-  if (input.name.trim()) await sb.from('profiles').upsert({ id: userId!, full_name: input.name.trim() }, { onConflict: 'id' });
-  const { error } = await sb.from('admin_users').insert({ user_id: userId!, role: input.role, permissions });
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, message };
+  if (input.password.length < 8) return { ok: false, error: 'A senha inicial precisa ter pelo menos 8 caracteres.' };
+  const { data, error } = await sb.auth.admin.createUser({
+    email,
+    password: input.password,
+    email_confirm: true,
+    user_metadata: { full_name: input.name },
+  });
+  if (error || !data.user) return { ok: false, error: error?.message ?? 'Não foi possível criar a conta.' };
+  const userId = data.user.id;
+  if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
+  const { error: e2 } = await sb.from('admin_users').insert({ user_id: userId, role: input.role, permissions });
+  if (e2) {
+    await sb.auth.admin.deleteUser(userId); // não deixa conta solta sem acesso
+    return { ok: false, error: e2.message };
+  }
+  return { ok: true };
 }
 
 export async function updateMember(

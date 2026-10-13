@@ -47,9 +47,9 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
           <div class="grid gap-4 sm:grid-cols-3">
             <label class="block"><span class="label">Nome</span><input class="field" name="name" required /></label>
             <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" required autocomplete="off" /></label>
-            <label class="block"><span class="label">Senha inicial</span><input class="field" type="password" name="password" minlength="8" autocomplete="new-password" /></label>
+            <label class="block"><span class="label">Senha inicial</span><input class="field" type="password" name="password" required minlength="8" autocomplete="new-password" /></label>
           </div>
-          <p class="text-[12px] text-ink-muted">Se o e-mail já tiver conta (ex.: um cliente), ela ganha acesso ao painel com a senha que já usa — a senha inicial é ignorada.</p>
+          <p class="text-[12px] text-ink-muted">A conta da equipe é sempre nova: use um e-mail que ainda não tenha cadastro na loja. Passe a senha inicial para a pessoa e peça para trocar em "Meu perfil".</p>
           <fieldset>
             <legend class="label">Papel</legend>
             <label class="mr-4 inline-flex items-center gap-2 text-sm"><input type="radio" name="role" value="equipe" checked /> Equipe (só as seções marcadas)</label>

@@ -1,0 +1,85 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { RULES, SCREENS } from '../../../lib/rbac';
+import { getPermission, rolesUsingPermission } from '../../../lib/repo/roles';
+import { takeFlash } from '../../../lib/flash';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+const isNew = id === 'nova';
+const perm = isNew ? null : await getPermission(id);
+if (!isNew && !perm) return Astro.redirect('/admin/permissoes');
+const usedBy = perm ? await rolesUsingPermission(perm.id) : [];
+const flash = takeFlash(Astro.cookies);
+// telas como grupos, cada uma com as suas regras
+const groups = SCREENS.map((s) => ({ screen: s, rules: RULES.filter((r) => r.screen === s.key) })).filter((g) => g.rules.length);
+---
+
+<AdminLayout title={isNew ? 'Nova permissão' : 'Permissão'}>
+  <a href="/admin/permissoes" class="font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink">← Permissões</a>
+
+  {flash && (
+    <p role="status" class:list={['mt-4 max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+  )}
+
+  <form id="perm-form" method="POST" action="/api/admin/permissions" class="mt-4 max-w-2xl space-y-5">
+    <input type="hidden" name="acao" value="salvar" />
+    <input type="hidden" name="id" value={perm?.id ?? ''} />
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="block"><span class="label">Nome</span><input class="field" name="name" value={perm?.name ?? ''} required minlength="2" maxlength="80" /></label>
+      <label class="block"><span class="label">Descrição <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="description" value={perm?.description ?? ''} maxlength="200" /></label>
+    </div>
+
+    {groups.map((g) => (
+      <fieldset class="rounded-card border border-ink/10 bg-white">
+        <legend class="sr-only">{g.screen.label}</legend>
+        <h2 class="border-b border-ink/10 px-4 py-3 font-display text-lg" aria-hidden="true">{g.screen.label}</h2>
+        <div class="divide-y divide-ink/10">
+          {g.rules.map((r) => (
+            <label class="flex cursor-pointer items-center justify-between gap-4 px-4 py-3 hover:bg-bone-50">
+              <span>
+                <span class="block text-sm font-medium">{r.label}</span>
+                <span class="block text-[12px] text-ink-muted">{r.help}</span>
+              </span>
+              <input type="checkbox" name="rules" value={r.key} checked={perm?.rules.includes(r.key)} class="peer sr-only" />
+              <span class="relative h-6 w-11 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-agua" aria-hidden="true"></span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+    ))}
+
+    <p id="rules-error" class="hidden rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Ligue pelo menos uma regra.</p>
+    <button class="btn-primary w-full sm:w-auto">Salvar</button>
+  </form>
+
+  {perm && (
+    <div class="mt-6 max-w-2xl border-t border-ink/10 pt-5">
+      {usedBy.length ? (
+        <p class="text-sm text-ink-muted">
+          Não dá para excluir: os cargos <strong class="text-ink-soft">{usedBy.join(', ')}</strong> usam esta permissão.
+          Tire a permissão desses cargos em <a href="/admin/cargos" class="underline">Cargos</a> primeiro.
+        </p>
+      ) : (
+        <form method="POST" action="/api/admin/permissions" data-confirm={`Excluir a permissão "${perm.name}"?|Isso não pode ser desfeito.|Excluir`}>
+          <input type="hidden" name="acao" value="excluir" />
+          <input type="hidden" name="id" value={perm.id} />
+          <button class="rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Excluir permissão</button>
+        </form>
+      )}
+    </div>
+  )}
+</AdminLayout>
+
+<script>
+  import { enableConfirmForms } from '../../../lib/confirm-forms';
+  enableConfirmForms();
+  // pelo menos uma regra ligada (o servidor confere de novo)
+  const form = document.getElementById('perm-form') as HTMLFormElement;
+  form.addEventListener('submit', (e) => {
+    const any = form.querySelector('input[name=rules]:checked');
+    document.getElementById('rules-error')!.classList.toggle('hidden', !!any);
+    if (!any) e.preventDefault();
+  });
+</script>

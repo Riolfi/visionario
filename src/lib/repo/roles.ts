@@ -1,6 +1,6 @@
 import { hasSupabase } from '../env';
 import { supabaseAdmin } from '../supabase';
-import { RULES, SCREENS, isRuleKey, type RuleKey, type ScreenKey } from '../rbac';
+import { isRuleKey, type RuleKey } from '../rbac';
 
 /**
  * Permissões (grupos de regras por tela) e Cargos (conjuntos de permissões).
@@ -11,7 +11,8 @@ type Result = { ok: true; id?: string } | { ok: false; error: string };
 
 export interface Permission {
   id: string;
-  screen: ScreenKey;
+  /** legado (0016): tela de origem; as novas são 'geral' */
+  screen: string;
   name: string;
   description: string;
   rules: RuleKey[];
@@ -26,46 +27,57 @@ export interface Role {
   members: number;
 }
 
-const SCREEN_KEYS = SCREENS.map((s) => s.key) as string[];
-const ruleScreen = new Map(RULES.map((r) => [r.key, r.screen as string]));
 
 export async function listPermissions(): Promise<Permission[]> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return [];
   const { data, error } = await sb.from('admin_permissions').select('*').order('name');
   if (error) throw error;
-  return (data ?? [])
-    .filter((p) => SCREEN_KEYS.includes(p.screen))
-    .map((p) => ({ ...p, rules: (p.rules ?? []).filter(isRuleKey) }))
-    .sort((a, b) => SCREEN_KEYS.indexOf(a.screen) - SCREEN_KEYS.indexOf(b.screen));
+  return (data ?? []).map((p) => ({ ...p, rules: (p.rules ?? []).filter(isRuleKey) }));
 }
 
-export async function savePermission(input: {
-  id?: string;
-  screen: string;
-  name: string;
-  description: string;
-  rules: unknown[];
-}): Promise<Result> {
+export async function getPermission(id: string): Promise<Permission | null> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const { data } = await sb.from('admin_permissions').select('*').eq('id', id).maybeSingle();
+  return data ? { ...data, rules: (data.rules ?? []).filter(isRuleKey) } : null;
+}
+
+/** Nomes dos cargos que usam a permissão (não deixa excluir se houver). */
+export async function rolesUsingPermission(id: string): Promise<string[]> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb) return [];
+  const { data } = await sb.from('admin_role_permissions').select('admin_roles(name)').eq('permission_id', id);
+  return (data ?? []).map((r) => (r.admin_roles as unknown as { name: string } | null)?.name ?? '').filter(Boolean);
+}
+
+/**
+ * Permissão = grupo de regras de qualquer tela. A coluna `screen` (0016)
+ * virou legado: as novas ficam como 'geral'.
+ */
+export async function savePermission(input: { id?: string; name: string; description: string; rules: unknown[] }): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
-  if (!SCREEN_KEYS.includes(input.screen)) return { ok: false, error: 'Tela inválida.' };
   const name = input.name.trim().slice(0, 80);
   if (name.length < 2) return { ok: false, error: 'Dê um nome para a permissão.' };
-  // só regras que existem e que são dessa tela
-  const rules = input.rules.filter((r): r is RuleKey => isRuleKey(r) && ruleScreen.get(r) === input.screen);
-  if (!rules.length) return { ok: false, error: 'Ative pelo menos uma regra.' };
-  const row = { screen: input.screen, name, description: input.description.trim().slice(0, 200), rules: [...new Set(rules)] };
+  const rules = [...new Set(input.rules.filter(isRuleKey))];
+  if (!rules.length) return { ok: false, error: 'Ligue pelo menos uma regra.' };
+  // nome único (a constraint antiga é por tela+nome)
+  const { data: same } = await sb.from('admin_permissions').select('id').ilike('name', name);
+  if ((same ?? []).some((p) => p.id !== input.id)) return { ok: false, error: 'Já existe uma permissão com esse nome.' };
+  const row = { name, description: input.description.trim().slice(0, 200), rules };
   const { data, error } = input.id
     ? await sb.from('admin_permissions').update(row).eq('id', input.id).select('id').single()
-    : await sb.from('admin_permissions').insert(row).select('id').single();
-  if (error) return { ok: false, error: /duplicate|unique/i.test(error.message) ? 'Já existe uma permissão com esse nome nessa tela.' : error.message };
+    : await sb.from('admin_permissions').insert({ ...row, screen: 'geral' }).select('id').single();
+  if (error) return { ok: false, error: error.message };
   return { ok: true, id: data.id };
 }
 
 export async function deletePermission(id: string): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
+  const used = await rolesUsingPermission(id);
+  if (used.length) return { ok: false, error: `Não dá para excluir: os cargos ${used.join(', ')} usam esta permissão. Tire dela desses cargos antes.` };
   const { error } = await sb.from('admin_permissions').delete().eq('id', id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }

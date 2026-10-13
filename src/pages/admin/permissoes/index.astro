@@ -1,0 +1,54 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { listPermissions, listRoles } from '../../../lib/repo/roles';
+import { takeFlash } from '../../../lib/flash';
+
+export const prerender = false;
+
+const flash = takeFlash(Astro.cookies);
+let loadError = '';
+const [permissions, roles] = await Promise.all([
+  listPermissions().catch((e) => ((loadError = e.message), [])),
+  listRoles().catch(() => []),
+]);
+const usedBy = (id: string) => roles.filter((r) => r.permission_ids.includes(id)).map((r) => r.name);
+---
+
+<AdminLayout title="Permissões">
+  <div class="flex items-center justify-between gap-3">
+    <p class="font-sans text-sm text-ink-muted">{permissions.length} {permissions.length === 1 ? 'permissão' : 'permissões'}</p>
+    <a href="/admin/permissoes/nova" class="btn-primary">Criar Permissão</a>
+  </div>
+
+  {flash && (
+    <p role="status" class:list={['mt-4 rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+  )}
+  {loadError && <p class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Não foi possível carregar ({loadError}).</p>}
+
+  <div class="mt-6 rounded-card border border-ink/10 bg-white">
+    <table class="w-full table-fixed text-left text-sm">
+      <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+        <tr>
+          <th class="w-24 px-3 py-3"><span class="sr-only">Ações</span></th>
+          <th class="px-3 py-3">Nome</th>
+        </tr>
+      </thead>
+      <tbody>
+        {permissions.map((p) => (
+          <tr class="border-t border-ink/10 hover:bg-bone-50">
+            <td class="px-3 py-3">
+              <a href={`/admin/permissoes/${p.id}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>
+            </td>
+            <td class="px-3 py-3">
+              <span class="block truncate font-medium">{p.name}</span>
+              <span class="block truncate text-[12px] text-ink-muted">
+                {p.rules.length} {p.rules.length === 1 ? 'regra' : 'regras'} · {usedBy(p.id).length ? `cargos: ${usedBy(p.id).join(', ')}` : 'nenhum cargo usa'}
+              </span>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    {!permissions.length && !loadError && <p class="p-4 text-sm text-ink-muted">Nenhuma permissão ainda.</p>}
+  </div>
+</AdminLayout>

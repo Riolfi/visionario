@@ -1,6 +1,6 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import { SCREENS } from '../../lib/rbac';
+import { RULES, SCREENS } from '../../lib/rbac';
 import { listPermissions, listRoles, type Permission } from '../../lib/repo/roles';
 import { takeFlash } from '../../lib/flash';
 
@@ -12,8 +12,9 @@ const [roles, permissions] = await Promise.all([
   listRoles().catch((e) => ((loadError = e.message), [])),
   listPermissions().catch(() => [] as Permission[]),
 ]);
-// permissões agrupadas por tela, na ordem do menu
-const groups = SCREENS.map((s) => ({ screen: s, perms: permissions.filter((p) => p.screen === s.key) })).filter((g) => g.perms.length);
+// telas que cada permissão cobre (pelas regras dela)
+const screensOf = (rules: string[]) =>
+  SCREENS.filter((s) => RULES.some((r) => r.screen === s.key && rules.includes(r.key))).map((s) => s.label).join(', ');
 ---
 
 <AdminLayout title="Cargos">
@@ -42,19 +43,14 @@ const groups = SCREENS.map((s) => ({ screen: s, perms: permissions.filter((p) =>
         </div>
         <fieldset class="space-y-3">
           <legend class="label">Permissões</legend>
-          {groups.map((g) => (
-            <div>
-              <p class="mb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-ink-muted">{g.screen.label}</p>
-              <div class="grid gap-2 sm:grid-cols-2">
-                {g.perms.map((p) => (
-                  <label class="flex items-start gap-2 rounded-card border border-ink/10 p-2.5 text-sm hover:bg-bone-50">
-                    <input type="checkbox" name="permissions" value={p.id} class="mt-1" />
-                    <span><span class="block font-medium">{p.name}</span>{p.description && <span class="block text-[12px] text-ink-muted">{p.description}</span>}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
+          <div class="grid gap-2 sm:grid-cols-2">
+            {permissions.map((p) => (
+              <label class="flex items-start gap-2 rounded-card border border-ink/10 p-2.5 text-sm hover:bg-bone-50">
+                <input type="checkbox" name="permissions" value={p.id} class="mt-1" />
+                <span><span class="block font-medium">{p.name}</span><span class="block text-[12px] text-ink-muted">{screensOf(p.rules)}</span></span>
+              </label>
+            ))}
+          </div>
         </fieldset>
         <button class="btn-primary">Criar cargo</button>
       </form>
@@ -91,19 +87,14 @@ const groups = SCREENS.map((s) => ({ screen: s, perms: permissions.filter((p) =>
                   </div>
                   <fieldset class="space-y-3">
                     <legend class="label">Permissões</legend>
-                    {groups.map((g) => (
-                      <div>
-                        <p class="mb-1 text-[12px] font-semibold uppercase tracking-[0.1em] text-ink-muted">{g.screen.label}</p>
-                        <div class="grid gap-2 sm:grid-cols-2">
-                          {g.perms.map((p) => (
-                            <label class="flex items-start gap-2 rounded-card border border-ink/10 p-2.5 text-sm hover:bg-bone-50">
-                              <input type="checkbox" name="permissions" value={p.id} checked={r.permission_ids.includes(p.id)} class="mt-1" />
-                              <span><span class="block font-medium">{p.name}</span>{p.description && <span class="block text-[12px] text-ink-muted">{p.description}</span>}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
+                    <div class="grid gap-2 sm:grid-cols-2">
+                      {permissions.map((p) => (
+                        <label class="flex items-start gap-2 rounded-card border border-ink/10 p-2.5 text-sm hover:bg-bone-50">
+                          <input type="checkbox" name="permissions" value={p.id} checked={r.permission_ids.includes(p.id)} class="mt-1" />
+                          <span><span class="block font-medium">{p.name}</span><span class="block text-[12px] text-ink-muted">{screensOf(p.rules)}</span></span>
+                        </label>
+                      ))}
+                    </div>
                   </fieldset>
                   <button class="btn-primary">Salvar cargo</button>
                 </form>

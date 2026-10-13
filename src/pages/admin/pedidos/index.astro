@@ -3,13 +3,14 @@ import { orderLabel } from '../../../lib/format';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { listOrders } from '../../../lib/repo/orders';
 import { brl } from '../../../lib/format';
-import { orderStatusLabel, PAYMENT_METHOD_LABELS } from '../../../lib/types';
+import { orderStatusLabel } from '../../../lib/types';
 
 export const prerender = false;
 
 const orders = await listOrders(500);
 const statusFilter = Astro.url.searchParams.get('status');
 const filtered = statusFilter ? orders.filter((o) => o.status === statusFilter) : orders;
+const totalCents = filtered.reduce((s, o) => s + o.total_cents, 0);
 
 const tabs = [
   { key: null, label: 'Todos' },
@@ -21,8 +22,8 @@ const tabs = [
 ];
 ---
 
-<AdminLayout title="Pedidos">
-  <div class="flex gap-2">
+<AdminLayout title="Compras">
+  <div class="flex flex-wrap gap-2">
     {tabs.map((t) => (
       <a
         href={t.key ? `/admin/pedidos?status=${t.key}` : '/admin/pedidos'}
@@ -33,34 +34,86 @@ const tabs = [
     ))}
   </div>
 
-  <div class="mt-6 overflow-x-auto rounded-card border border-ink/10 bg-white">
-    <table class="w-full text-left text-sm">
-      <thead class="border-b border-ink/10 text-[12px] uppercase tracking-[0.1em] text-ink-muted">
+  <div class="mt-4 grid gap-4 rounded-card border border-ink/10 bg-white p-4 sm:grid-cols-[1fr_auto]">
+    <div>
+      <label class="label" for="order-search">Compra</label>
+      <span class="relative block">
+        <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+        <input id="order-search" class="field pl-11" type="search" inputmode="numeric" placeholder="Pesquise pelo código da compra…" autocomplete="off" />
+      </span>
+    </div>
+    <fieldset>
+      <legend class="label">Formato</legend>
+      <div class="flex gap-1" role="radiogroup">
+        {[['', 'Todos'], ['web', 'Online'], ['caixa', 'Física']].map(([value, label]) => (
+          <label class="cursor-pointer">
+            <input type="radio" name="formato" value={value} checked={value === ''} class="peer sr-only" />
+            <span class="block rounded-full border border-ink/20 px-3 py-[0.8rem] font-sans text-[13px] leading-none text-ink-soft peer-checked:border-ink peer-checked:bg-ink peer-checked:text-bone peer-focus-visible:ring-2 peer-focus-visible:ring-agua">{label}</span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  </div>
+
+  <div class="mt-4 rounded-card border border-ink/10 bg-white">
+    <table class="w-full table-fixed text-left text-sm">
+      <thead class="border-b border-ink/10 text-[10px] uppercase tracking-[0.04em] text-ink-muted sm:text-[11px] sm:tracking-[0.1em]">
         <tr>
-          <th class="p-3">Pedido</th><th class="p-3">Data</th><th class="p-3">Cliente</th>
-          <th class="p-3">Pagamento</th><th class="p-3">Status</th><th class="p-3 text-right">Total</th>
+          <th class="px-2 py-3 sm:px-3">Compra</th>
+          <th class="hidden w-28 px-3 py-3 sm:table-cell">Data</th>
+          <th class="w-14 px-1 py-3 sm:w-24 sm:px-3">Formato</th>
+          <th class="w-[5.5rem] px-1 py-3 sm:w-44 sm:px-3">Status</th>
+          <th class="w-[5rem] px-2 py-3 text-right sm:w-28 sm:px-3">Valor</th>
         </tr>
       </thead>
       <tbody>
-        {filtered.length === 0 && (
-          <tr><td colspan="6" class="p-6 text-center text-ink-muted">Nenhum pedido.</td></tr>
-        )}
         {filtered.map((o) => (
-          <tr class="border-t border-ink/10 hover:bg-bone-50">
-            <td class="p-3">
-              <a href={`/admin/pedidos/${o.order_number}`} class="text-agua-dark">{orderLabel(o.order_number)}</a>
-              {o.source === 'caixa' && (
-                <span class="ml-2 rounded-full bg-blush-light px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-ink-soft">Caixa</span>
-              )}
+          <tr class="order-row border-t border-ink/10 hover:bg-bone-50" data-code={o.order_number.toLowerCase()} data-format={o.source} data-total={o.total_cents}>
+            <td class="px-2 py-3 sm:px-3">
+              <a href={`/admin/pedidos/${o.order_number}`} class="block truncate text-agua-dark">{orderLabel(o.order_number)}</a>
+              <span class="block text-[12px] text-ink-muted sm:hidden">{new Date(o.created_at).toLocaleDateString('pt-BR')}</span>
             </td>
-            <td class="p-3 text-ink-muted">{new Date(o.created_at).toLocaleDateString('pt-BR')}</td>
-            <td class="p-3 text-ink-soft">{o.customer_name}<span class="block text-[12px] text-ink-muted">{o.customer_email}</span></td>
-            <td class="p-3 text-ink-soft">{o.payment_method ? PAYMENT_METHOD_LABELS[o.payment_method] : '—'}</td>
-            <td class="p-3"><span class="rounded-full bg-bone-200 px-2 py-0.5 text-[11px] uppercase">{orderStatusLabel(o.status, o.source)}</span></td>
-            <td class="p-3 text-right">{brl(o.total_cents)}</td>
+            <td class="hidden px-3 py-3 text-ink-muted sm:table-cell">{new Date(o.created_at).toLocaleDateString('pt-BR')}</td>
+            <td class="px-1 py-3 text-[13px] text-ink-soft sm:px-3 sm:text-sm">{o.source === 'caixa' ? 'Física' : 'Online'}</td>
+            <td class="px-1 py-3 sm:px-3"><span class="inline-block rounded-full bg-bone-200 px-2 py-0.5 text-[10px] uppercase leading-tight sm:text-[11px]">{orderStatusLabel(o.status, o.source)}</span></td>
+            <td class="px-2 py-3 text-right text-[13px] sm:px-3 sm:text-sm">{brl(o.total_cents)}</td>
           </tr>
         ))}
       </tbody>
     </table>
+    <p id="no-orders" class:list={['p-6 text-center text-sm text-ink-muted', filtered.length && 'hidden']}>Nenhuma compra encontrada.</p>
+  </div>
+
+  <!-- rodapé fixo: acompanha o que está na tela (status, busca e formato) -->
+  <div class="sticky bottom-0 z-10 -mx-4 mt-4 flex items-center justify-between gap-4 border-t border-ink/10 bg-bone px-4 py-3 font-sans text-sm sm:-mx-6 sm:px-6">
+    <span>Compras: <strong id="orders-count">{filtered.length}</strong></span>
+    <span>Total: <strong id="orders-total">{brl(totalCents)}</strong></span>
   </div>
 </AdminLayout>
+
+<script>
+  import { brl } from '../../../lib/format';
+
+  // busca pelo código + formato, sem recarregar; o rodapé soma o que sobra
+  const search = document.getElementById('order-search') as HTMLInputElement;
+  const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>('tr.order-row'));
+  function filter() {
+    const q = search.value.trim().toLowerCase().replace(/^#/, '');
+    const format = (document.querySelector<HTMLInputElement>('input[name=formato]:checked')?.value) ?? '';
+    let count = 0;
+    let total = 0;
+    for (const row of rows) {
+      const ok = (!q || row.dataset.code!.includes(q)) && (!format || row.dataset.format === format);
+      row.hidden = !ok;
+      if (ok) {
+        count++;
+        total += Number(row.dataset.total);
+      }
+    }
+    document.getElementById('orders-count')!.textContent = String(count);
+    document.getElementById('orders-total')!.textContent = brl(total);
+    document.getElementById('no-orders')!.classList.toggle('hidden', count > 0);
+  }
+  search.addEventListener('input', filter);
+  document.querySelectorAll('input[name=formato]').forEach((r) => r.addEventListener('change', filter));
+</script>

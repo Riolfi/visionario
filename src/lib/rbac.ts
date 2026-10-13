@@ -14,7 +14,7 @@ export const SCREENS = [
   { key: 'painel', label: 'Painel', href: '/admin', view: 'painel.ver' },
   { key: 'caixa', label: 'Caixa', href: '/admin/caixa', view: 'caixa.vender' },
   { key: 'produtos', label: 'Produtos', href: '/admin/produtos', view: 'produtos.ver' },
-  { key: 'pedidos', label: 'Pedidos', href: '/admin/pedidos', view: 'pedidos.ver' },
+  { key: 'pedidos', label: 'Compras', href: '/admin/pedidos', view: 'pedidos.ver' },
   { key: 'ofertas', label: 'Ofertas', href: '/admin/ofertas', view: 'ofertas.ver' },
   { key: 'categorias', label: 'Categorias', href: '/admin/categorias', view: 'categorias.ver' },
   { key: 'conteudo', label: 'Conteúdo', href: '/admin/site', view: 'conteudo.ver' },

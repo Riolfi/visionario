@@ -229,7 +229,8 @@ export async function createCaixaPixOrder(input: {
       subtotal_cents: subtotalCents,
       total_cents: subtotalCents,
       payment_method: input.payments ? 'misto' : 'pix',
-      payments: input.payments ?? null,
+      // só manda a coluna quando usa (Pix normal segue funcionando sem a migration 0017)
+      ...(input.payments ? { payments: input.payments } : {}),
     })
     .select()
     .single();

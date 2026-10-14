@@ -64,6 +64,9 @@ const canStatus = can(Astro.locals.admin, 'pedidos.status');
         {order.payment_method && (
           <div class="flex justify-between text-ink-soft"><dt>Pagamento</dt><dd>{PAYMENT_METHOD_LABELS[order.payment_method]}</dd></div>
         )}
+        {order.payments?.map((p) => (
+          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>{PAYMENT_METHOD_LABELS[p.method]}</dt><dd>{brl(p.amount_cents)}</dd></div>
+        ))}
       </dl>
       {order.mp_payment_id && (
         <p class="mt-3 font-sans text-[12px] text-ink-muted">Pagamento MP: {order.mp_payment_id} · método: {order.payment_method}</p>

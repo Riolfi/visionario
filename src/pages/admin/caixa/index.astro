@@ -16,6 +16,7 @@ const products = hasSupabase
       stock: p.stock,
       is_active: p.is_active,
       image: p.images[0] ?? null,
+      barcode: p.barcode ?? null,
     }))
   : [];
 ---

@@ -59,7 +59,13 @@ export function orderStatusLabel(status: OrderStatus, source: 'web' | 'caixa'): 
   return source === 'caixa' && status === 'paid' ? 'Concluída' : ORDER_STATUS_LABELS[status];
 }
 
-export type PaymentMethod = 'pix' | 'credit_card' | 'debit_card' | 'cash' | 'simulado';
+export type PaymentMethod = 'pix' | 'credit_card' | 'debit_card' | 'cash' | 'simulado' | 'misto';
+
+/** Uma parte de um pagamento combinado (Caixa). No dinheiro, amount_cents é o valor recebido. */
+export interface PaymentPart {
+  method: Exclude<PaymentMethod, 'simulado' | 'misto'>;
+  amount_cents: number;
+}
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   pix: 'Pix',
@@ -67,6 +73,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   debit_card: 'Cartão de débito',
   cash: 'Dinheiro',
   simulado: 'Simulado',
+  misto: 'Combinado',
 };
 
 export interface OrderItem {
@@ -103,6 +110,8 @@ export interface Order {
   subtotal_cents: number;
   total_cents: number;
   payment_method: PaymentMethod | null;
+  /** formas de um pagamento combinado (payment_method = 'misto') */
+  payments?: PaymentPart[] | null;
   mp_payment_id: string | null;
   tracking_code: string | null;
   /** origem do pedido: 'web' (loja online) ou 'caixa' (venda de balcão). */

@@ -1,4 +1,4 @@
-import type { Order, OrderItem, OrderStatus, PaymentMethod, ShippingAddress } from '../types';
+import type { Order, OrderItem, OrderStatus, PaymentMethod, PaymentPart, ShippingAddress } from '../types';
 import { hasSupabase } from '../env';
 import { supabaseAdmin } from '../supabase';
 import { readCatalog, writeCatalog, readOrders, writeOrders } from '../localstore';
@@ -34,6 +34,7 @@ function rowToOrder(row: any, items: any[]): Order {
     subtotal_cents: row.subtotal_cents,
     total_cents: row.total_cents,
     payment_method: row.payment_method,
+    payments: row.payments ?? null,
     mp_payment_id: row.mp_payment_id,
     tracking_code: row.tracking_code ?? null,
     source: row.source === 'caixa' ? 'caixa' : 'web',
@@ -161,6 +162,8 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
 export interface CaixaSaleInput {
   items: { product_id: string; quantity: number }[];
   method: PaymentMethod;
+  /** pagamento combinado (method = 'misto') */
+  payments?: PaymentPart[];
 }
 
 /**
@@ -184,6 +187,10 @@ export async function createCaixaSale(input: CaixaSaleInput): Promise<Order> {
     p_items: lines,
   });
   if (error) throw new Error(error.message || 'Falha ao registrar a venda.');
+  // ponytail: grava as formas fora da RPC; se falhar, a venda fica 'misto' sem o detalhe
+  if (input.payments?.length) {
+    await sb.from('orders').update({ payments: input.payments }).eq('order_number', orderNumber);
+  }
 
   const order = await getOrderByNumber(orderNumber);
   if (!order) throw new Error('Venda registrada, mas não foi possível recarregá-la. Confira em Pedidos.');
@@ -202,6 +209,8 @@ export async function createCaixaSale(input: CaixaSaleInput): Promise<Order> {
  */
 export async function createCaixaPixOrder(input: {
   items: { product_id: string; quantity: number }[];
+  /** pagamento combinado: o Pix é só uma das partes */
+  payments?: PaymentPart[];
 }): Promise<Order> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) throw new Error('O Caixa exige o Supabase configurado.');
@@ -219,7 +228,8 @@ export async function createCaixaPixOrder(input: {
       customer_email: '',
       subtotal_cents: subtotalCents,
       total_cents: subtotalCents,
-      payment_method: 'pix',
+      payment_method: input.payments ? 'misto' : 'pix',
+      payments: input.payments ?? null,
     })
     .select()
     .single();

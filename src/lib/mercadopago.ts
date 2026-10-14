@@ -43,7 +43,12 @@ export interface PaymentResult {
  * Processa o pagamento no Mercado Pago. Se as credenciais não estiverem
  * configuradas, retorna um resultado `simulado` aprovado (modo demonstração).
  */
-export async function processPayment(order: Order, form: BrickFormData): Promise<PaymentResult> {
+export async function processPayment(
+  order: Order,
+  form: BrickFormData,
+  /** cobrar só uma parte (Pix dentro de um pagamento combinado no Caixa) */
+  amountCents = order.total_cents,
+): Promise<PaymentResult> {
   const cfg = client();
 
   if (!cfg) {
@@ -54,7 +59,7 @@ export async function processPayment(order: Order, form: BrickFormData): Promise
   const isPix = form.payment_method_id === 'pix';
 
   const body: Record<string, unknown> = {
-    transaction_amount: order.total_cents / 100,
+    transaction_amount: amountCents / 100,
     description: `Pedido ${order.order_number} — ${env.brandName}`,
     payment_method_id: form.payment_method_id,
     external_reference: order.order_number,

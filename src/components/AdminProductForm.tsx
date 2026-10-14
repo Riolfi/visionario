@@ -4,6 +4,7 @@ import ImageStrip from './ImageStrip';
 import { confirmDialog } from '../lib/confirm-dialog';
 import { deleteProductFlow } from '../lib/delete-product';
 import type { CategoryNode, Product } from '../lib/types';
+import { maskMoney, moneyToCents } from '../lib/format';
 
 interface Props {
   product: Product | null;
@@ -18,13 +19,6 @@ interface Props {
 
 /** Máscara de dinheiro: "8990" → "89,90", "123456" → "1.234,56".
  *  Digita-se só números, da direita pra esquerda (como em maquininha). */
-function maskMoney(raw: string): string {
-  const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
-  if (!digits) return '';
-  const cents = digits.padStart(3, '0');
-  const int = cents.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-  return `${int},${cents.slice(-2)}`;
-}
 /** Botões de adicionar imagem: ocupam a coluna inteira; padding menor que o
  *  .btn pra caber três por linha no celular. */
 const IMG_BTN =
@@ -33,7 +27,6 @@ const IMG_BTN =
 /** Máximo de fotos por produto. */
 const MAX_IMAGES = 5;
 
-const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '') || '0');
 
 /** Rótulo do campo: * vermelho quando obrigatório, "(opcional)" apagado quando não. */
 function FieldLabel({ text, htmlFor, required }: { text: string; htmlFor: string; required?: boolean }) {
@@ -162,7 +155,12 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => {
       const next = { ...f, [k]: v };
-      if (k === 'stock' && (parseInt(String(v), 10) || 0) <= 0) next.is_active = false;
+      if (k === 'stock') {
+        const n = parseInt(String(v), 10) || 0;
+        // sem estoque não fica ativo; repôs (0 → 1+): volta a ativo sozinho
+        if (n <= 0) next.is_active = false;
+        else if ((parseInt(f.stock, 10) || 0) <= 0) next.is_active = true;
+      }
       return next;
     });
     if (invalid.has(k)) setInvalid((cur) => new Set([...cur].filter((x) => x !== k)));

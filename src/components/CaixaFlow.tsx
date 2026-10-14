@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import CameraScanner from './CameraScanner';
-import { CHECK_ICON_PATH, SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
-import { brl, orderLabel } from '../lib/format';
-import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '../lib/types';
+import { SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
+import { brl, maskMoney, moneyToCents, orderLabel } from '../lib/format';
+import { PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentPart } from '../lib/types';
+import { SPLIT_METHODS, splitChange, splitError } from '../lib/payments';
 
 interface Line {
   product_id: string;
@@ -20,6 +21,7 @@ interface ScanResult {
   stock: number;
   is_active: boolean;
   image: string | null;
+  barcode?: string | null;
 }
 
 interface Done {
@@ -27,24 +29,20 @@ interface Done {
   total_cents: number;
   received_cents: number | null;
   method: PaymentMethod;
+  payments?: PaymentPart[];
 }
 
 interface PixWait {
   order_id: string;
   order_number: string;
   total_cents: number;
+  /** pagamento combinado: só esta parte vai no Pix */
+  pix_cents?: number;
+  payments?: PaymentPart[];
   pix: { qrCode: string; qrCodeBase64: string; ticketUrl: string } | null;
 }
 
 const METHODS: PaymentMethod[] = ['cash', 'pix', 'debit_card', 'credit_card'];
-
-function parseReaisToCents(raw: string): number | null {
-  const clean = raw.trim().replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
-  if (!clean) return null;
-  const n = Number(clean);
-  if (!Number.isFinite(n) || n < 0) return null;
-  return Math.round(n * 100);
-}
 
 /** minúsculas e sem acento, pra busca por nome */
 const fold = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -66,6 +64,9 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const [sessionMsg, setSessionMsg] = useState<string | null>(null);
   const [method, setMethod] = useState<PaymentMethod>('cash');
   const [received, setReceived] = useState('');
+  // pagamento combinado: cada forma com o seu valor (mascarado em R$)
+  const [split, setSplit] = useState(false);
+  const [parts, setParts] = useState<{ method: PaymentPart['method']; amount: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
@@ -97,7 +98,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             order_number: pixWait.order_number,
             total_cents: pixWait.total_cents,
             received_cents: null,
-            method: 'pix',
+            method: pixWait.payments ? 'misto' : 'pix',
+            payments: pixWait.payments,
           });
           setPixWait(null);
         } else if (data.status === 'failed' || data.status === 'cancelled') {
@@ -117,13 +119,39 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     [lines],
   );
   const count = useMemo(() => lines.reduce((s, l) => s + l.quantity, 0), [lines]);
-  const receivedCents = method === 'cash' ? parseReaisToCents(received) : null;
+  const receivedCents = method === 'cash' && received ? moneyToCents(received) : null;
   const changeCents = receivedCents == null ? null : receivedCents - total;
   const overStock = lines.some((l) => l.quantity > l.stock);
+  const splitParts: PaymentPart[] = parts.map((p) => ({ method: p.method, amount_cents: moneyToCents(p.amount) }));
+  const splitErr = split ? splitError(splitParts, total) : null;
+  // dinheiro sozinho: só fecha com o valor recebido cobrindo o total
+  const cashErr =
+    !split && method === 'cash' && lines.length
+      ? receivedCents == null
+        ? 'Informe o valor recebido.'
+        : receivedCents < total
+          ? 'Valor recebido menor que o total.'
+          : null
+      : null;
+
+  function toggleSplit() {
+    setSplit((on) => !on);
+    setParts([
+      { method: 'cash', amount: '' },
+      { method: 'debit_card', amount: '' },
+    ]);
+    setError(null);
+  }
+  const setPart = (i: number, patch: Partial<(typeof parts)[number]>) =>
+    setParts((cur) => cur.map((p, j) => (j === i ? { ...p, ...patch } : p)));
 
   async function submitScan(e: Event) {
     e.preventDefault();
-    await addByCode(scan.trim());
+    const code = scan.trim();
+    // código igual a um do catálogo: adiciona direto; senão pergunta ao servidor
+    const exact = products.find((p) => p.barcode && p.barcode === code);
+    if (exact) addFromSearch(exact, () => setScan(''));
+    else await addByCode(code);
   }
 
   /** Produto pelo código de barras (mesma rota do leitor USB). */
@@ -166,24 +194,63 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     return products.filter((p) => words.every((w) => fold(p.name).includes(w))).slice(0, 8);
   }, [nameQuery, products]);
 
-  function addFromSearch(p: ScanResult) {
+  // busca por código: trecho do código de barras enquanto digita
+  const codeMatches = useMemo(() => {
+    const digits = scan.replace(/\D/g, '');
+    if (!digits) return [];
+    return products.filter((p) => p.barcode?.includes(digits)).slice(0, 8);
+  }, [scan, products]);
+
+  function addFromSearch(p: ScanResult, clear = () => setNameQuery('')) {
     const block = stockBlock(p);
     if (block) return setScanMsg({ tone: 'err', text: block });
     setLines((cur) => mergeLines(cur, [toLine(p)]));
     setScanMsg({ tone: 'ok', text: `${p.name} adicionado` });
-    setNameQuery('');
+    clear();
   }
 
-  /** Soma `add` em `cur` (mesmo produto → soma quantidade). */
+  /** Soma `add` em `cur` (mesmo produto → soma quantidade, nunca acima do estoque). */
   const mergeLines = (cur: Line[], add: Line[]) => {
     const next = [...cur];
     for (const l of add) {
       const i = next.findIndex((x) => x.product_id === l.product_id);
-      if (i >= 0) next[i] = { ...next[i]!, quantity: next[i]!.quantity + l.quantity };
-      else next.push(l);
+      if (i >= 0) next[i] = { ...next[i]!, quantity: Math.min(next[i]!.quantity + l.quantity, l.stock) };
+      else next.push({ ...l, quantity: Math.min(l.quantity, l.stock) });
     }
     return next;
   };
+
+  /** Lista de sugestões (nome ou código) com "+ Adicionar". */
+  const suggestions = (list: ScanResult[], empty: string, clear: () => void) => (
+    <ul class="mt-2 max-h-72 divide-y divide-ink/10 overflow-y-auto rounded-card border border-ink/10">
+      {list.length === 0 && <li class="p-3 font-sans text-[13px] text-ink-muted">{empty}</li>}
+      {list.map((p) => {
+        const block = stockBlock(p);
+        return (
+          <li key={p.id}>
+            <button
+              type="button"
+              class="flex w-full items-center gap-3 p-2.5 text-left hover:bg-bone-50 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!!block}
+              onClick={() => addFromSearch(p, clear)}
+            >
+              <span class="h-10 w-10 shrink-0 overflow-hidden rounded-card bg-bone-200">
+                {p.image && <img src={p.image} alt="" class="h-full w-full object-cover" />}
+              </span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate font-sans text-sm text-ink">{p.name}</span>
+                <span class="block truncate font-sans text-[12px] text-ink-muted">
+                  {p.barcode && `${p.barcode} · `}
+                  {brl(p.price_cents)} · {p.stock <= 0 ? 'sem estoque' : block ? 'limite do estoque atingido' : `${p.stock - saleQty(p.id)} disponível`}
+                </span>
+              </span>
+              {!block && <span class="shrink-0 font-sans text-[13px] text-agua-dark">+ Adicionar</span>}
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
 
   // ---- leitor (câmera): lista própria até confirmar ----------------------
   async function sessionScan(code: string) {
@@ -246,6 +313,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   function resetSale() {
     setLines([]);
     setReceived('');
+    setSplit(false);
+    setParts([]);
     setScan('');
     setScanMsg(null);
     setError(null);
@@ -257,17 +326,20 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   }
 
   async function finalize() {
-    if (!lines.length || busy) return;
+    if (!lines.length || busy || splitErr || cashErr) return;
     setBusy(true);
     setError(null);
+    const payments = split ? splitParts : undefined;
+    const pixPart = payments?.find((p) => p.method === 'pix');
     try {
-      if (method === 'pix') {
+      if (split ? pixPart : method === 'pix') {
         const res = await fetch('/api/admin/caixa', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
             action: 'pix_charge',
             items: lines.map((l) => ({ product_id: l.product_id, quantity: l.quantity })),
+            payments,
           }),
         });
         const data = (await res.json().catch(() => ({}))) as {
@@ -287,7 +359,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             order_number: data.order_number,
             total_cents: data.total_cents ?? total,
             received_cents: null,
-            method: 'pix',
+            method: payments ? 'misto' : 'pix',
+            payments,
           });
           return;
         }
@@ -296,6 +369,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
           order_id: data.order_id ?? '',
           order_number: data.order_number,
           total_cents: data.total_cents ?? total,
+          pix_cents: pixPart?.amount_cents,
+          payments,
           pix: data.pix ?? null,
         });
         return;
@@ -305,7 +380,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          method,
+          method: split ? 'misto' : method,
+          payments,
           items: lines.map((l) => ({ product_id: l.product_id, quantity: l.quantity })),
         }),
       });
@@ -318,7 +394,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         order_number: data.order_number,
         total_cents: data.total_cents ?? total,
         received_cents: receivedCents,
-        method,
+        method: split ? 'misto' : method,
+        payments,
       });
     } catch {
       setError('Sem conexão com o servidor.');
@@ -394,6 +471,21 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
           </div>
         )}
 
+        {!cancelled && done.payments && (
+          <div class="mt-4 space-y-1 rounded-card bg-bone-50 p-4 font-sans text-sm">
+            {done.payments.map((p) => (
+              <div key={p.method} class="flex justify-between">
+                <span class="text-ink-muted">{PAYMENT_METHOD_LABELS[p.method]}</span>
+                <span>{brl(p.amount_cents)}</span>
+              </div>
+            ))}
+            <div class="flex justify-between font-semibold">
+              <span>Troco</span>
+              <span>{brl(splitChange(done.payments, done.total_cents))}</span>
+            </div>
+          </div>
+        )}
+
         {cancelled && (
           <p class="mt-4 rounded-card bg-agua-wash p-3 font-sans text-[13px] text-agua-dark">
             Os itens voltaram ao estoque.
@@ -428,8 +520,11 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     return (
       <div class="mx-auto max-w-lg rounded-card border border-ink/10 bg-white p-8 text-center">
         <p class="font-sans text-[13px] uppercase tracking-[0.14em] text-ink-muted">Aguardando o Pix</p>
-        <p class="mt-2 font-display text-3xl">{brl(pixWait.total_cents)}</p>
-        <p class="mt-1 font-sans text-[13px] text-ink-muted">Pedido {orderLabel(pixWait.order_number)}</p>
+        <p class="mt-2 font-display text-3xl">{brl(pixWait.pix_cents ?? pixWait.total_cents)}</p>
+        <p class="mt-1 font-sans text-[13px] text-ink-muted">
+          Pedido {orderLabel(pixWait.order_number)}
+          {pixWait.pix_cents != null && ` · parte do total de ${brl(pixWait.total_cents)}`}
+        </p>
 
         {pixWait.pix?.qrCodeBase64 && (
           <img
@@ -550,7 +645,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
           ficava "com zoom" depois do leitor) */}
       <div class="min-w-0">
         <form onSubmit={submitScan} class="rounded-card border border-ink/10 bg-white p-4">
-          <h2 class="mb-3 font-display text-lg">Pesquise para adicionar um produto à venda</h2>
+          <h2 class="mb-3 font-display text-lg">Adicionar produto</h2>
           <label class="label" for="caixa-name">Nome</label>
           <span class="relative block">
             <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
@@ -571,53 +666,21 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
               }}
             />
           </span>
-          {nameQuery.trim() && (
-            <ul class="mt-2 max-h-72 divide-y divide-ink/10 overflow-y-auto rounded-card border border-ink/10">
-              {matches.length === 0 && <li class="p-3 font-sans text-[13px] text-ink-muted">Nenhum produto com esse nome.</li>}
-              {matches.map((p) => {
-                const block = stockBlock(p);
-                return (
-                  <li key={p.id}>
-                    <button
-                      type="button"
-                      class="flex w-full items-center gap-3 p-2.5 text-left hover:bg-bone-50 disabled:cursor-not-allowed disabled:opacity-50"
-                      disabled={!!block}
-                      onClick={() => addFromSearch(p)}
-                    >
-                      <span class="h-10 w-10 shrink-0 overflow-hidden rounded-card bg-bone-200">
-                        {p.image && <img src={p.image} alt="" class="h-full w-full object-cover" />}
-                      </span>
-                      <span class="min-w-0 flex-1">
-                        <span class="block truncate font-sans text-sm text-ink">{p.name}</span>
-                        <span class="block font-sans text-[12px] text-ink-muted">
-                          {brl(p.price_cents)} · {p.stock <= 0 ? 'sem estoque' : block ? 'limite do estoque atingido' : `${p.stock - saleQty(p.id)} disponível`}
-                        </span>
-                      </span>
-                      {!block && <span class="shrink-0 font-sans text-[13px] text-agua-dark">+ Adicionar</span>}
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+          {nameQuery.trim() && suggestions(matches, 'Nenhum produto com esse nome.', () => setNameQuery(''))}
 
           <label class="label mt-4" for="caixa-scan">Código de barras</label>
-          <div class="flex items-stretch gap-2">
-            <input
-              id="caixa-scan"
-              ref={scanRef}
-              class="field min-w-0 flex-1"
-              value={scan}
-              inputmode="numeric"
-              autocomplete="off"
-              placeholder="digitar código de barras manualmente"
-              onInput={(e) => setScan((e.target as HTMLInputElement).value)}
-            />
-            <button type="submit" class={SCAN_BTN}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={CHECK_ICON_PATH} /></svg>
-              Enviar
-            </button>
-          </div>
+          {/* Enter (ou leitor USB, que digita e manda Enter) adiciona o código exato */}
+          <input
+            id="caixa-scan"
+            ref={scanRef}
+            class="field"
+            value={scan}
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="digitar código de barras manualmente"
+            onInput={(e) => setScan((e.target as HTMLInputElement).value)}
+          />
+          {scan.trim() && suggestions(codeMatches, 'Nenhum produto com esse código. Enter busca o código completo.', () => setScan(''))}
           <div class="mt-2 flex justify-end">
             <button
               type="button"
@@ -685,8 +748,12 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                         value={l.quantity}
                         inputmode="numeric"
                         onInput={(e) => {
-                          const v = parseInt((e.target as HTMLInputElement).value, 10);
-                          setQty(l.product_id, Number.isFinite(v) ? v : 1);
+                          const el = e.target as HTMLInputElement;
+                          const v = parseInt(el.value, 10);
+                          const q = Math.max(1, Math.min(Number.isFinite(v) ? v : 1, l.stock));
+                          // o estado pode não mudar (já no limite): corrige o que aparece no campo
+                          if (el.value !== '') el.value = String(q);
+                          setQty(l.product_id, q);
                         }}
                       />
                       <button
@@ -720,37 +787,107 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         </div>
         <p class="mt-1 font-display text-3xl">{brl(total)}</p>
 
-        <p class="label mt-5">Forma de pagamento</p>
-        <div class="grid grid-cols-2 gap-2">
-          {METHODS.map((m) => (
-            <button
-              key={m}
-              type="button"
-              onClick={() => setMethod(m)}
-              class={`rounded-card border px-2 py-2 font-sans text-[13px] transition-colors ${
-                method === m
-                  ? 'border-ink bg-ink text-bone'
-                  : 'border-ink/20 text-ink-soft hover:border-ink'
-              }`}
-            >
-              {PAYMENT_METHOD_LABELS[m]}
-            </button>
-          ))}
+        <div class="mt-5 flex items-baseline justify-between">
+          <p class="label">Forma de pagamento</p>
+          <button type="button" class="font-sans text-[12px] text-agua-dark underline" onClick={toggleSplit}>
+            {split ? 'Usar uma forma só' : 'Combinar formas'}
+          </button>
         </div>
+        {!split && (
+          <div class="grid grid-cols-2 gap-2">
+            {METHODS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMethod(m)}
+                class={`rounded-card border px-2 py-2 font-sans text-[13px] transition-colors ${
+                  method === m
+                    ? 'border-ink bg-ink text-bone'
+                    : 'border-ink/20 text-ink-soft hover:border-ink'
+                }`}
+              >
+                {PAYMENT_METHOD_LABELS[m]}
+              </button>
+            ))}
+          </div>
+        )}
 
-        {method === 'cash' && (
+        {split && (
+          <div class="space-y-2">
+            {parts.map((p, i) => (
+              <div key={i} class="flex items-center gap-2">
+                <select
+                  class="field min-w-0 flex-1 py-2 text-[13px]"
+                  aria-label="Forma de pagamento"
+                  value={p.method}
+                  onChange={(e) => setPart(i, { method: (e.target as HTMLSelectElement).value as PaymentPart['method'] })}
+                >
+                  {SPLIT_METHODS.filter((m) => m === p.method || !parts.some((o) => o.method === m)).map((m) => (
+                    <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
+                  ))}
+                </select>
+                <input
+                  class="field w-28 py-2 text-right text-[13px]"
+                  aria-label={`Valor em ${PAYMENT_METHOD_LABELS[p.method]}`}
+                  value={p.amount}
+                  inputmode="numeric"
+                  placeholder="0,00"
+                  onInput={(e) => setPart(i, { amount: maskMoney((e.target as HTMLInputElement).value) })}
+                />
+                {parts.length > 2 && (
+                  <button
+                    type="button"
+                    class="grid h-8 w-8 shrink-0 place-items-center rounded-card border border-red-300 text-red-700"
+                    aria-label="Remover forma"
+                    onClick={() => setParts((cur) => cur.filter((_, j) => j !== i))}
+                  >
+                    {TRASH_ICON}
+                  </button>
+                )}
+              </div>
+            ))}
+            {parts.length < SPLIT_METHODS.length && (
+              <button
+                type="button"
+                class="font-sans text-[12px] text-agua-dark underline"
+                onClick={() =>
+                  setParts((cur) => [...cur, { method: SPLIT_METHODS.find((m) => !cur.some((o) => o.method === m))!, amount: '' }])
+                }
+              >
+                + Adicionar forma
+              </button>
+            )}
+            {lines.length > 0 && (
+              <p class={`flex justify-between font-sans text-sm ${splitErr ? 'text-red-700' : 'text-ink'}`}>
+                <span>{splitErr ?? 'Troco'}</span>
+                {!splitErr && <span class="font-semibold">{brl(splitChange(splitParts, total))}</span>}
+              </p>
+            )}
+            {parts.some((p) => p.method === 'pix') && (
+              <p class="font-sans text-[12px] text-ink-muted">O Pix gera a cobrança só da parte dele; a venda fecha quando ele for pago.</p>
+            )}
+          </div>
+        )}
+
+        {!split && method === 'cash' && (
           <div class="mt-4">
             <label class="label" for="caixa-received">
               Valor recebido
             </label>
-            <input
-              id="caixa-received"
-              class="field"
-              value={received}
-              inputmode="decimal"
-              placeholder="0,00"
-              onInput={(e) => setReceived((e.target as HTMLInputElement).value)}
-            />
+            <span class="relative block">
+              <span class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-sans text-sm text-ink-muted">R$</span>
+              <input
+                id="caixa-received"
+                class="field pl-11"
+                value={received}
+                inputmode="numeric"
+                placeholder="0,00"
+                onInput={(e) => setReceived(maskMoney((e.target as HTMLInputElement).value))}
+              />
+            </span>
+            {lines.length > 0 && receivedCents == null && (
+              <p class="mt-2 font-sans text-[13px] text-red-700">Informe o valor recebido.</p>
+            )}
             {changeCents != null && (
               <p
                 class={`mt-2 flex justify-between font-sans text-sm ${
@@ -775,7 +912,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
           type="button"
           class="btn-primary mt-5 w-full disabled:opacity-50"
           onClick={finalize}
-          disabled={busy || lines.length === 0}
+          disabled={busy || lines.length === 0 || !!splitErr || !!cashErr}
+          title={splitErr ?? cashErr ?? undefined}
         >
           {busy ? 'Registrando…' : 'Finalizar venda'}
         </button>

@@ -10,11 +10,15 @@ import { processPayment } from '../../../lib/mercadopago';
 import { fulfillPaidOrder } from '../../../lib/fulfillment';
 import type { PaymentMethod } from '../../../lib/types';
 import { can } from '../../../lib/rbac';
+import { getProductById } from '../../../lib/repo/catalog';
+import { parseParts, splitError } from '../../../lib/payments';
 
 /**
  * POST /api/admin/caixa
  *  - { items: [{ product_id, quantity }], method }  → finaliza a venda (dinheiro/cartão)
- *  - { action: 'pix_charge', items }                → gera uma cobrança Pix real p/ os itens
+ *  - { items, method: 'misto', payments }           → idem, pagamento combinado sem Pix
+ *  - { action: 'pix_charge', items, payments? }     → gera uma cobrança Pix real p/ os itens
+ *                                                     (com payments: só a parte do Pix)
  *  - { action: 'cancel_pix', order_number }         → desiste de um Pix ainda não pago
  *  - { action: 'cancel', order_number }             → cancela venda já paga e devolve estoque
  *
@@ -22,6 +26,17 @@ import { can } from '../../../lib/rbac';
  */
 
 const METHODS: PaymentMethod[] = ['cash', 'pix', 'debit_card', 'credit_card'];
+
+/** Total da venda pelo preço do catálogo (o mesmo que a RPC cobra). */
+async function saleTotal(items: { product_id: string; quantity: number }[]): Promise<number> {
+  let total = 0;
+  for (const i of items) {
+    const p = await getProductById(i.product_id);
+    if (!p) throw new Error('Produto não encontrado no catálogo.');
+    total += p.price_cents * Math.max(1, Math.floor(i.quantity));
+  }
+  return total;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -50,8 +65,17 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (!items.length) return json({ error: 'Adicione ao menos um item.' }, 400);
 
     try {
-      const order = await createCaixaPixOrder({ items });
-      const result = await processPayment(order, { payment_method_id: 'pix' });
+      // combinado: valida as partes e cobra no Pix só a parte dele
+      const payments = body.payments ? parseParts(body.payments) : undefined;
+      let pixCents: number | undefined;
+      if (payments) {
+        const err = splitError(payments, await saleTotal(items));
+        if (err) return json({ error: err }, 400);
+        pixCents = payments.find((p) => p.method === 'pix')?.amount_cents;
+        if (!pixCents) return json({ error: 'Pagamento combinado sem Pix.' }, 400);
+      }
+      const order = await createCaixaPixOrder({ items, payments });
+      const result = await processPayment(order, { payment_method_id: 'pix' }, pixCents);
 
       if (result.status === 'approved' || result.status === 'simulado') {
         await fulfillPaidOrder(order.order_number, { paymentId: result.paymentId, method: 'pix' });
@@ -105,7 +129,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   // --- finalizar venda ---
   const method = String(body.method || '') as PaymentMethod;
-  if (!METHODS.includes(method)) return json({ error: 'Forma de pagamento inválida.' }, 400);
+  if (!METHODS.includes(method) && method !== 'misto') return json({ error: 'Forma de pagamento inválida.' }, 400);
 
   const rawItems = Array.isArray(body.items) ? body.items : [];
   const items = rawItems
@@ -117,7 +141,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
   if (!items.length) return json({ error: 'Adicione ao menos um item.' }, 400);
 
   try {
-    const order = await createCaixaSale({ items, method });
+    let payments;
+    if (method === 'misto') {
+      payments = parseParts(body.payments);
+      if (payments.some((p) => p.method === 'pix')) return json({ error: 'Pix combinado gera cobrança: use pix_charge.' }, 400);
+      const err = splitError(payments, await saleTotal(items));
+      if (err) return json({ error: err }, 400);
+    }
+    const order = await createCaixaSale({ items, method, payments });
     return json({
       ok: true,
       order_number: order.order_number,

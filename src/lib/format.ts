@@ -105,3 +105,14 @@ export function isValidCpf(cpf: string): boolean {
   };
   return calc(9) === parseInt(d[9]!, 10) && calc(10) === parseInt(d[10]!, 10);
 }
+
+/** Máscara de dinheiro enquanto digita: "1234" → "12,34" (centavos à direita). */
+export function maskMoney(raw: string): string {
+  const digits = raw.replace(/\D/g, '').replace(/^0+(?=\d)/, '').slice(0, 9);
+  if (!digits) return '';
+  const cents = digits.padStart(3, '0');
+  const int = cents.slice(0, -2).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+  return `${int},${cents.slice(-2)}`;
+}
+/** Valor mascarado → centavos ("" → 0). */
+export const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '') || '0');

@@ -3,7 +3,7 @@ import CameraScanner from './CameraScanner';
 import { SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
 import { brl, maskMoney, moneyToCents, orderLabel } from '../lib/format';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentPart } from '../lib/types';
-import { SPLIT_METHODS, splitChange, splitError } from '../lib/payments';
+import { SINGLE_METHODS, SPLIT_METHODS, splitChange, splitError } from '../lib/payments';
 import { confirmDialog } from '../lib/confirm-dialog';
 
 interface Line {
@@ -67,7 +67,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const [received, setReceived] = useState('');
   // pagamento combinado: cada forma com o seu valor (mascarado em R$)
   const [split, setSplit] = useState(false);
-  const [parts, setParts] = useState<{ method: PaymentPart['method']; amount: string }[]>([]);
+  // method '' = linha nova, ainda em "Selecionar"
+  const [parts, setParts] = useState<{ method: PaymentPart['method'] | ''; amount: string }[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
@@ -122,7 +123,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const count = useMemo(() => lines.reduce((s, l) => s + l.quantity, 0), [lines]);
   const receivedCents = method === 'cash' && received ? moneyToCents(received) : null;
   const overStock = lines.some((l) => l.quantity > l.stock);
-  const splitParts: PaymentPart[] = parts.map((p) => ({ method: p.method, amount_cents: moneyToCents(p.amount) }));
+  const splitParts = parts.map((p) => ({ method: p.method, amount_cents: moneyToCents(p.amount) })) as PaymentPart[];
   const splitErr = split ? splitError(splitParts, total) : null;
   // saldo das duas telas (uma forma em dinheiro ou combinado): falta receber ou troco
   const paidCents = split ? splitParts.reduce((s, p) => s + p.amount_cents, 0) : (receivedCents ?? 0);
@@ -140,10 +141,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
   function toggleSplit() {
     setSplit((on) => !on);
-    setParts([
-      { method: 'cash', amount: '' },
-      { method: 'debit_card', amount: '' },
-    ]);
+    setParts([{ method: '', amount: '' }]);
     setError(null);
   }
   const setPart = (i: number, patch: Partial<(typeof parts)[number]>) =>
@@ -859,13 +857,14 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                   value={p.method}
                   onChange={(e) => setPart(i, { method: (e.target as HTMLSelectElement).value as PaymentPart['method'] })}
                 >
-                  {SPLIT_METHODS.filter((m) => m === p.method || !parts.some((o) => o.method === m)).map((m) => (
+                  {p.method === '' && <option value="" disabled>Selecionar</option>}
+                  {SPLIT_METHODS.filter((m) => m === p.method || !SINGLE_METHODS.includes(m) || !parts.some((o) => o.method === m)).map((m) => (
                     <option key={m} value={m}>{PAYMENT_METHOD_LABELS[m]}</option>
                   ))}
                 </select>
                 <input
                   class="field w-28 py-2 text-right text-[13px]"
-                  aria-label={`Valor em ${PAYMENT_METHOD_LABELS[p.method]}`}
+                  aria-label={p.method ? `Valor em ${PAYMENT_METHOD_LABELS[p.method]}` : 'Valor'}
                   value={p.amount}
                   inputmode="numeric"
                   placeholder="0,00"
@@ -884,16 +883,15 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                 </button>
               </div>
             ))}
-            {parts.length < SPLIT_METHODS.length && (
-              <button
-                type="button"
-                class="font-sans text-[12px] text-agua-dark underline"
-                onClick={() =>
-                  setParts((cur) => [...cur, { method: SPLIT_METHODS.find((m) => !cur.some((o) => o.method === m))!, amount: '' }])
-                }
-              >
-                + Adicionar
-              </button>
+            <button
+              type="button"
+              class="font-sans text-[12px] text-agua-dark underline"
+              onClick={() => setParts((cur) => [...cur, { method: '', amount: '' }])}
+            >
+              + Adicionar
+            </button>
+            {parts.some((p) => !p.method) && (
+              <p class="font-sans text-[13px] text-ink-muted">Selecione a forma de pagamento.</p>
             )}
             {parts.some((p) => !moneyToCents(p.amount)) && (
               <p class="font-sans text-[13px] text-ink-muted">Informe o valor recebido por cada forma de pagamento.</p>

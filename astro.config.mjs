@@ -6,7 +6,7 @@ import vercel from '@astrojs/vercel';
 
 const vercelUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
 const SITE_URL =
-  process.env.PUBLIC_SITE_URL || (vercelUrl && `https://${vercelUrl}`) || 'http://localhost:4321';
+  process.env.SITE_URL || process.env.PUBLIC_SITE_URL || (vercelUrl && `https://${vercelUrl}`) || 'http://localhost:4321';
 
 // https://astro.build/config
 export default defineConfig({

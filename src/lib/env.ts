@@ -12,8 +12,9 @@ function read(key: string): string {
 }
 
 export const env = {
-  /** Sem PUBLIC_SITE_URL, usa o domínio de produção que a Vercel expõe. */
+  /** SITE_URL (ou PUBLIC_SITE_URL); sem nenhuma, usa o domínio de produção que a Vercel expõe. */
   siteUrl:
+    read('SITE_URL') ||
     read('PUBLIC_SITE_URL') ||
     (read('VERCEL_PROJECT_PRODUCTION_URL') && `https://${read('VERCEL_PROJECT_PRODUCTION_URL')}`) ||
     'http://localhost:4321',

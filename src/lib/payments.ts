@@ -9,7 +9,7 @@ export const SPLIT_METHODS: PaymentPart['method'][] = ['cash', 'pix', 'debit_car
  * Retorna o motivo do erro, ou null se está ok.
  */
 export function splitError(parts: PaymentPart[], totalCents: number): string | null {
-  if (parts.length < 2) return 'Combine ao menos duas formas de pagamento.';
+  if (!parts.length) return 'Informe ao menos uma forma de pagamento.';
   const methods = parts.map((p) => p.method);
   if (methods.some((m) => !SPLIT_METHODS.includes(m))) return 'Forma de pagamento inválida.';
   if (new Set(methods).size !== methods.length) return 'Cada forma de pagamento entra uma vez só.';

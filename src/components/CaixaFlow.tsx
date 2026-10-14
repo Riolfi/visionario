@@ -4,6 +4,7 @@ import { SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
 import { brl, maskMoney, moneyToCents, orderLabel } from '../lib/format';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentPart } from '../lib/types';
 import { SPLIT_METHODS, splitChange, splitError } from '../lib/payments';
+import { confirmDialog } from '../lib/confirm-dialog';
 
 interface Line {
   product_id: string;
@@ -120,10 +121,13 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   );
   const count = useMemo(() => lines.reduce((s, l) => s + l.quantity, 0), [lines]);
   const receivedCents = method === 'cash' && received ? moneyToCents(received) : null;
-  const changeCents = receivedCents == null ? null : receivedCents - total;
   const overStock = lines.some((l) => l.quantity > l.stock);
   const splitParts: PaymentPart[] = parts.map((p) => ({ method: p.method, amount_cents: moneyToCents(p.amount) }));
   const splitErr = split ? splitError(splitParts, total) : null;
+  // saldo das duas telas (uma forma em dinheiro ou combinado): falta receber ou troco
+  const paidCents = split ? splitParts.reduce((s, p) => s + p.amount_cents, 0) : (receivedCents ?? 0);
+  const due = total - paidCents;
+  const cardOver = split && splitParts.filter((p) => p.method !== 'cash').reduce((s, p) => s + p.amount_cents, 0) > total;
   // dinheiro sozinho: só fecha com o valor recebido cobrindo o total
   const cashErr =
     !split && method === 'cash' && lines.length
@@ -327,6 +331,25 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
   async function finalize() {
     if (!lines.length || busy || splitErr || cashErr) return;
+    // combinado com uma linha só vira pagamento simples
+    if (split && parts.length === 1) {
+      const only = splitParts[0]!;
+      return finalizeWith(false, only.method, only.method === 'cash' ? only.amount_cents : null);
+    }
+    return finalizeWith(split, method, receivedCents);
+  }
+
+  async function cancelPurchase() {
+    const ok = await confirmDialog({
+      title: 'Cancelar compra?',
+      message: 'Os itens e os valores informados saem do caixa.',
+      confirmLabel: 'Cancelar compra',
+      cancelLabel: 'Voltar',
+    });
+    if (ok) resetSale();
+  }
+
+  async function finalizeWith(split: boolean, method: PaymentMethod, receivedCents: number | null) {
     setBusy(true);
     setError(null);
     const payments = split ? splitParts : undefined;
@@ -568,6 +591,20 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     );
   }
 
+  /** "Falta receber" (alerta) ou "Troco" (verde); nada quando fecha exato. */
+  const balance = (amount: number) =>
+    due > 0 ? (
+      <p class="flex justify-between rounded-card bg-red-50 px-3 py-2 font-sans text-sm font-semibold text-red-700" role="status">
+        <span>Falta receber:</span>
+        <span>{brl(amount)}</span>
+      </p>
+    ) : due < 0 ? (
+      <p class="flex justify-between rounded-card bg-green-50 px-3 py-2 font-sans text-sm font-semibold text-green-700" role="status">
+        <span>Troco:</span>
+        <span>{brl(amount)}</span>
+      </p>
+    ) : null;
+
   // ---- tela do caixa --------------------------------------------------------
   return (
     <div class="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -790,7 +827,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         <div class="mt-5 flex items-baseline justify-between">
           <p class="label">Forma de pagamento</p>
           <button type="button" class="font-sans text-[12px] text-agua-dark underline" onClick={toggleSplit}>
-            {split ? 'Usar uma forma só' : 'Combinar formas'}
+            {split ? 'Desfazer' : 'Combinar'}
           </button>
         </div>
         {!split && (
@@ -834,16 +871,17 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                   placeholder="0,00"
                   onInput={(e) => setPart(i, { amount: maskMoney((e.target as HTMLInputElement).value) })}
                 />
-                {parts.length > 2 && (
-                  <button
-                    type="button"
-                    class="grid h-8 w-8 shrink-0 place-items-center rounded-card border border-red-300 text-red-700"
-                    aria-label="Remover forma"
-                    onClick={() => setParts((cur) => cur.filter((_, j) => j !== i))}
-                  >
-                    {TRASH_ICON}
-                  </button>
-                )}
+                {/* última linha não sai: a lixeira só zera o valor */}
+                <button
+                  type="button"
+                  class="grid h-8 w-8 shrink-0 place-items-center rounded-card border border-red-300 text-red-700"
+                  aria-label={parts.length > 1 ? 'Remover forma' : 'Zerar valor'}
+                  onClick={() =>
+                    parts.length > 1 ? setParts((cur) => cur.filter((_, j) => j !== i)) : setPart(i, { amount: '' })
+                  }
+                >
+                  {TRASH_ICON}
+                </button>
               </div>
             ))}
             {parts.length < SPLIT_METHODS.length && (
@@ -854,15 +892,14 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                   setParts((cur) => [...cur, { method: SPLIT_METHODS.find((m) => !cur.some((o) => o.method === m))!, amount: '' }])
                 }
               >
-                + Adicionar forma
+                + Adicionar
               </button>
             )}
-            {lines.length > 0 && (
-              <p class={`flex justify-between font-sans text-sm ${splitErr ? 'text-red-700' : 'text-ink'}`}>
-                <span>{splitErr ?? 'Troco'}</span>
-                {!splitErr && <span class="font-semibold">{brl(splitChange(splitParts, total))}</span>}
-              </p>
+            {parts.some((p) => !moneyToCents(p.amount)) && (
+              <p class="font-sans text-[13px] text-ink-muted">Informe o valor recebido por cada forma de pagamento.</p>
             )}
+            {cardOver && <p class="font-sans text-[13px] text-red-700">{splitError(splitParts, total)}</p>}
+            {lines.length > 0 && !cardOver && balance(due < 0 ? splitChange(splitParts, total) : due)}
             {parts.some((p) => p.method === 'pix') && (
               <p class="font-sans text-[12px] text-ink-muted">O Pix gera a cobrança só da parte dele; a venda fecha quando ele for pago.</p>
             )}
@@ -885,19 +922,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                 onInput={(e) => setReceived(maskMoney((e.target as HTMLInputElement).value))}
               />
             </span>
-            {lines.length > 0 && receivedCents == null && (
-              <p class="mt-2 font-sans text-[13px] text-red-700">Informe o valor recebido.</p>
-            )}
-            {changeCents != null && (
-              <p
-                class={`mt-2 flex justify-between font-sans text-sm ${
-                  changeCents < 0 ? 'text-red-700' : 'text-ink'
-                }`}
-              >
-                <span>{changeCents < 0 ? 'Falta' : 'Troco'}</span>
-                <span class="font-semibold">{brl(Math.abs(changeCents))}</span>
-              </p>
-            )}
+            {lines.length > 0 && <div class="mt-2">{balance(Math.abs(due))}</div>}
           </div>
         )}
 
@@ -920,10 +945,10 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         {lines.length > 0 && (
           <button
             type="button"
-            class="mt-2 w-full font-sans text-[13px] text-ink-muted underline"
-            onClick={resetSale}
+            class="mt-2 w-full font-sans text-[13px] text-red-700 underline"
+            onClick={cancelPurchase}
           >
-            Limpar
+            Cancelar compra
           </button>
         )}
       </aside>

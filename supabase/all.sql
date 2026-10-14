@@ -1206,3 +1206,13 @@ $$;
 -- create or replace mantém as permissões, mas reaplica a trava da 0015 por garantia
 revoke execute on function public.confirm_order_payment(text, text, text) from public, anon, authenticated;
 grant execute on function public.confirm_order_payment(text, text, text) to service_role;
+
+-- =============================================================================
+-- 0018_permission_active.sql
+-- =============================================================================
+-- =============================================================================
+-- Permissão ativa/inativa. Inativa não dá nenhuma regra a quem tem o cargo,
+-- mas continua ligada aos cargos (reativar devolve o acesso).
+-- Reexecutável. Rode no SQL Editor depois da 0017.
+-- =============================================================================
+alter table public.admin_permissions add column if not exists is_active boolean not null default true;

@@ -648,6 +648,9 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
 
       <div>
         <span class="label">Imagens do produto</span>
+        {/* sem "Cadastrar e editar produtos": só vê as imagens, sem enviar */}
+        {canEdit && (
+          <>
         <p class="text-[12px] text-ink-muted">Adicione até cinco imagens utilizando um ou mais meios.</p>
         <ul class="mb-3 mt-1 text-[12px] text-ink-muted">
           <li>Formatos aceitos: JPG, PNG, WebP ou AVIF</li>
@@ -699,8 +702,11 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
         </div>
         {showUrl && <NoticePill key={urlNotice?.id} notice={urlNotice} class="mt-2" />}
 
-        <ImageStrip images={images} onChange={setImages} />
-        {images.length > 1 && (
+          </>
+        )}
+        {!canEdit && !images.length && <p class="text-[12px] text-ink-muted">Sem imagens.</p>}
+        <ImageStrip images={images} onChange={setImages} readOnly={!canEdit} />
+        {canEdit && images.length > 1 && (
           <p class="text-[12px] text-ink-muted">A primeira é a capa. Arraste para o lado para mudar a ordem.</p>
         )}
       </div>

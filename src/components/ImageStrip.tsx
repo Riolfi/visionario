@@ -9,12 +9,14 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 interface Props {
   images: string[];
   onChange: (images: string[]) => void;
+  /** só mostra (sem arrastar nem remover) — cargo sem "Cadastrar e editar produtos" */
+  readOnly?: boolean;
 }
 
 const HOLD_MS = 280; // toque: segurar antes de arrastar
 const MOVE_TOLERANCE = 8; // px que contam como "ainda parado"
 
-export default function ImageStrip({ images, onChange }: Props) {
+export default function ImageStrip({ images, onChange, readOnly = false }: Props) {
   const strip = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<{ from: number; to: number; x: number } | null>(null);
   const dragRef = useRef(drag);
@@ -118,14 +120,14 @@ export default function ImageStrip({ images, onChange }: Props) {
         <div
           key={url}
           data-thumb
-          onPointerDown={(e) => start(i, e)}
-          class={`relative h-24 w-24 shrink-0 cursor-grab select-none overflow-hidden rounded-card border border-ink/10 bg-bone-100 transition-opacity ${drag?.from === i ? 'opacity-40' : ''}`}
+          onPointerDown={readOnly ? undefined : (e) => start(i, e)}
+          class={`relative h-24 w-24 shrink-0 ${readOnly ? '' : 'cursor-grab'} select-none overflow-hidden rounded-card border border-ink/10 bg-bone-100 transition-opacity ${drag?.from === i ? 'opacity-40' : ''}`}
         >
           <img src={url} alt="" draggable={false} class="pointer-events-none h-full w-full object-cover" loading="lazy" />
           {i === 0 && (
             <span class="absolute bottom-1 left-1 rounded bg-ink/80 px-1.5 py-0.5 text-[10px] uppercase text-bone">Capa</span>
           )}
-          <button
+          {!readOnly && <button
             type="button"
             data-remove
             onClick={() => onChange(images.filter((u) => u !== url))}
@@ -133,7 +135,7 @@ export default function ImageStrip({ images, onChange }: Props) {
             aria-label="Remover imagem"
           >
             ✕
-          </button>
+          </button>}
         </div>
       ))}
       {drag && drag.to !== drag.from && drag.to !== drag.from + 1 && (

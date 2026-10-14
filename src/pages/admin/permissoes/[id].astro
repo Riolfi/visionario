@@ -22,6 +22,8 @@ const groups = SCREENS.map((s) => ({ screen: s, rules: RULES.filter((r) => r.scr
   {flash && (
     <p role="status" class:list={['mt-4 max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
   )}
+  {/* avisos do salvar (preenchidos pelo script, sem recarregar a tela) */}
+  <div id="top-notice" role="alert" class="notice-in mt-4 hidden max-w-2xl rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700"></div>
 
   <form id="perm-form" method="POST" action="/api/admin/permissions" class="mt-4 max-w-2xl space-y-5">
     <input type="hidden" name="acao" value="salvar" />
@@ -51,35 +53,109 @@ const groups = SCREENS.map((s) => ({ screen: s, rules: RULES.filter((r) => r.scr
     ))}
 
     <p id="rules-error" class="hidden rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Ligue pelo menos uma regra.</p>
-    <button class="btn-primary w-full sm:w-auto">Salvar</button>
+
+    <label class="flex items-center gap-2 text-sm">
+      <input type="checkbox" name="is_active" checked={perm?.is_active ?? true} />
+      Ativa (dá acesso a quem tem um cargo com esta permissão)
+    </label>
+
+    <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">
+      ! Os cargos <strong>{usedBy.join(', ')}</strong> usam esta permissão. Remova em <a href="/admin/cargos" class="underline">Cargos</a> antes de excluir.
+    </p>
+    <div class="grid grid-cols-3 gap-3 pt-2">
+      <button type="submit" id="save-btn" class="btn-primary w-full">Salvar</button>
+      <button type="button" id="cancel-btn" class="btn-outline w-full">Cancelar</button>
+      {/* em uso: continua visível, mas apagado; o clique explica por quê */}
+      <button type="button" id="delete-btn" class:list={['btn-outline w-full', usedBy.length && 'cursor-not-allowed opacity-40']} aria-disabled={usedBy.length ? 'true' : undefined}>Excluir</button>
+    </div>
   </form>
 
   {perm && (
-    <div class="mt-6 max-w-2xl border-t border-ink/10 pt-5">
-      {usedBy.length ? (
-        <p class="text-sm text-ink-muted">
-          Não dá para excluir: os cargos <strong class="text-ink-soft">{usedBy.join(', ')}</strong> usam esta permissão.
-          Tire a permissão desses cargos em <a href="/admin/cargos" class="underline">Cargos</a> primeiro.
-        </p>
-      ) : (
-        <form method="POST" action="/api/admin/permissions" data-confirm={`Excluir a permissão "${perm.name}"?|Isso não pode ser desfeito.|Excluir`}>
-          <input type="hidden" name="acao" value="excluir" />
-          <input type="hidden" name="id" value={perm.id} />
-          <button class="rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Excluir permissão</button>
-        </form>
-      )}
-    </div>
+    <form id="delete-form" method="POST" action="/api/admin/permissions" class="hidden">
+      <input type="hidden" name="acao" value="excluir" />
+      <input type="hidden" name="id" value={perm.id} />
+    </form>
   )}
 </AdminLayout>
 
+<script define:vars={{ inUse: usedBy.length > 0, isNew, permName: perm?.name ?? '' }}>
+  window.__perm = { inUse, isNew, permName };
+</script>
+
 <script>
-  import { enableConfirmForms } from '../../../lib/confirm-forms';
-  enableConfirmForms();
-  // pelo menos uma regra ligada (o servidor confere de novo)
+  import { confirmDialog } from '../../../lib/confirm-dialog';
+
+  const { inUse, isNew, permName } = (window as any).__perm as { inUse: boolean; isNew: boolean; permName: string };
   const form = document.getElementById('perm-form') as HTMLFormElement;
-  form.addEventListener('submit', (e) => {
+  const top = document.getElementById('top-notice')!;
+  const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
+
+  function showTop(text: string, link?: { href: string; label: string }) {
+    top.textContent = `! ${text}`;
+    if (link) {
+      const a = document.createElement('a');
+      a.href = link.href;
+      a.textContent = link.label;
+      a.className = 'mt-1 block font-semibold underline';
+      top.appendChild(a);
+    }
+    top.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    // pelo menos uma regra ligada (o servidor confere de novo)
     const any = form.querySelector('input[name=rules]:checked');
     document.getElementById('rules-error')!.classList.toggle('hidden', !!any);
-    if (!any) e.preventDefault();
+    if (!any || !form.reportValidity()) return;
+
+    // como no produto: sempre confirma como vai ficar
+    const active = (form.querySelector('input[name=is_active]') as HTMLInputElement).checked;
+    const ok = await confirmDialog({
+      title: `Deseja salvar como ${active ? 'ativa' : 'inativa'}?`,
+      message: active ? 'Quem tem um cargo com esta permissão ganha estas regras.' : 'A permissão continua nos cargos, mas não dá acesso a nada.',
+      confirmLabel: 'Sim',
+      cancelLabel: 'Não',
+      tone: 'primary',
+    });
+    if (!ok) return;
+
+    saveBtn.disabled = true;
+    top.classList.add('hidden');
+    try {
+      const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { accept: 'application/json' } });
+      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string; existingId?: string };
+      if (r.ok && r.id) return void (window.location.href = `/admin/permissoes/${r.id}`);
+      if (r.existingId) showTop('Já existe uma permissão com as mesmas regras.', { href: `/admin/permissoes/${r.existingId}`, label: 'Abrir permissão existente' });
+      else showTop(r.error || 'Não foi possível salvar.');
+    } catch {
+      showTop('Sem conexão com o servidor.');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('cancel-btn')!.addEventListener('click', async () => {
+    const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
+    if (leave) window.location.href = '/admin/permissoes';
+  });
+
+  document.getElementById('delete-btn')!.addEventListener('click', async () => {
+    if (inUse) {
+      const n = document.getElementById('delete-notice')!;
+      n.classList.remove('hidden');
+      n.classList.remove('notice-in');
+      void n.offsetWidth; // repete a animação a cada clique
+      n.classList.add('notice-in');
+      return;
+    }
+    if (isNew) {
+      const discard = await confirmDialog({ title: 'Descartar este cadastro?', message: 'Nada foi salvo ainda.', confirmLabel: 'Descartar' });
+      if (discard) window.location.href = '/admin/permissoes';
+      return;
+    }
+    const ok = await confirmDialog({ title: 'Excluir permissão?', message: `"${permName}" será excluída. Isso não pode ser desfeito.` });
+    if (ok) (document.getElementById('delete-form') as HTMLFormElement).submit();
   });
 </script>

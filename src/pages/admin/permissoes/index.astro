@@ -16,7 +16,7 @@ const usedBy = (id: string) => roles.filter((r) => r.permission_ids.includes(id)
 
 <AdminLayout title="Permissões">
   <div class="flex items-center justify-between gap-3">
-    <p class="font-sans text-sm text-ink-muted">{permissions.length} {permissions.length === 1 ? 'permissão' : 'permissões'}</p>
+    <p id="perm-count" data-total={permissions.length} class="font-sans text-sm text-ink-muted">{permissions.length} {permissions.length === 1 ? 'permissão' : 'permissões'}</p>
     <a href="/admin/permissoes/nova" class="btn-primary">Criar Permissão</a>
   </div>
 
@@ -25,30 +25,63 @@ const usedBy = (id: string) => roles.filter((r) => r.permission_ids.includes(id)
   )}
   {loadError && <p class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Não foi possível carregar ({loadError}).</p>}
 
-  <div class="mt-6 rounded-card border border-ink/10 bg-white">
+  <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
+    <h2 class="mb-3 font-display text-lg">Pesquisar permissão</h2>
+    <label class="label" for="perm-search">Nome</label>
+    <span class="relative block">
+      <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input id="perm-search" class="field pl-11" type="search" placeholder="Pesquise pelo nome da permissão…" autocomplete="off" />
+    </span>
+  </div>
+
+  <div class="mt-4 rounded-card border border-ink/10 bg-white">
     <table class="w-full table-fixed text-left text-sm">
       <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
         <tr>
-          <th class="w-24 px-3 py-3"><span class="sr-only">Ações</span></th>
           <th class="px-3 py-3">Nome</th>
+          <th class="w-24 px-3 py-3"><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody>
         {permissions.map((p) => (
-          <tr class="border-t border-ink/10 hover:bg-bone-50">
+          <tr class="perm-row border-t border-ink/10 hover:bg-bone-50" data-name={p.name}>
             <td class="px-3 py-3">
-              <a href={`/admin/permissoes/${p.id}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>
-            </td>
-            <td class="px-3 py-3">
-              <span class="block truncate font-medium">{p.name}</span>
+              <span class="block truncate font-medium">
+                {p.name}
+                {!p.is_active && <span class="ml-1 rounded-full bg-bone-200 px-2 py-0.5 align-middle text-[10px] uppercase text-ink-muted">Inativa</span>}
+              </span>
               <span class="block truncate text-[12px] text-ink-muted">
                 {p.rules.length} {p.rules.length === 1 ? 'regra' : 'regras'} · {usedBy(p.id).length ? `cargos: ${usedBy(p.id).join(', ')}` : 'nenhum cargo usa'}
               </span>
+            </td>
+            <td class="px-3 py-3 text-right">
+              <a href={`/admin/permissoes/${p.id}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>
             </td>
           </tr>
         ))}
       </tbody>
     </table>
     {!permissions.length && !loadError && <p class="p-4 text-sm text-ink-muted">Nenhuma permissão ainda.</p>}
+    <p id="no-results" class="hidden p-4 text-sm text-ink-muted">Nenhuma permissão com esse nome.</p>
   </div>
 </AdminLayout>
+
+<script>
+  // filtra enquanto digita: todas as palavras no nome, sem acento/maiúscula (como em Produtos)
+  const fold = (t: string) => t.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const input = document.getElementById('perm-search') as HTMLInputElement;
+  const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>('tr.perm-row'));
+  const count = document.getElementById('perm-count')!;
+  input.addEventListener('input', () => {
+    const words = fold(input.value).split(/\s+/).filter(Boolean);
+    let shown = 0;
+    for (const row of rows) {
+      const ok = words.every((w) => fold(row.dataset.name ?? '').includes(w));
+      row.hidden = !ok;
+      if (ok) shown++;
+    }
+    const total = Number(count.dataset.total);
+    count.textContent = shown === total ? `${total} ${total === 1 ? 'permissão' : 'permissões'}` : `${shown} de ${total} permissões`;
+    document.getElementById('no-results')!.classList.toggle('hidden', shown > 0 || !rows.length);
+  });
+</script>

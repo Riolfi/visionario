@@ -7,7 +7,7 @@ import { isRuleKey, type RuleKey } from '../rbac';
  * Só o Dono chega às telas que usam isto (ver canAccess). Migration 0016.
  */
 
-type Result = { ok: true; id?: string } | { ok: false; error: string };
+type Result = { ok: true; id?: string } | { ok: false; error: string; existingId?: string };
 
 export interface Permission {
   id: string;
@@ -16,7 +16,11 @@ export interface Permission {
   name: string;
   description: string;
   rules: RuleKey[];
+  /** inativa não dá regra a ninguém (0018; antes dela, sempre ativa) */
+  is_active: boolean;
 }
+
+const toPermission = (p: any): Permission => ({ ...p, rules: (p.rules ?? []).filter(isRuleKey), is_active: p.is_active !== false });
 
 export interface Role {
   id: string;
@@ -33,14 +37,14 @@ export async function listPermissions(): Promise<Permission[]> {
   if (!hasSupabase || !sb) return [];
   const { data, error } = await sb.from('admin_permissions').select('*').order('name');
   if (error) throw error;
-  return (data ?? []).map((p) => ({ ...p, rules: (p.rules ?? []).filter(isRuleKey) }));
+  return (data ?? []).map(toPermission);
 }
 
 export async function getPermission(id: string): Promise<Permission | null> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb || !/^[0-9a-f-]{36}$/i.test(id)) return null;
   const { data } = await sb.from('admin_permissions').select('*').eq('id', id).maybeSingle();
-  return data ? { ...data, rules: (data.rules ?? []).filter(isRuleKey) } : null;
+  return data ? toPermission(data) : null;
 }
 
 /** Nomes dos cargos que usam a permissão (não deixa excluir se houver). */
@@ -55,7 +59,7 @@ export async function rolesUsingPermission(id: string): Promise<string[]> {
  * Permissão = grupo de regras de qualquer tela. A coluna `screen` (0016)
  * virou legado: as novas ficam como 'geral'.
  */
-export async function savePermission(input: { id?: string; name: string; description: string; rules: unknown[] }): Promise<Result> {
+export async function savePermission(input: { id?: string; name: string; description: string; rules: unknown[]; is_active: boolean }): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
   const name = input.name.trim().slice(0, 80);
@@ -65,11 +69,19 @@ export async function savePermission(input: { id?: string; name: string; descrip
   // nome único (a constraint antiga é por tela+nome)
   const { data: same } = await sb.from('admin_permissions').select('id').ilike('name', name);
   if ((same ?? []).some((p) => p.id !== input.id)) return { ok: false, error: 'Já existe uma permissão com esse nome.' };
-  const row = { name, description: input.description.trim().slice(0, 200), rules };
+  // mesmas regras de outra permissão: seria só um nome a mais pro mesmo acesso
+  const key = [...rules].sort().join(',');
+  const { data: all } = await sb.from('admin_permissions').select('id, rules');
+  const twin = (all ?? []).find((p) => p.id !== input.id && [...(p.rules ?? [])].sort().join(',') === key);
+  if (twin) return { ok: false, error: 'Já existe uma permissão com as mesmas regras.', existingId: twin.id };
+  // is_active só vai quando desliga: antes da migration 0018 salvar ativa continua funcionando
+  const row = { name, description: input.description.trim().slice(0, 200), rules, ...(input.is_active ? {} : { is_active: false }) };
   const { data, error } = input.id
     ? await sb.from('admin_permissions').update(row).eq('id', input.id).select('id').single()
     : await sb.from('admin_permissions').insert({ ...row, screen: 'geral' }).select('id').single();
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0018_permission_active.sql no Supabase para desativar permissões.' : error.message };
+  // reativar: precisa gravar true explicitamente
+  if (input.id && input.is_active) await sb.from('admin_permissions').update({ is_active: true }).eq('id', data.id).then(() => {}, () => {});
   return { ok: true, id: data.id };
 }
 
@@ -107,12 +119,13 @@ export async function roleRules(roleId: string): Promise<{ isOwner: boolean; rul
   if (!hasSupabase || !sb) return null;
   const { data } = await sb
     .from('admin_roles')
-    .select('is_owner, admin_role_permissions(admin_permissions(rules))')
+    .select('is_owner, admin_role_permissions(admin_permissions(*))')
     .eq('id', roleId)
     .maybeSingle();
   if (!data) return null;
   const rules = new Set<RuleKey>();
-  for (const rp of (data.admin_role_permissions ?? []) as unknown as { admin_permissions: { rules: string[] } | null }[]) {
+  for (const rp of (data.admin_role_permissions ?? []) as unknown as { admin_permissions: { rules: string[]; is_active?: boolean } | null }[]) {
+    if (rp.admin_permissions?.is_active === false) continue;
     for (const r of rp.admin_permissions?.rules ?? []) if (isRuleKey(r)) rules.add(r);
   }
   return { isOwner: data.is_owner, rules: [...rules] };

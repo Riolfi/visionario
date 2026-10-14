@@ -37,7 +37,7 @@ export async function getAdminAccess(userId: string): Promise<AdminAccess | null
   if (row.role_id) {
     const { data: role, error: roleErr } = await sb
       .from('admin_roles')
-      .select('id, name, is_owner, admin_role_permissions(admin_permissions(rules))')
+      .select('id, name, is_owner, admin_role_permissions(admin_permissions(*))')
       .eq('id', row.role_id)
       .maybeSingle();
     if (roleErr) {
@@ -47,7 +47,9 @@ export async function getAdminAccess(userId: string): Promise<AdminAccess | null
     if (!role) return { isOwner: false, roleId: null, roleName: 'Sem cargo', rules: [] };
     if (role.is_owner) return OWNER(role.id, role.name);
     const rules = new Set<RuleKey>();
-    for (const rp of (role.admin_role_permissions ?? []) as unknown as { admin_permissions: { rules: string[] } | null }[]) {
+    // permissão inativa (0018) não dá regra nenhuma; antes da 0018 não há a coluna
+    for (const rp of (role.admin_role_permissions ?? []) as unknown as { admin_permissions: { rules: string[]; is_active?: boolean } | null }[]) {
+      if (rp.admin_permissions?.is_active === false) continue;
       for (const r of rp.admin_permissions?.rules ?? []) if (isRuleKey(r)) rules.add(r);
     }
     return { isOwner: false, roleId: role.id, roleName: role.name, rules: [...rules] };

@@ -1,11 +1,11 @@
-import { useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { brl, orderLabel } from '../lib/format';
 
 /**
  * Lista de Compras do admin: busca pelo código, filtro por coluna (pop-up
  * "Filtro": Formato e Status em multi-seleção, Data com "até" opcional),
  * filtros aplicados viram etiquetas removíveis ao lado do botão, e o rodapé
- * fixo soma o que está na tela. Tudo no navegador (a página traz as compras).
+ * (linha de totais no fim da tabela, presa no fim da tela) soma o que está na tela. Tudo no navegador (a página traz as compras).
  */
 export interface OrderRow {
   number: string;
@@ -45,6 +45,9 @@ const localDay = (iso: string) => {
 const br = (day: string) => day.split('-').reverse().join('/');
 const labelOf = (list: readonly (readonly [string, string])[], key: string) => list.find(([k]) => k === key)?.[1] ?? key;
 
+/** Colunas proporcionais; abaixo da largura mínima a tabela rola pro lado. */
+const COLS = 'grid grid-cols-[1.1fr_1fr_0.9fr_1.6fr_1fr] min-w-[34rem]';
+
 const FILTER_ICON = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
 );
@@ -58,6 +61,22 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
   const [draft, setDraft] = useState<Filters>(EMPTY);
   const [open, setOpen] = useState<string | null>(null); // seção aberta no pop-up
   const dialog = useRef<HTMLDialogElement>(null);
+  const box = useRef<HTMLDivElement>(null);
+
+  // a tabela ocupa até o fim da tela: cabeçalho em cima, totais embaixo e as
+  // compras rolando entre eles (sobra espaço em branco quando são poucas)
+  useEffect(() => {
+    const fit = () => {
+      const el = box.current;
+      if (!el) return;
+      const top = el.getBoundingClientRect().top + window.scrollY;
+      const pad = parseFloat(getComputedStyle(el.closest('main') ?? document.body).paddingBottom) || 0;
+      el.style.height = `${Math.max(280, window.innerHeight - top - pad)}px`;
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase().replace(/^#/, '');
@@ -192,42 +211,36 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
         </span>
       </div>
 
-      <div class="mt-4 rounded-card border border-ink/10 bg-white">
-        <table class="w-full table-fixed text-left text-sm">
-          <thead class="border-b border-ink/10 text-[10px] uppercase tracking-[0.04em] text-ink-muted sm:text-[11px] sm:tracking-[0.1em]">
-            <tr>
-              <th class="px-2 py-3 sm:px-3">Compra</th>
-              <th class="hidden w-28 px-3 py-3 sm:table-cell">Data</th>
-              <th class="w-14 px-1 py-3 sm:w-24 sm:px-3">Formato</th>
-              <th class="w-[5.5rem] px-1 py-3 sm:w-44 sm:px-3">Status</th>
-              <th class="w-[5rem] px-2 py-3 text-right sm:w-28 sm:px-3">Valor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((o) => {
-              const date = new Date(o.created_at).toLocaleDateString('pt-BR');
-              return (
-                <tr key={o.number} class="border-t border-ink/10 hover:bg-bone-50">
-                  <td class="px-2 py-3 sm:px-3">
-                    <a href={`/admin/pedidos/${o.number}`} class="block truncate text-agua-dark">{orderLabel(o.number)}</a>
-                    <span class="block text-[12px] text-ink-muted sm:hidden">{date}</span>
-                  </td>
-                  <td class="hidden px-3 py-3 text-ink-muted sm:table-cell">{date}</td>
-                  <td class="px-1 py-3 text-[13px] text-ink-soft sm:px-3 sm:text-sm">{o.source === 'caixa' ? 'Física' : 'Online'}</td>
-                  <td class="px-1 py-3 sm:px-3"><span class="inline-block rounded-full bg-bone-200 px-2 py-0.5 text-[10px] uppercase leading-tight sm:text-[11px]">{o.status_label}</span></td>
-                  <td class="px-2 py-3 text-right text-[13px] sm:px-3 sm:text-sm">{brl(o.total_cents)}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {visible.length === 0 && <p class="p-6 text-center text-sm text-ink-muted">Nenhuma compra encontrada.</p>}
-      </div>
-
-      {/* rodapé fixo: acompanha busca e filtros */}
-      <div class="sticky bottom-0 z-10 -mx-4 mt-4 flex items-center justify-between gap-4 border-t border-ink/10 bg-bone px-4 py-3 font-sans text-sm sm:-mx-6 sm:px-6">
-        <span>Compras: <strong>{visible.length}</strong></span>
-        <span>Total: <strong>{brl(total)}</strong></span>
+      {/* uma área de rolagem só: cabeçalho, compras e totais rolam juntos pro lado */}
+      <div ref={box} class="mt-4 overflow-auto rounded-card border border-ink/10 bg-white" role="table" aria-label="Compras">
+        <div class="flex min-h-full w-full min-w-fit flex-col text-sm">
+          <div role="row" class={`${COLS} sticky top-0 z-10 border-b border-ink/10 bg-white text-[11px] uppercase tracking-[0.1em] text-ink-muted`}>
+            <span role="columnheader" class="px-3 py-3">Compra</span>
+            <span role="columnheader" class="px-3 py-3">Data</span>
+            <span role="columnheader" class="px-3 py-3">Formato</span>
+            <span role="columnheader" class="px-3 py-3">Status</span>
+            <span role="columnheader" class="px-3 py-3 text-right">Valor</span>
+          </div>
+          {visible.map((o) => (
+            <div role="row" key={o.number} class={`${COLS} items-center border-b border-ink/10 hover:bg-bone-50`}>
+              <span role="cell" class="truncate px-3 py-3">
+                <a href={`/admin/pedidos/${o.number}`} class="text-agua-dark">{orderLabel(o.number)}</a>
+              </span>
+              <span role="cell" class="px-3 py-3 text-ink-muted">{new Date(o.created_at).toLocaleDateString('pt-BR')}</span>
+              <span role="cell" class="px-3 py-3 text-ink-soft">{o.source === 'caixa' ? 'Física' : 'Online'}</span>
+              <span role="cell" class="px-3 py-3"><span class="inline-block rounded-full bg-bone-200 px-2 py-0.5 text-[11px] uppercase leading-tight">{o.status_label}</span></span>
+              <span role="cell" class="px-3 py-3 text-right">{brl(o.total_cents)}</span>
+            </div>
+          ))}
+          {visible.length === 0 && <p class="p-6 text-center text-sm text-ink-muted">Nenhuma compra encontrada.</p>}
+          {/* espaço em branco até os totais */}
+          <div class="flex-1" aria-hidden="true" />
+          <div role="row" class={`${COLS} sticky bottom-0 z-10 border-t border-ink/10 bg-bone font-sans`}>
+            <span role="cell" class="whitespace-nowrap px-3 py-3">Compras: <strong>{visible.length}</strong></span>
+            <span role="cell" /><span role="cell" /><span role="cell" />
+            <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold">{brl(total)}</span>
+          </div>
+        </div>
       </div>
 
       {/* pop-up "Filtro": folha de baixo no celular, centralizado no desktop */}
@@ -270,7 +283,14 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
           </div>
 
           <div class="grid grid-cols-2 gap-3 border-t border-ink/10 bg-[#f2f1f6] px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3">
-            <button type="button" onClick={() => setDraft(EMPTY)} class="rounded-full border border-ink/15 bg-white py-3.5 font-sans text-[16px] text-ink hover:border-ink">
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(EMPTY);
+                setApplied(EMPTY);
+                close();
+              }}
+              class="rounded-full border border-ink/15 bg-white py-3.5 font-sans text-[16px] text-ink hover:border-ink">
               Limpar
             </button>
             <button type="button" onClick={apply} class="rounded-full bg-ink py-3.5 font-sans text-[16px] font-semibold text-bone">

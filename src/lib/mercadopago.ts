@@ -46,23 +46,24 @@ export interface PaymentResult {
 export async function processPayment(
   order: Order,
   form: BrickFormData,
-  /** cobrar só uma parte (Pix dentro de um pagamento combinado no Caixa) */
-  amountCents = order.total_cents,
+  /** Pix em partes (Caixa): valor da parte e referência própria `<pedido>:pixN` */
+  part?: { amountCents: number; ref: string },
 ): Promise<PaymentResult> {
   const cfg = client();
+  const ref = part?.ref ?? order.order_number;
 
   if (!cfg) {
-    return { status: 'simulado', paymentId: `SIMULADO-${order.order_number}`, method: form.payment_method_id || 'simulado' };
+    return { status: 'simulado', paymentId: `SIMULADO-${ref}`, method: form.payment_method_id || 'simulado' };
   }
 
   const payment = new Payment(cfg);
   const isPix = form.payment_method_id === 'pix';
 
   const body: Record<string, unknown> = {
-    transaction_amount: amountCents / 100,
+    transaction_amount: (part?.amountCents ?? order.total_cents) / 100,
     description: `Pedido ${order.order_number} — ${env.brandName}`,
     payment_method_id: form.payment_method_id,
-    external_reference: order.order_number,
+    external_reference: ref,
     notification_url: `${env.siteUrl}/api/webhooks/mercadopago`,
     payer: {
       email: form.payer?.email || order.customer_email,
@@ -85,7 +86,7 @@ export async function processPayment(
 
   const res = await payment.create({
     body: body as never,
-    requestOptions: { idempotencyKey: order.order_number },
+    requestOptions: { idempotencyKey: ref },
   });
 
   const result: PaymentResult = {

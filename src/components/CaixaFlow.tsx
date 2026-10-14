@@ -41,6 +41,22 @@ interface PixWait {
   pix_cents?: number;
   payments?: PaymentPart[];
   pix: { qrCode: string; qrCodeBase64: string; ticketUrl: string } | null;
+  /** combinado com Pix: um QR por parte, em sequência (`paid` = Pix já pagos) */
+  split?: { index: number; count: number; paid: string[]; current: string };
+}
+
+/** Resposta do servidor para o Pix em partes (action pix_split). */
+interface SplitStep {
+  error?: string;
+  state?: 'charge' | 'waiting' | 'done' | 'failed';
+  order_id?: string;
+  order_number?: string;
+  total_cents?: number;
+  index?: number;
+  count?: number;
+  amount_cents?: number;
+  payment_id?: string | null;
+  pix?: PixWait['pix'];
 }
 
 const METHODS: PaymentMethod[] = ['cash', 'pix', 'debit_card', 'credit_card'];
@@ -87,11 +103,47 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     focusScanner();
   }, []);
 
+  /** Aplica um passo do Pix em partes: próximo QR, venda fechada ou falha. */
+  function applySplitStep(data: SplitStep, paid: string[], payments: PaymentPart[] | undefined) {
+    if (data.state === 'charge' && data.order_number) {
+      setPixWait({
+        order_id: data.order_id ?? '',
+        order_number: data.order_number,
+        total_cents: data.total_cents ?? total,
+        pix_cents: data.amount_cents,
+        payments,
+        pix: data.pix ?? null,
+        split: { index: data.index ?? 0, count: data.count ?? 1, paid, current: data.payment_id ?? '' },
+      });
+    } else if (data.state === 'done' && data.order_number) {
+      setDone({ order_number: data.order_number, total_cents: data.total_cents ?? total, received_cents: null, method: 'misto', payments });
+      setPixWait(null);
+    } else if (data.state === 'failed') {
+      setError('O Pix não foi confirmado. Tente de novo.');
+      setPixWait(null);
+    } else if (data.error) {
+      setError(data.error);
+    }
+  }
+
   // ---- Polling do Pix: enquanto aguarda, checa a cada 3s se já confirmou ----
   useEffect(() => {
     if (!pixWait) return;
     const id = window.setInterval(async () => {
       try {
+        if (pixWait.split) {
+          // combinado: o servidor confere este Pix no Mercado Pago e cobra o próximo
+          const ids = [...pixWait.split.paid, pixWait.split.current];
+          const res = await fetch('/api/admin/caixa', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ action: 'pix_split', order_number: pixWait.order_number, payment_ids: ids }),
+          });
+          const data = (await res.json().catch(() => ({}))) as SplitStep;
+          if (data.state !== 'waiting') window.clearInterval(id);
+          applySplitStep(data, ids, pixWait.payments);
+          return;
+        }
         const res = await fetch(`/api/payments/status?id=${pixWait.order_id}`);
         const data = (await res.json().catch(() => ({}))) as { status?: string };
         if (data.status === 'paid') {
@@ -351,9 +403,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     setBusy(true);
     setError(null);
     const payments = split ? splitParts : undefined;
-    const pixPart = payments?.find((p) => p.method === 'pix');
     try {
-      if (split ? pixPart : method === 'pix') {
+      if (split ? payments!.some((p) => p.method === 'pix') : method === 'pix') {
         const res = await fetch('/api/admin/caixa', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
@@ -363,14 +414,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             payments,
           }),
         });
-        const data = (await res.json().catch(() => ({}))) as {
-          error?: string;
-          status?: string;
-          order_id?: string;
-          order_number?: string;
-          total_cents?: number;
-          pix?: PixWait['pix'];
-        };
+        const data = (await res.json().catch(() => ({}))) as SplitStep & { status?: string };
+        if (payments && res.ok) return applySplitStep(data, [], payments);
         if (!res.ok || data.error || !data.order_number) {
           setError(data.error || 'Não foi possível gerar o Pix.');
           return;
@@ -390,8 +435,6 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
           order_id: data.order_id ?? '',
           order_number: data.order_number,
           total_cents: data.total_cents ?? total,
-          pix_cents: pixPart?.amount_cents,
-          payments,
           pix: data.pix ?? null,
         });
         return;
@@ -427,6 +470,16 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
   async function cancelPix() {
     if (!pixWait || busy) return;
+    if (
+      pixWait.split?.paid.length &&
+      !(await confirmDialog({
+        title: 'Cancelar a venda?',
+        message: 'Já entrou Pix nesta venda. Ao cancelar, devolva esse valor pelo Mercado Pago.',
+        confirmLabel: 'Cancelar venda',
+        cancelLabel: 'Voltar',
+      }))
+    )
+      return;
     setBusy(true);
     try {
       await fetch('/api/admin/caixa', {
@@ -494,8 +547,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
         {!cancelled && done.payments && (
           <div class="mt-4 space-y-1 rounded-card bg-bone-50 p-4 font-sans text-sm">
-            {done.payments.map((p) => (
-              <div key={p.method} class="flex justify-between">
+            {done.payments.map((p, i) => (
+              <div key={i} class="flex justify-between">
                 <span class="text-ink-muted">{PAYMENT_METHOD_LABELS[p.method]}</span>
                 <span>{brl(p.amount_cents)}</span>
               </div>
@@ -529,7 +582,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             </button>
           )}
           <a href="/admin/pedidos" class="font-sans text-[13px] text-ink-muted underline">
-            Ver em Pedidos
+            Ver em Compras
           </a>
         </div>
       </div>
@@ -544,6 +597,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         <p class="mt-2 font-display text-3xl">{brl(pixWait.pix_cents ?? pixWait.total_cents)}</p>
         <p class="mt-1 font-sans text-[13px] text-ink-muted">
           Pedido {orderLabel(pixWait.order_number)}
+          {pixWait.split && pixWait.split.count > 1 && ` · Pix ${pixWait.split.index + 1} de ${pixWait.split.count}`}
           {pixWait.pix_cents != null && ` · parte do total de ${brl(pixWait.total_cents)}`}
         </p>
 
@@ -899,7 +953,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             {cardOver && <p class="font-sans text-[13px] text-red-700">{splitError(splitParts, total)}</p>}
             {lines.length > 0 && !cardOver && balance(due < 0 ? splitChange(splitParts, total) : due)}
             {parts.some((p) => p.method === 'pix') && (
-              <p class="font-sans text-[12px] text-ink-muted">O Pix gera a cobrança só da parte dele; a venda fecha quando ele for pago.</p>
+              <p class="font-sans text-[12px] text-ink-muted">Cada Pix gera um QR Code só com o valor dele, um depois do outro; a venda fecha quando todos forem pagos.</p>
             )}
           </div>
         )}

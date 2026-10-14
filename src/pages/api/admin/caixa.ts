@@ -6,9 +6,9 @@ import {
   getOrderByNumber,
   setOrderStatus,
 } from '../../../lib/repo/orders';
-import { processPayment } from '../../../lib/mercadopago';
+import { getPaymentStatus, hasMercadoPago, processPayment } from '../../../lib/mercadopago';
 import { fulfillPaidOrder } from '../../../lib/fulfillment';
-import type { PaymentMethod } from '../../../lib/types';
+import type { Order, PaymentMethod } from '../../../lib/types';
 import { can } from '../../../lib/rbac';
 import { getProductById } from '../../../lib/repo/catalog';
 import { parseParts, splitError } from '../../../lib/payments';
@@ -17,8 +17,10 @@ import { parseParts, splitError } from '../../../lib/payments';
  * POST /api/admin/caixa
  *  - { items: [{ product_id, quantity }], method }  → finaliza a venda (dinheiro/cartão)
  *  - { items, method: 'misto', payments }           → idem, pagamento combinado sem Pix
- *  - { action: 'pix_charge', items, payments? }     → gera uma cobrança Pix real p/ os itens
- *                                                     (com payments: só a parte do Pix)
+ *  - { action: 'pix_charge', items }                → gera uma cobrança Pix real p/ os itens
+ *  - { action: 'pix_charge', items, payments }      → combinado com Pix: cria o pedido e cobra o 1º Pix
+ *  - { action: 'pix_split', order_number, payment_ids } → confere os Pix pagos e cobra o próximo
+ *                                                     (fecha a venda quando todos foram pagos)
  *  - { action: 'cancel_pix', order_number }         → desiste de um Pix ainda não pago
  *  - { action: 'cancel', order_number }             → cancela venda já paga e devolve estoque
  *
@@ -36,6 +38,50 @@ async function saleTotal(items: { product_id: string; quantity: number }[]): Pro
     total += p.price_cents * Math.max(1, Math.floor(i.quantity));
   }
   return total;
+}
+
+/**
+ * Pix de um pagamento combinado: cada parte Pix é uma cobrança própria, com
+ * referência `<pedido>:pixN` (o webhook não acha pedido com esse número e
+ * ignora). Quem fecha a venda é o Caixa, chamando isto enquanto espera:
+ * confere no Mercado Pago os Pix já gerados, cobra o próximo e, com todos
+ * pagos, confirma o pedido (baixa o estoque).
+ * ponytail: só o Caixa aberto confirma; fechar a tela no meio deixa o pedido pendente.
+ */
+async function advancePixSplit(order: Order, paymentIds: string[]): Promise<Response> {
+  const pix = (order.payments ?? []).filter((p) => p.method === 'pix');
+  const ref = (i: number) => `${order.order_number}:pix${i}`;
+  if (paymentIds.length > pix.length) return json({ error: 'Pix a mais.' }, 400);
+
+  for (const [i, id] of paymentIds.entries()) {
+    if (!hasMercadoPago) continue; // modo demonstração: tudo aprovado
+    const st = await getPaymentStatus(id);
+    if (!st || st.externalReference !== ref(i)) return json({ error: 'Pix não confere com a venda.' }, 400);
+    if (st.status === 'approved') continue;
+    if (st.status === 'rejected' || st.status === 'cancelled') return json({ ok: true, state: 'failed' });
+    return json({ ok: true, state: 'waiting' });
+  }
+
+  if (paymentIds.length < pix.length) {
+    const i = paymentIds.length;
+    const r = await processPayment(order, { payment_method_id: 'pix' }, { amountCents: pix[i]!.amount_cents, ref: ref(i) });
+    if (r.status === 'rejected') return json({ error: r.detail || 'Pix recusado. Tente novamente.' }, 502);
+    return json({
+      ok: true,
+      state: 'charge',
+      order_id: order.id,
+      order_number: order.order_number,
+      total_cents: order.total_cents,
+      index: i,
+      count: pix.length,
+      amount_cents: pix[i]!.amount_cents,
+      payment_id: r.paymentId,
+      pix: r.pix ?? null,
+    });
+  }
+
+  await fulfillPaidOrder(order.order_number, { paymentId: paymentIds.join(','), method: 'pix' });
+  return json({ ok: true, state: 'done', order_number: order.order_number, total_cents: order.total_cents });
 }
 
 function json(body: unknown, status = 200): Response {
@@ -65,17 +111,16 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (!items.length) return json({ error: 'Adicione ao menos um item.' }, 400);
 
     try {
-      // combinado: valida as partes e cobra no Pix só a parte dele
-      const payments = body.payments ? parseParts(body.payments) : undefined;
-      let pixCents: number | undefined;
-      if (payments) {
+      // combinado: valida as partes, cria o pedido e cobra o 1º Pix
+      if (body.payments) {
+        const payments = parseParts(body.payments);
         const err = splitError(payments, await saleTotal(items));
         if (err) return json({ error: err }, 400);
-        pixCents = payments.find((p) => p.method === 'pix')?.amount_cents;
-        if (!pixCents) return json({ error: 'Pagamento combinado sem Pix.' }, 400);
+        if (!payments.some((p) => p.method === 'pix')) return json({ error: 'Pagamento combinado sem Pix.' }, 400);
+        return advancePixSplit(await createCaixaPixOrder({ items, payments }), []);
       }
-      const order = await createCaixaPixOrder({ items, payments });
-      const result = await processPayment(order, { payment_method_id: 'pix' }, pixCents);
+      const order = await createCaixaPixOrder({ items });
+      const result = await processPayment(order, { payment_method_id: 'pix' });
 
       if (result.status === 'approved' || result.status === 'simulado') {
         await fulfillPaidOrder(order.order_number, { paymentId: result.paymentId, method: 'pix' });
@@ -98,6 +143,20 @@ export const POST: APIRoute = async ({ request, locals }) => {
       });
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : 'Falha ao gerar o Pix.' }, 500);
+    }
+  }
+
+  // --- Pix em partes: confere os pagos, cobra o próximo, fecha no último ---
+  if (body.action === 'pix_split') {
+    const order = await getOrderByNumber(String(body.order_number || '').trim());
+    if (!order || order.source !== 'caixa' || order.payment_method !== 'misto') return json({ error: 'Venda não encontrada.' }, 404);
+    if (order.status === 'paid') return json({ ok: true, state: 'done', order_number: order.order_number, total_cents: order.total_cents });
+    if (order.status !== 'pending') return json({ ok: true, state: 'failed' });
+    const ids = Array.isArray(body.payment_ids) ? body.payment_ids.map(String) : [];
+    try {
+      return await advancePixSplit(order, ids);
+    } catch (e) {
+      return json({ error: e instanceof Error ? e.message : 'Falha no Pix.' }, 500);
     }
   }
 

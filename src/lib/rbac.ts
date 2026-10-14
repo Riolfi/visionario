@@ -32,6 +32,7 @@ export const RULES = [
   { key: 'produtos.excluir', screen: 'produtos', label: 'Excluir produtos', help: 'Apagar produtos (ou desativar os que já foram vendidos).' },
   { key: 'pedidos.ver', screen: 'pedidos', label: 'Ver pedidos', help: 'Lista e detalhes dos pedidos, com dados do cliente.' },
   { key: 'pedidos.status', screen: 'pedidos', label: 'Mudar status de pedidos', help: 'Marcar como pago, enviado, entregue ou cancelado (mexe no estoque).' },
+  { key: 'pedidos.cancelar', screen: 'pedidos', label: 'Cancelar compras', help: 'Botão "Cancelar compra" no detalhe da compra (online ou do Caixa); devolve os itens ao estoque.' },
   { key: 'ofertas.ver', screen: 'ofertas', label: 'Ver ofertas', help: 'Carrossel da página inicial.' },
   { key: 'ofertas.editar', screen: 'ofertas', label: 'Editar ofertas', help: 'Criar, alterar e excluir banners do carrossel.' },
   { key: 'categorias.ver', screen: 'categorias', label: 'Ver categorias', help: 'Árvore de categorias.' },
@@ -91,6 +92,7 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
   if (under('/api/admin/products')) return method === 'DELETE' ? can(a, 'produtos.excluir') : pick('produtos.ver', 'produtos.editar');
   if (under('/admin/produtos')) return can(a, 'produtos.ver');
   if (under('/admin/pedidos')) return can(a, 'pedidos.ver');
+  if (under('/api/admin/orders/cancel')) return can(a, 'pedidos.cancelar');
   if (under('/api/admin/orders')) return pick('pedidos.ver', 'pedidos.status');
   if (under('/admin/ofertas')) return can(a, 'ofertas.ver');
   if (under('/api/admin/offers')) return pick('ofertas.ver', 'ofertas.editar');

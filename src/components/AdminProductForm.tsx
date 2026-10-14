@@ -148,6 +148,7 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
   }, []);
   // aviso embaixo do campo de link (ex.: ✓ sem link colado)
   const [urlNotice, showUrlNotice, hideUrlNotice] = useTimedNotice();
+  const [stockNotice, showStockNotice] = useTimedNotice();
 
   // campos obrigatórios vazios na última tentativa de salvar (ficam em vermelho)
   const [invalid, setInvalid] = useState<Set<string>>(new Set());
@@ -706,10 +707,18 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
 
       <div class="flex flex-wrap gap-x-6 gap-y-2">
         <label class={`flex items-center gap-2 text-sm ${outOfStock ? 'cursor-not-allowed opacity-50' : ''}`}>
+          {/* aria-disabled em vez de disabled: campo desativado não recebe o
+              clique, e o clique é o que mostra o aviso */}
           <input
             type="checkbox"
             checked={form.is_active && !outOfStock}
-            disabled={outOfStock}
+            aria-disabled={outOfStock}
+            class={outOfStock ? 'cursor-not-allowed' : ''}
+            onClick={(e) => {
+              if (!outOfStock) return;
+              e.preventDefault();
+              showStockNotice('produto sem estoque', 'erro');
+            }}
             onChange={(e) => upd('is_active', (e.target as HTMLInputElement).checked)}
           />
           Ativo (visível na loja)
@@ -720,6 +729,7 @@ export default function AdminProductForm({ product, tree, initialBarcode, canEdi
           Mais vendido
         </label>
       </div>
+      {outOfStock && <NoticePill key={stockNotice?.id} notice={stockNotice} class="-mt-2" />}
 
       {/* botões do mesmo tamanho: colunas iguais */}
       {!canEdit && (

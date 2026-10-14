@@ -46,7 +46,8 @@ const br = (day: string) => day.split('-').reverse().join('/');
 const labelOf = (list: readonly (readonly [string, string])[], key: string) => list.find(([k]) => k === key)?.[1] ?? key;
 
 /** Colunas proporcionais; abaixo da largura mínima a tabela rola pro lado. */
-const COLS = 'grid grid-cols-[1.1fr_1fr_0.9fr_1.6fr_1fr] min-w-[34rem]';
+// última coluna: botão Editar (e a margem à direita do total no rodapé)
+const COLS = 'grid grid-cols-[1.1fr_1fr_0.9fr_1.6fr_1fr_5.5rem] min-w-[40rem]';
 
 const FILTER_ICON = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
@@ -220,6 +221,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
             <span role="columnheader" class="px-3 py-3">Formato</span>
             <span role="columnheader" class="px-3 py-3">Status</span>
             <span role="columnheader" class="px-3 py-3 text-right">Valor</span>
+            <span role="columnheader" class="px-3 py-3"><span class="sr-only">Ações</span></span>
           </div>
           {visible.map((o) => (
             <div role="row" key={o.number} class={`${COLS} items-center border-b border-ink/10 hover:bg-bone-50`}>
@@ -230,6 +232,9 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
               <span role="cell" class="px-3 py-3 text-ink-soft">{o.source === 'caixa' ? 'Física' : 'Online'}</span>
               <span role="cell" class="px-3 py-3"><span class="inline-block rounded-full bg-bone-200 px-2 py-0.5 text-[11px] uppercase leading-tight">{o.status_label}</span></span>
               <span role="cell" class="px-3 py-3 text-right">{brl(o.total_cents)}</span>
+              <span role="cell" class="px-3 py-2 text-right">
+                <a href={`/admin/pedidos/${o.number}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>
+              </span>
             </div>
           ))}
           {visible.length === 0 && <p class="p-6 text-center text-sm text-ink-muted">Nenhuma compra encontrada.</p>}
@@ -239,6 +244,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
             <span role="cell" class="whitespace-nowrap px-3 py-3">Compras: <strong>{visible.length}</strong></span>
             <span role="cell" /><span role="cell" /><span role="cell" />
             <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold">{brl(total)}</span>
+            <span role="cell" />
           </div>
         </div>
       </div>

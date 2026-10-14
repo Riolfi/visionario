@@ -1,0 +1,80 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import { RULES, SCREENS } from '../../../lib/rbac';
+import { listPermissions, listRoles, type Permission } from '../../../lib/repo/roles';
+import { takeFlash } from '../../../lib/flash';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+const isNew = id === 'novo';
+const [roles, permissions] = await Promise.all([listRoles(), listPermissions().catch(() => [] as Permission[])]);
+const role = isNew ? null : roles.find((r) => r.id === id);
+// Dono não se edita; cargo inexistente volta pra lista
+if (!isNew && (!role || role.is_owner)) return Astro.redirect('/admin/cargos');
+const flash = takeFlash(Astro.cookies);
+// telas que cada permissão cobre (pelas regras dela)
+const screensOf = (rules: string[]) =>
+  SCREENS.filter((s) => RULES.some((r) => r.screen === s.key && rules.includes(r.key))).map((s) => s.label).join(', ');
+---
+
+<AdminLayout title={isNew ? 'Novo cargo' : 'Cargo'}>
+  <a href="/admin/cargos" class="font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink">← Cargos</a>
+
+  {flash && (
+    <p role="status" class:list={['mt-4 max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+  )}
+
+  <form method="POST" action="/api/admin/roles" class="mt-4 max-w-2xl space-y-5">
+    <input type="hidden" name="acao" value="salvar" />
+    <input type="hidden" name="id" value={role?.id ?? ''} />
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="block"><span class="label">Nome</span><input class="field" name="name" value={role?.name ?? ''} required minlength="2" maxlength="60" placeholder="Ex.: Atendente" /></label>
+      <label class="block"><span class="label">Descrição <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="description" value={role?.description ?? ''} maxlength="200" /></label>
+    </div>
+
+    <fieldset class="rounded-card border border-ink/10 bg-white">
+      <legend class="sr-only">Permissões</legend>
+      <h2 class="border-b border-ink/10 px-4 py-3 font-display text-lg" aria-hidden="true">Permissões</h2>
+      {permissions.length ? (
+        <div class="divide-y divide-ink/10">
+          {permissions.map((p) => (
+            <label class="flex cursor-pointer items-start gap-3 px-4 py-3 hover:bg-bone-50">
+              <input type="checkbox" name="permissions" value={p.id} checked={role?.permission_ids.includes(p.id)} class="mt-1 h-4 w-4 shrink-0" />
+              <span class="min-w-0">
+                <span class="block text-sm font-medium">{p.name}</span>
+                <span class="block text-[12px] text-ink-muted">{p.description || screensOf(p.rules)}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p class="px-4 py-3 text-sm text-ink-muted">Nenhuma permissão criada. Crie em <a href="/admin/permissoes" class="underline">Permissões</a>.</p>
+      )}
+    </fieldset>
+
+    <button class="btn-primary w-full sm:w-auto">Salvar</button>
+  </form>
+
+  {role && (
+    <div class="mt-6 max-w-2xl border-t border-ink/10 pt-5">
+      {role.members ? (
+        <p class="text-sm text-ink-muted">
+          Não dá para excluir: {role.members} {role.members === 1 ? 'pessoa tem' : 'pessoas têm'} este cargo.
+          Troque o cargo delas em <a href="/admin/usuarios?aba=equipe" class="underline">Usuários › Equipe</a> primeiro.
+        </p>
+      ) : (
+        <form method="POST" action="/api/admin/roles" data-confirm={`Excluir o cargo "${role.name}"?|Isso não pode ser desfeito.|Excluir`}>
+          <input type="hidden" name="acao" value="excluir" />
+          <input type="hidden" name="id" value={role.id} />
+          <button class="rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Excluir cargo</button>
+        </form>
+      )}
+    </div>
+  )}
+</AdminLayout>
+
+<script>
+  import { enableConfirmForms } from '../../../lib/confirm-forms';
+  enableConfirmForms();
+</script>

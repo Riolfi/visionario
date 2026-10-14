@@ -155,7 +155,8 @@ export async function deleteRole(id: string): Promise<Result & { members?: numbe
   const { data: cur } = await sb.from('admin_roles').select('is_owner').eq('id', id).maybeSingle();
   if (!cur) return { ok: false, error: 'Cargo não encontrado.' };
   if (cur.is_owner) return { ok: false, error: 'O cargo Dono não pode ser excluído.' };
-  // quem tinha esse cargo fica sem cargo (sem acesso a telas) — on delete set null
+  const { count } = await sb.from('admin_users').select('user_id', { count: 'exact', head: true }).eq('role_id', id);
+  if (count) return { ok: false, error: `Não dá para excluir: ${count} ${count === 1 ? 'pessoa tem' : 'pessoas têm'} esse cargo. Troque o cargo delas em Usuários › Equipe primeiro.`, members: count };
   const { error } = await sb.from('admin_roles').delete().eq('id', id);
   return error ? { ok: false, error: error.message } : { ok: true };
 }

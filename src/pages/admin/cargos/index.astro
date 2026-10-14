@@ -13,7 +13,7 @@ const people = (n: number) => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
 
 <AdminLayout title="Cargos">
   <div class="flex items-center justify-between gap-3">
-    <p class="font-sans text-sm text-ink-muted">{roles.length} {roles.length === 1 ? 'cargo' : 'cargos'}</p>
+    <p id="role-count" data-total={roles.length} class="font-sans text-sm text-ink-muted">{roles.length} {roles.length === 1 ? 'cargo' : 'cargos'}</p>
     <a href="/admin/cargos/novo" class="btn-primary">Criar Cargo</a>
   </div>
 
@@ -22,36 +22,65 @@ const people = (n: number) => `${n} ${n === 1 ? 'pessoa' : 'pessoas'}`;
   )}
   {loadError && <p class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Não foi possível carregar ({loadError}).</p>}
 
-  <div class="mt-6 rounded-card border border-ink/10 bg-white">
+  <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
+    <h2 class="mb-3 font-display text-lg">Pesquisar cargo</h2>
+    <label class="label" for="role-search">Nome</label>
+    <span class="relative block">
+      <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input id="role-search" class="field pl-11" type="search" placeholder="Pesquise pelo nome do cargo…" autocomplete="off" />
+    </span>
+  </div>
+
+  <div class="mt-4 rounded-card border border-ink/10 bg-white">
     <table class="w-full table-fixed text-left text-sm">
       <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
         <tr>
-          <th class="w-24 px-3 py-3"><span class="sr-only">Ações</span></th>
           <th class="px-3 py-3">Nome</th>
+          <th class="w-24 px-3 py-3"><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
       <tbody>
         {roles.map((r) => (
-          <tr class="border-t border-ink/10 hover:bg-bone-50">
+          <tr class="role-row border-t border-ink/10 hover:bg-bone-50" data-name={r.name}>
             <td class="px-3 py-3">
-              {r.is_owner ? (
-                <span class="text-[13px] text-ink-muted" title="O cargo Dono tem acesso total e não pode ser alterado">🔒</span>
-              ) : (
-                <a href={`/admin/cargos/${r.id}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>
-              )}
-            </td>
-            <td class="px-3 py-3">
-              <span class="block truncate font-medium">{r.name}</span>
+              <span class="block truncate font-medium">
+                {r.name}
+                {!r.is_active && <span class="ml-1 rounded-full bg-bone-200 px-2 py-0.5 align-middle text-[10px] uppercase text-ink-muted">Inativo</span>}
+              </span>
               <span class="block truncate text-[12px] text-ink-muted">
                 {r.is_owner
-                  ? `Acesso total, inclusive Permissões e Cargos · ${people(r.members)}`
+                  ? `Acesso total · ${people(r.members)}`
                   : `${r.permission_ids.length} ${r.permission_ids.length === 1 ? 'permissão' : 'permissões'} · ${people(r.members)}`}
               </span>
+            </td>
+            <td class="px-3 py-3 text-right">
+              <a href={`/admin/cargos/${r.id}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>
             </td>
           </tr>
         ))}
       </tbody>
     </table>
     {!roles.length && !loadError && <p class="p-4 text-sm text-ink-muted">Nenhum cargo ainda.</p>}
+    <p id="no-results" class="hidden p-4 text-sm text-ink-muted">Nenhum cargo com esse nome.</p>
   </div>
 </AdminLayout>
+
+<script>
+  // filtra enquanto digita: todas as palavras no nome, sem acento/maiúscula (como em Produtos)
+  const fold = (t: string) => t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const input = document.getElementById('role-search') as HTMLInputElement;
+  const rows = Array.from(document.querySelectorAll<HTMLTableRowElement>('tr.role-row'));
+  const count = document.getElementById('role-count')!;
+  input.addEventListener('input', () => {
+    const words = fold(input.value).split(/\s+/).filter(Boolean);
+    let shown = 0;
+    for (const row of rows) {
+      const ok = words.every((w) => fold(row.dataset.name ?? '').includes(w));
+      row.hidden = !ok;
+      if (ok) shown++;
+    }
+    const total = Number(count.dataset.total);
+    count.textContent = shown === total ? `${total} ${total === 1 ? 'cargo' : 'cargos'}` : `${shown} de ${total} cargos`;
+    document.getElementById('no-results')!.classList.toggle('hidden', shown > 0 || !rows.length);
+  });
+</script>

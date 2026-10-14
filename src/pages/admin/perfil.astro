@@ -21,6 +21,7 @@ const ERRO: Record<string, string> = {
   nome: 'Informe o nome (mínimo 2 letras).',
   email: 'E-mail inválido.',
   'mesmo-email': 'Esse já é o seu e-mail.',
+  proprietario: 'Você é o Proprietário da conta: troque o Proprietário em Cargos › Administrador antes de mudar o seu e-mail.',
   'email-em-uso': 'Esse e-mail já é usado por outra conta.',
   'senha-atual': 'Senha atual incorreta.',
   'senha-curta': 'A nova senha precisa ter pelo menos 8 caracteres.',
@@ -49,7 +50,7 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
             ? 'Tudo, inclusive Permissões e Cargos'
             : allowed.length
               ? <ul class="list-inside list-disc">{allowed.map((r) => <li>{r.label}</li>)}</ul>
-              : 'Nada ainda — peça a um Dono para definir o seu cargo'}
+              : 'Nada ainda — peça a um Administrador para definir o seu cargo'}
         </dd>
         <dt class="text-ink-muted">Criada em</dt><dd>{fmt(user.created_at)}</dd>
         <dt class="text-ink-muted">Último login</dt><dd>{fmt(user.last_sign_in_at)}</dd>

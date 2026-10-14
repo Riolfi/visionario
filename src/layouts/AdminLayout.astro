@@ -12,14 +12,14 @@ const path = Astro.url.pathname;
 const brandName = Astro.locals.brand.name;
 const logoUrl = Astro.locals.site.brand.data.logo_url;
 
-// só as telas que essa pessoa pode abrir; Permissões e Cargos são do Dono
+// só as telas que essa pessoa pode abrir; Permissões é só do Administrador
 const access = Astro.locals.admin;
 const nav: { href: string; label: string }[] = access
   ? visibleScreens(access)
       .filter((s) => s.key !== 'notificacoes') // fica no sino do cabeçalho
       .map(({ href, label }) => ({ href, label }))
   : [];
-if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' }, { href: '/admin/cargos', label: 'Cargos' });
+if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' });
 const showBell = can(access, 'notificacoes.ver');
 
 const unread = showBell ? await unreadNotificationCount() : 0;

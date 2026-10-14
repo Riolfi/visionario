@@ -10,7 +10,7 @@ import { createMember, removeMember, updateMember } from '../../../lib/repo/team
  *   acao=excluir  id
  */
 export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => {
-  const actor = { ...locals.admin!, userId: locals.user!.id };
+  const actor = { ...locals.admin!, userId: locals.user!.id, email: locals.user!.email };
   const form = await request.formData();
   const acao = String(form.get('acao') || '');
   const id = String(form.get('id') || '');

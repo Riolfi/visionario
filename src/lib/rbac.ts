@@ -5,7 +5,8 @@
  *               Fixas no código: regra criada pela tela não protegeria nada.
  *   Permissão → grupo de regras de uma tela, editável em Permissões.
  *   Cargo     → conjunto de permissões, editável em Cargos; cada membro da
- *               equipe tem um. O cargo Dono tem tudo e não muda.
+ *               equipe tem um. O cargo Administrador tem tudo; o e-mail do
+ *               Proprietário (nele) decide quem dá/tira o cargo Administrador.
  *
  * Arquivo puro (sem banco), usado no servidor e nas telas.
  */
@@ -19,6 +20,7 @@ export const SCREENS = [
   { key: 'categorias', label: 'Categorias', href: '/admin/categorias', view: 'categorias.ver' },
   { key: 'conteudo', label: 'Conteúdo', href: '/admin/site', view: 'conteudo.ver' },
   { key: 'usuarios', label: 'Usuários', href: '/admin/usuarios', view: null },
+  { key: 'cargos', label: 'Cargos', href: '/admin/cargos', view: 'cargos.editar' },
   { key: 'notificacoes', label: 'Notificações', href: '/admin/notificacoes', view: 'notificacoes.ver' },
 ] as const;
 export type ScreenKey = (typeof SCREENS)[number]['key'];
@@ -40,7 +42,8 @@ export const RULES = [
   { key: 'conteudo.ver', screen: 'conteudo', label: 'Ver conteúdo do site', help: 'Textos editáveis da loja.' },
   { key: 'conteudo.editar', screen: 'conteudo', label: 'Editar conteúdo do site', help: 'Textos da loja, logo, rodapé, Sobre e Contato.' },
   { key: 'equipe.ver', screen: 'usuarios', label: 'Ver a equipe', help: 'Quem tem acesso ao painel e com qual cargo.' },
-  { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Gerenciar a equipe', help: 'Criar, editar e excluir membros e definir o cargo (nunca o de Dono nem um cargo com mais acesso que o seu).' },
+  { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Gerenciar a equipe', help: 'Criar, editar e excluir membros e definir o cargo (nunca o de Administrador nem um cargo com mais acesso que o seu).' },
+  { key: 'cargos.editar', screen: 'cargos', label: 'Criar e editar cargos', help: 'Só com permissões que você mesmo tem; nunca o cargo Administrador nem o seu.' },
   { key: 'clientes.ver', screen: 'usuarios', label: 'Ver clientes', help: 'Dados cadastrais, endereços, compras e pedidos dos clientes.' },
   { key: 'clientes.estado', screen: 'usuarios', label: 'Ativar, desativar e bloquear clientes', help: 'Muda o estado da conta, com motivo registrado.' },
   { key: 'notificacoes.ver', screen: 'notificacoes', label: 'Ver notificações', help: 'Avisos automáticos (estoque esgotado, pagamentos a conferir).' },
@@ -50,7 +53,7 @@ export const RULE_KEYS = RULES.map((r) => r.key) as RuleKey[];
 export const isRuleKey = (v: unknown): v is RuleKey => RULE_KEYS.includes(v as RuleKey);
 
 export interface AdminAccess {
-  /** cargo Dono: acesso total, inclusive Permissões e Cargos */
+  /** cargo Administrador: acesso total, inclusive Permissões e Cargos */
   isOwner: boolean;
   roleId: string | null;
   roleName: string;
@@ -70,7 +73,7 @@ export function visibleScreens(a: AdminAccess) {
  * Pode abrir essa rota com esse método? Página = regra de ver; API = regra da
  * ação (GET lê, o resto altera). Ações dentro da mesma API (ex.: cancelar
  * venda do Caixa) são conferidas de novo no handler. Rota desconhecida em
- * /admin fica só para o Dono (padrão seguro).
+ * /admin fica só para o Administrador (padrão seguro).
  */
 export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boolean {
   if (a.isOwner) return true;
@@ -79,7 +82,8 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
   const pick = (ver: RuleKey, editar: RuleKey) => can(a, read ? ver : editar);
 
   if (under('/admin/perfil', '/api/admin/profile')) return true;
-  if (under('/admin/permissoes', '/admin/cargos', '/api/admin/permissions', '/api/admin/roles')) return false;
+  if (under('/admin/permissoes', '/api/admin/permissions')) return false;
+  if (under('/admin/cargos', '/api/admin/roles')) return can(a, 'cargos.editar');
   if (under('/admin/notificacoes')) return can(a, 'notificacoes.ver');
   if (under('/admin/usuarios/clientes')) return can(a, 'clientes.ver');
   if (under('/admin/usuarios')) return can(a, 'equipe.ver') || can(a, 'clientes.ver');

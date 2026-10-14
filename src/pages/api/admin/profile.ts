@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { createClient } from '@supabase/supabase-js';
 import { env } from '../../../lib/env';
 import { supabaseAdmin } from '../../../lib/supabase';
+import { getOwnerEmail, isProprietor } from '../../../lib/repo/owner';
 
 /**
  * POST /api/admin/profile — perfil de quem está logado no painel (qualquer
@@ -46,6 +47,9 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     const email = String(form.get('email') || '').trim().toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return back(redirect, 'erro', 'email');
     if (email === user.email) return back(redirect, 'erro', 'mesmo-email');
+    // o e-mail do Proprietário só muda pela troca com código (Cargos › Administrador)
+    if (await isProprietor(user.email)) return back(redirect, 'erro', 'proprietario');
+    if (email === (await getOwnerEmail())) return back(redirect, 'erro', 'email-em-uso');
     if (!(await passwordMatches(user.email ?? '', String(form.get('senha_atual') || '')))) {
       return back(redirect, 'erro', 'senha-atual');
     }

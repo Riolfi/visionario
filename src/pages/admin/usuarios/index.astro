@@ -3,6 +3,7 @@ import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { can } from '../../../lib/rbac';
 import { listTeam } from '../../../lib/repo/team';
 import { listRoles } from '../../../lib/repo/roles';
+import { isProprietor } from '../../../lib/repo/owner';
 import { CUSTOMER_STATUS_LABELS, listCustomers } from '../../../lib/repo/customers';
 import { takeFlash } from '../../../lib/flash';
 import { brl } from '../../../lib/format';
@@ -22,8 +23,9 @@ const flash = takeFlash(Astro.cookies);
 let loadError = '';
 const team = aba === 'equipe' ? await listTeam().catch((e) => ((loadError = e.message), [])) : [];
 const roles = aba === 'equipe' ? await listRoles().catch(() => []) : [];
-// quem não é Dono só vê/atribui cargos sem o cargo Dono (o servidor confere o resto)
-const assignable = roles.filter((r) => access.isOwner || !r.is_owner);
+// só o Proprietário dá/tira o cargo Administrador (o servidor confere o resto)
+const proprietor = aba === 'equipe' && (await isProprietor(Astro.locals.user?.email));
+const assignable = roles.filter((r) => proprietor || !r.is_owner);
 const customers = aba === 'clientes' ? await listCustomers().catch((e) => ((loadError = e.message), [])) : [];
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
 const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone-200 text-ink-muted', bloqueado: 'bg-red-50 text-red-700' };
@@ -93,7 +95,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
               </summary>
               <div class="border-t border-ink/10 p-4">
                 {m.id === me ? (
-                  <p class="text-sm text-ink-soft">Os seus dados ficam em <a href="/admin/perfil" class="underline">Meu perfil</a>. O seu cargo só outro Dono pode alterar.</p>
+                  <p class="text-sm text-ink-soft">Os seus dados ficam em <a href="/admin/perfil" class="underline">Meu perfil</a>. O seu cargo só outra pessoa pode alterar.</p>
                 ) : !canManageTeam ? (
                   <p class="text-sm text-ink-soft">Cargo: {m.role_name}.</p>
                 ) : (
@@ -109,7 +111,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                           <span class="label">Cargo</span>
                           <select class="field" name="role_id" required>
                             {!m.role_id && <option value="" disabled selected>Sem cargo — escolha</option>}
-                            {(m.is_owner && !access.isOwner ? roles.filter((r) => r.is_owner) : assignable).map((r) => (
+                            {(m.is_owner && !proprietor ? roles.filter((r) => r.is_owner) : assignable).map((r) => (
                               <option value={r.id} selected={r.id === m.role_id}>{r.name}</option>
                             ))}
                           </select>

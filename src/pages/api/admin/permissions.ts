@@ -3,7 +3,7 @@ import { setFlash } from '../../../lib/flash';
 import { deletePermission, savePermission } from '../../../lib/repo/roles';
 
 /**
- * POST /api/admin/permissions — grupos de regras (só o Dono).
+ * POST /api/admin/permissions — grupos de regras (só o Administrador).
  *   acao=salvar   id (vazio = nova), name, description, rules[]
  *   acao=excluir  id (recusa se algum cargo usa)
  */

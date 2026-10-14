@@ -22,7 +22,7 @@ const LEGACY: Record<string, RuleKey[]> = {
   conteudo: ['conteudo.ver', 'conteudo.editar'],
 };
 
-const OWNER = (roleId: string | null, roleName = 'Dono'): AdminAccess => ({ isOwner: true, roleId, roleName, rules: [...RULE_KEYS] });
+const OWNER = (roleId: string | null, roleName = 'Administrador'): AdminAccess => ({ isOwner: true, roleId, roleName, rules: [...RULE_KEYS] });
 
 export async function getAdminAccess(userId: string): Promise<AdminAccess | null> {
   const sb = supabaseAdmin();
@@ -37,7 +37,7 @@ export async function getAdminAccess(userId: string): Promise<AdminAccess | null
   if (row.role_id) {
     const { data: role, error: roleErr } = await sb
       .from('admin_roles')
-      .select('id, name, is_owner, admin_role_permissions(admin_permissions(*))')
+      .select('*, admin_role_permissions(admin_permissions(*))')
       .eq('id', row.role_id)
       .maybeSingle();
     if (roleErr) {
@@ -46,6 +46,8 @@ export async function getAdminAccess(userId: string): Promise<AdminAccess | null
     }
     if (!role) return { isOwner: false, roleId: null, roleName: 'Sem cargo', rules: [] };
     if (role.is_owner) return OWNER(role.id, role.name);
+    // cargo inativo (0019): fica sem acesso a nenhuma tela
+    if (role.is_active === false) return { isOwner: false, roleId: role.id, roleName: role.name, rules: [] };
     const rules = new Set<RuleKey>();
     // permissão inativa (0018) não dá regra nenhuma; antes da 0018 não há a coluna
     for (const rp of (role.admin_role_permissions ?? []) as unknown as { admin_permissions: { rules: string[]; is_active?: boolean } | null }[]) {

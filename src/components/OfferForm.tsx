@@ -1,5 +1,7 @@
 import { useState } from 'preact/hooks';
 import type { Offer } from '../lib/types';
+import { askSaveActive } from '../lib/confirm-dialog';
+import FormActions, { SavedNotice } from './FormActions';
 
 export default function OfferForm({ offer }: { offer: Offer | null }) {
   const [form, setForm] = useState({
@@ -14,6 +16,8 @@ export default function OfferForm({ offer }: { offer: Offer | null }) {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // cadastro novo volta para a edição com ?salvo=1
+  const [saved, setSaved] = useState(() => typeof location !== 'undefined' && new URLSearchParams(location.search).has('salvo'));
 
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -43,8 +47,15 @@ export default function OfferForm({ offer }: { offer: Offer | null }) {
 
   async function submit(e: Event) {
     e.preventDefault();
+    const ok = await askSaveActive(form.is_active, {
+      fem: true,
+      on: 'A oferta vai aparecer no carrossel da home.',
+      off: 'A oferta não vai aparecer no carrossel da home.',
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
+    setSaved(false);
     try {
       const res = await fetch('/api/admin/offers', {
         method: 'POST',
@@ -53,21 +64,27 @@ export default function OfferForm({ offer }: { offer: Offer | null }) {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao salvar.');
-      window.location.href = '/admin/ofertas';
+      // fica na edição (cadastro novo vai para a edição dele)
+      if (!offer) return void (window.location.href = data.id ? `/admin/ofertas/${data.id}?salvo=1` : '/admin/ofertas');
+      setSaved(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar.');
+    } finally {
       setSaving(false);
     }
   }
 
   async function remove() {
-    if (!offer || !confirm('Excluir esta oferta?')) return;
+    if (!offer) return;
     const res = await fetch(`/api/admin/offers?id=${offer.id}`, { method: 'DELETE' });
     if (res.ok) window.location.href = '/admin/ofertas';
+    else setError(((await res.json().catch(() => ({}))) as { error?: string }).error || 'Erro ao excluir.');
   }
 
   return (
     <form onSubmit={submit} class="max-w-2xl space-y-5">
+      {saved && <SavedNotice text="Oferta salva com sucesso!" />}
       {error && <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
       <div>
@@ -127,15 +144,15 @@ export default function OfferForm({ offer }: { offer: Offer | null }) {
         Ativa (aparece no carrossel da home)
       </label>
 
-      <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="btn-primary" disabled={saving}>
-          {saving ? 'Salvando…' : offer ? 'Salvar oferta' : 'Criar oferta'}
-        </button>
-        <a href="/admin/ofertas" class="btn-outline">Cancelar</a>
-        {offer && (
-          <button type="button" onClick={remove} class="ml-auto text-sm text-red-700 hover:underline">Excluir</button>
-        )}
-      </div>
+      <FormActions
+        listHref="/admin/ofertas"
+        saving={saving}
+        isNew={!offer}
+        saveLabel={offer ? 'Salvar' : 'Criar oferta'}
+        deleteTitle="Excluir oferta?"
+        deleteMessage={`"${offer?.title || 'Esta oferta'}" sai do carrossel. Isso não pode ser desfeito.`}
+        onDelete={remove}
+      />
     </form>
   );
 }

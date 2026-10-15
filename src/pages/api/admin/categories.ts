@@ -44,11 +44,12 @@ export const POST: APIRoute = async ({ request, url }) => {
     name,
     description: String(raw.description || '').trim(),
     image_url: String(raw.image_url || '').trim(),
+    is_active: raw.is_active !== false,
     parent_id: raw.parent_id ? String(raw.parent_id) : null,
   };
 
   const result = await saveCategory(input);
-  return result.ok ? json({ ok: true }) : json({ error: result.error }, 500);
+  return result.ok ? json({ ok: true, id: result.id }) : json({ error: result.error }, 500);
 };
 
 export const DELETE: APIRoute = async ({ request, url }) => {

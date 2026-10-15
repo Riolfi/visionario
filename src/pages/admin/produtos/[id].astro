@@ -7,7 +7,7 @@ export const prerender = false;
 
 const { id } = Astro.params;
 const isNew = id === 'novo';
-const tree = await getCategoryTree();
+const tree = await getCategoryTree({ includeInactive: true });
 const product = isNew || !id ? null : await getProductById(id);
 // vem de um scan no leitor sem produto encontrado — o código já chega pronto
 const initialBarcode = isNew ? (Astro.url.searchParams.get('barcode') ?? undefined) : undefined;

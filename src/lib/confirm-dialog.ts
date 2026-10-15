@@ -54,3 +54,18 @@ export function confirmDialog(opts: {
     dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.focus();
   });
 }
+
+/**
+ * Pergunta padrão ao salvar (como em Produtos): "Deseja salvar como ativo/inativo?".
+ * `fem` para palavras femininas (categoria, oferta, seção).
+ */
+export function askSaveActive(active: boolean, opts: { fem?: boolean; on: string; off: string }): Promise<boolean> {
+  const word = active ? (opts.fem ? 'ativa' : 'ativo') : opts.fem ? 'inativa' : 'inativo';
+  return confirmDialog({
+    title: `Deseja salvar como ${word}?`,
+    message: active ? opts.on : opts.off,
+    confirmLabel: 'Sim',
+    cancelLabel: 'Não',
+    tone: 'primary',
+  });
+}

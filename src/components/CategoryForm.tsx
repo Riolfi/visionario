@@ -1,6 +1,8 @@
 import { useState } from 'preact/hooks';
 import type { Category } from '../lib/types';
 import { slugify } from '../lib/format';
+import { askSaveActive } from '../lib/confirm-dialog';
+import FormActions, { SavedNotice } from './FormActions';
 
 interface Props {
   category: Category | null;
@@ -17,10 +19,13 @@ export default function CategoryForm({ category, parentName, roots }: Props) {
     description: category?.description ?? '',
     image_url: category?.image_url ?? '',
     parent_id: '',
+    is_active: category?.is_active ?? true,
   });
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // cadastro novo volta para a edição com ?salvo=1
+  const [saved, setSaved] = useState(() => typeof location !== 'undefined' && new URLSearchParams(location.search).has('salvo'));
 
   function upd<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -50,8 +55,15 @@ export default function CategoryForm({ category, parentName, roots }: Props) {
 
   async function submit(e: Event) {
     e.preventDefault();
+    const ok = await askSaveActive(form.is_active, {
+      fem: true,
+      on: 'A categoria aparece no menu e nos filtros da loja.',
+      off: 'A categoria some do menu e dos filtros da loja (os produtos dela continuam à venda).',
+    });
+    if (!ok) return;
     setSaving(true);
     setError(null);
+    setSaved(false);
     try {
       const res = await fetch('/api/admin/categories', {
         method: 'POST',
@@ -62,20 +74,25 @@ export default function CategoryForm({ category, parentName, roots }: Props) {
           slug: form.slug || slugify(form.name),
           description: form.description,
           image_url: form.image_url,
+          is_active: form.is_active,
           parent_id: category ? undefined : form.parent_id || null,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Erro ao salvar.');
-      window.location.href = '/admin/categorias';
+      // fica na edição (cadastro novo vai para a edição dele)
+      if (!category) return void (window.location.href = data.id ? `/admin/categorias/${data.id}?salvo=1` : '/admin/categorias');
+      setSaved(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar.');
+    } finally {
       setSaving(false);
     }
   }
 
   async function remove() {
-    if (!category || !confirm(`Excluir a categoria "${category.name}"?`)) return;
+    if (!category) return;
     const res = await fetch(`/api/admin/categories?id=${category.id}`, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
     if (res.ok) window.location.href = '/admin/categorias';
@@ -84,6 +101,7 @@ export default function CategoryForm({ category, parentName, roots }: Props) {
 
   return (
     <form onSubmit={submit} class="max-w-2xl space-y-5">
+      {saved && <SavedNotice text="Categoria salva com sucesso!" />}
       {error && <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
 
       <p class="rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-[13px] text-ink-soft">
@@ -135,15 +153,20 @@ export default function CategoryForm({ category, parentName, roots }: Props) {
         </div>
       </div>
 
-      <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="btn-primary" disabled={saving}>
-          {saving ? 'Salvando…' : category ? 'Salvar' : 'Criar categoria'}
-        </button>
-        <a href="/admin/categorias" class="btn-outline">Cancelar</a>
-        {category && (
-          <button type="button" onClick={remove} class="ml-auto text-sm text-red-700 hover:underline">Excluir</button>
-        )}
-      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={form.is_active} onChange={(e) => upd('is_active', (e.target as HTMLInputElement).checked)} />
+        Ativa (aparece no menu e nos filtros da loja)
+      </label>
+
+      <FormActions
+        listHref="/admin/categorias"
+        saving={saving}
+        isNew={!category}
+        saveLabel={category ? 'Salvar' : 'Criar categoria'}
+        deleteTitle="Excluir categoria?"
+        deleteMessage={`"${category?.name ?? ''}" será excluída. Isso não pode ser desfeito.`}
+        onDelete={remove}
+      />
     </form>
   );
 }

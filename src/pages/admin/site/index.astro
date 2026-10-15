@@ -20,25 +20,56 @@ const SECTIONS: { key: SiteSectionKey; label: string; hint: string; toggle: bool
 ---
 
 <AdminLayout title="Conteúdo">
-  <p class="font-sans text-sm text-ink-muted">
-    Textos das seções gerenciáveis da home e das páginas institucionais. Cada edição
-    vale para o site todo — sem mexer no código.
-  </p>
+  <div class="flex items-center justify-between gap-3">
+    <p id="section-count" class="font-sans text-sm text-ink-muted">{SECTIONS.length} seções</p>
+  </div>
 
-  <ul class="mt-6 divide-y divide-ink/10 rounded-card border border-ink/10 bg-white">
-    {SECTIONS.map((s) => (
-      <li class="flex items-center gap-4 p-4">
-        <div class="min-w-0 flex-1">
-          <a href={`/admin/site/${s.key}`} class="font-medium text-agua-dark">{s.label}</a>
-          <p class="truncate text-[12px] text-ink-muted">{s.hint}</p>
-        </div>
-        {s.toggle && (
-          <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', site[s.key].is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>
-            {site[s.key].is_active ? 'visível' : 'oculta'}
-          </span>
-        )}
-        <a href={`/admin/site/${s.key}`} class="font-sans text-[12px] uppercase tracking-[0.12em] text-agua-dark">Editar</a>
-      </li>
-    ))}
-  </ul>
+  <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
+    <h2 class="mb-3 font-display text-lg">Pesquisar conteúdo</h2>
+    <label class="label" for="section-search">Nome</label>
+    <span class="relative block">
+      <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input id="section-search" class="field pl-11" type="search" placeholder="Pesquise pelo nome da seção…" autocomplete="off" />
+    </span>
+  </div>
+
+  <p class="mt-4 text-[12px] text-ink-muted">
+    Textos das seções da home e das páginas institucionais. Cada edição vale para o site todo, sem mexer no código.
+  </p>
+  <div class="mt-2 rounded-card border border-ink/10 bg-white">
+    <table class="w-full table-fixed text-left text-sm">
+      <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+        <tr>
+          <th class="px-3 py-3">Nome</th>
+          <th class="w-24 px-3 py-3">Status</th>
+          <th class="w-20 px-3 py-3 sm:w-24"><span class="sr-only">Ações</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {SECTIONS.map((s) => (
+          <tr class="section-row border-t border-ink/10 hover:bg-bone-50" data-name={`${s.label} ${s.hint}`}>
+            <td class="px-3 py-3">
+              <span class="block truncate font-medium">{s.label}</span>
+              <span class="block truncate text-[12px] text-ink-muted">{s.hint}</span>
+            </td>
+            <td class="px-3 py-3">
+              {/* só as seções da home ligam/desligam; as outras estão sempre no site */}
+              <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', !s.toggle || site[s.key].is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>
+                {!s.toggle || site[s.key].is_active ? 'Ativa' : 'Inativa'}
+              </span>
+            </td>
+            <td class="px-3 py-3 text-right">
+              <a href={`/admin/site/${s.key}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    <p id="no-results" class="hidden p-4 text-sm text-ink-muted">Nenhuma seção com esse nome.</p>
+  </div>
 </AdminLayout>
+
+<script>
+  import { enableListSearch } from '../../../lib/list-search';
+  enableListSearch({ input: 'section-search', rows: 'tr.section-row', count: 'section-count', noResults: 'no-results', noun: ['seção', 'seções'] });
+</script>

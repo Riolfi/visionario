@@ -8,59 +8,86 @@ const offers = await getOffers();
 ---
 
 <AdminLayout title="Ofertas">
-  <div class="flex items-center justify-between">
-    <p class="font-sans text-sm text-ink-muted">
-      {offers.length} {offers.length === 1 ? 'slide' : 'slides'} no carrossel da home. Arraste para reordenar.
-    </p>
+  <div class="flex items-center justify-between gap-3">
+    <p id="offer-count" class="font-sans text-sm text-ink-muted">{offers.length} {offers.length === 1 ? 'oferta' : 'ofertas'}</p>
     <a href="/admin/ofertas/nova" class="btn-primary">Nova oferta</a>
   </div>
 
-  <ul id="offer-list" class="mt-6 space-y-3">
-    {offers.map((o) => (
-      <li
-        class="flex items-center gap-4 rounded-card border border-ink/10 bg-white p-3"
-        draggable="true"
-        data-id={o.id}
-      >
-        <span class="cursor-grab select-none px-1 text-ink-muted" aria-hidden="true">⠿</span>
-        <div class="h-14 w-24 shrink-0 overflow-hidden rounded-card bg-bone-200">
-          {o.image_url && <img src={o.image_url} alt="" class="h-full w-full object-cover" />}
-        </div>
-        <div class="min-w-0 flex-1">
-          <a href={`/admin/ofertas/${o.id}`} class="font-medium text-agua-dark">{o.title || '(sem título)'}</a>
-          <p class="truncate text-[12px] text-ink-muted">
-            {o.cta_label ? `${o.cta_label} → ${o.cta_href}` : 'sem botão'}
-          </p>
-        </div>
-        <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', o.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>
-          {o.is_active ? 'ativa' : 'oculta'}
-        </span>
-      </li>
-    ))}
-  </ul>
+  <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
+    <h2 class="mb-3 font-display text-lg">Pesquisar oferta</h2>
+    <label class="label" for="offer-search">Nome</label>
+    <span class="relative block">
+      <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+      <input id="offer-search" class="field pl-11" type="search" placeholder="Pesquise pelo título da oferta…" autocomplete="off" />
+    </span>
+  </div>
+
+  <p class="mt-4 text-[12px] text-ink-muted">Slides do carrossel da home, na ordem em que aparecem. Arraste pela alça ⠿ para reordenar.</p>
+  <div class="mt-2 rounded-card border border-ink/10 bg-white">
+    <table class="w-full table-fixed text-left text-sm">
+      <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+        <tr>
+          <th class="w-8 px-2 py-3"><span class="sr-only">Ordem</span></th>
+          <th class="w-20 px-2 py-3 sm:w-28">Prévia</th>
+          <th class="px-3 py-3">Nome</th>
+          <th class="hidden w-24 px-3 py-3 sm:table-cell">Status</th>
+          <th class="w-20 px-3 py-3 sm:w-24"><span class="sr-only">Ações</span></th>
+        </tr>
+      </thead>
+      <tbody id="offer-list">
+        {offers.map((o) => (
+          <tr class="offer-row border-t border-ink/10 hover:bg-bone-50" draggable="true" data-id={o.id} data-name={o.title}>
+            <td class="cursor-grab select-none px-2 py-3 text-ink-muted" aria-hidden="true">⠿</td>
+            <td class="px-2 py-2">
+              <div class="h-10 w-16 overflow-hidden rounded-card bg-bone-200 sm:h-12 sm:w-24">
+                {o.image_url && <img src={o.image_url} alt="" draggable="false" class="h-full w-full object-cover" />}
+              </div>
+            </td>
+            <td class="px-3 py-3">
+              <span class="block truncate font-medium">{o.title || '(sem título)'}</span>
+              <span class="block truncate text-[12px] text-ink-muted">{o.cta_label ? `${o.cta_label} → ${o.cta_href}` : 'sem botão'}</span>
+              <span class:list={['mt-1 inline-block rounded-full px-2 py-0.5 text-[10px] uppercase sm:hidden', o.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>{o.is_active ? 'Ativa' : 'Inativa'}</span>
+            </td>
+            <td class="hidden px-3 py-3 sm:table-cell">
+              <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', o.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>{o.is_active ? 'Ativa' : 'Inativa'}</span>
+            </td>
+            <td class="px-3 py-3 text-right">
+              <a href={`/admin/ofertas/${o.id}`} draggable="false" class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+    {!offers.length && <p class="p-4 text-sm text-ink-muted">Nenhuma oferta ainda.</p>}
+    <p id="no-results" class="hidden p-4 text-sm text-ink-muted">Nenhuma oferta com esse nome.</p>
+  </div>
 </AdminLayout>
 
 <script>
+  import { enableListSearch } from '../../../lib/list-search';
+  enableListSearch({ input: 'offer-search', rows: 'tr.offer-row', count: 'offer-count', noResults: 'no-results', noun: ['oferta', 'ofertas'] });
+
+  // arrastar para reordenar (grava a nova ordem ao soltar)
   const listEl = document.getElementById('offer-list');
   if (listEl) {
     let dragEl: HTMLElement | null = null;
-    listEl.querySelectorAll<HTMLElement>('li').forEach((li) => {
-      li.addEventListener('dragstart', () => { dragEl = li; li.style.opacity = '0.4'; });
-      li.addEventListener('dragend', async () => {
-        li.style.opacity = '';
-        const ids = [...listEl.querySelectorAll('li')].map((x) => x.dataset.id);
+    listEl.querySelectorAll<HTMLElement>('tr').forEach((row) => {
+      row.addEventListener('dragstart', () => { dragEl = row; row.style.opacity = '0.4'; });
+      row.addEventListener('dragend', async () => {
+        row.style.opacity = '';
+        const ids = [...listEl.querySelectorAll<HTMLElement>('tr')].map((x) => x.dataset.id);
         await fetch('/api/admin/offers?action=reorder', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ ids }),
         });
       });
-      li.addEventListener('dragover', (e) => {
+      row.addEventListener('dragover', (e) => {
         e.preventDefault();
-        if (!dragEl || dragEl === li) return;
-        const rect = li.getBoundingClientRect();
+        if (!dragEl || dragEl === row) return;
+        const rect = row.getBoundingClientRect();
         const after = (e as DragEvent).clientY > rect.top + rect.height / 2;
-        listEl.insertBefore(dragEl, after ? li.nextSibling : li);
+        listEl.insertBefore(dragEl, after ? row.nextSibling : row);
       });
     });
   }

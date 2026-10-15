@@ -7,6 +7,8 @@ export interface Category {
   image_url: string;
   /** null = categoria raiz (nível 1); preenchido = subcategoria (nível 2) */
   parent_id: string | null;
+  /** inativa: some do menu, dos filtros e do sitemap da loja (0020) */
+  is_active: boolean;
 }
 
 /** categoria raiz com suas subcategorias */

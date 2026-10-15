@@ -62,7 +62,7 @@ export async function getOfferById(id: string): Promise<Offer | null> {
   return all.find((o) => o.id === id) ?? null;
 }
 
-export async function saveOffer(input: OfferInput): Promise<{ ok: boolean; error?: string }> {
+export async function saveOffer(input: OfferInput): Promise<{ ok: boolean; error?: string; id?: string }> {
   const sb = supabaseAdmin();
   if (hasSupabase && sb) {
     if (input.id) {
@@ -70,11 +70,15 @@ export async function saveOffer(input: OfferInput): Promise<{ ok: boolean; error
         .from('offers')
         .update({ ...stripId(input), updated_at: new Date().toISOString() })
         .eq('id', input.id);
-      return error ? { ok: false, error: error.message } : { ok: true };
+      return error ? { ok: false, error: error.message } : { ok: true, id: input.id };
     }
     const { count } = await sb.from('offers').select('id', { count: 'exact', head: true });
-    const { error } = await sb.from('offers').insert({ ...stripId(input), position: (count ?? 0) + 1 });
-    return error ? { ok: false, error: error.message } : { ok: true };
+    const { data, error } = await sb
+      .from('offers')
+      .insert({ ...stripId(input), position: (count ?? 0) + 1 })
+      .select('id')
+      .single();
+    return error ? { ok: false, error: error.message } : { ok: true, id: data.id };
   }
 
   const list = (await readOffers()) ?? [...DEFAULT_OFFERS];

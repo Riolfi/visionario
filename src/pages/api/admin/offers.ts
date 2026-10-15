@@ -34,7 +34,7 @@ export const POST: APIRoute = async ({ request, url }) => {
   };
 
   const result = await saveOffer(input);
-  return result.ok ? json({ ok: true }) : json({ error: result.error }, 500);
+  return result.ok ? json({ ok: true, id: result.id }) : json({ error: result.error }, 500);
 };
 
 export const DELETE: APIRoute = async ({ request, url }) => {

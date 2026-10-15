@@ -20,10 +20,12 @@ export interface TeamMember {
   role_id: string | null;
   role_name: string;
   is_owner: boolean;
+  /** inativo: continua na equipe, sem acesso a nenhuma tela (0020) */
+  is_active: boolean;
   last_sign_in_at: string | null;
 }
 
-type Result = { ok: true; message?: string } | { ok: false; error: string };
+type Result = { ok: true; message?: string; id?: string } | { ok: false; error: string };
 type Actor = AdminAccess & { email?: string | null };
 
 export async function listTeam(): Promise<TeamMember[]> {
@@ -50,6 +52,7 @@ export async function listTeam(): Promise<TeamMember[]> {
         role_id: r.role_id ?? null,
         role_name: role?.name ?? (legacyOwner ? 'Administrador' : 'Sem cargo'),
         is_owner: role?.is_owner ?? legacyOwner,
+        is_active: r.is_active !== false,
         last_sign_in_at: byId.get(r.user_id)?.last_sign_in_at ?? null,
       };
     })
@@ -92,7 +95,7 @@ async function isOwnerEmail(email: string): Promise<boolean> {
 
 export async function createMember(
   actor: Actor,
-  input: { name: string; email: string; password: string; roleId: string },
+  input: { name: string; email: string; password: string; roleId: string; isActive: boolean },
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
@@ -118,18 +121,21 @@ export async function createMember(
   if (error || !data.user) return { ok: false, error: error?.message ?? 'Não foi possível criar a conta.' };
   const userId = data.user.id;
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
-  const { error: e2 } = await sb.from('admin_users').insert({ user_id: userId, role_id: input.roleId, role: 'equipe', permissions: [] });
+  // is_active só vai quando desliga: antes da migration 0020 criar ativo continua funcionando
+  const { error: e2 } = await sb
+    .from('admin_users')
+    .insert({ user_id: userId, role_id: input.roleId, role: 'equipe', permissions: [], ...(input.isActive ? {} : { is_active: false }) });
   if (e2) {
     await sb.auth.admin.deleteUser(userId); // não deixa conta solta sem acesso
-    return { ok: false, error: e2.message };
+    return { ok: false, error: /is_active/.test(e2.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para criar membros inativos.' : e2.message };
   }
-  return { ok: true, message: 'Membro criado.' };
+  return { ok: true, message: 'Usuário criado com sucesso!', id: userId };
 }
 
 export async function updateMember(
   actor: Actor & { userId: string },
   userId: string,
-  input: { name: string; email: string; password: string; roleId: string },
+  input: { name: string; email: string; password: string; roleId: string; isActive: boolean },
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
@@ -138,6 +144,11 @@ export async function updateMember(
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
   const manage = await checkManageable(actor, row.role_id);
   if (manage) return { ok: false, error: manage };
+
+  if (!input.isActive && row.is_active !== false) {
+    const { data: u } = await sb.auth.admin.getUserById(userId);
+    if (await isOwnerEmail(u.user?.email ?? '')) return { ok: false, error: 'O Proprietário não pode ficar inativo.' };
+  }
 
   if (input.roleId !== row.role_id) {
     const block = await checkAssignable(actor, input.roleId);
@@ -170,8 +181,14 @@ export async function updateMember(
     if (error) return { ok: false, error: /already|registered|exists/i.test(error.message) ? 'Esse e-mail já é usado por outra conta.' : error.message };
   }
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
-  const { error } = await sb.from('admin_users').update({ role_id: input.roleId, role: 'equipe', permissions: [] }).eq('user_id', userId); // campos antigos zerados
-  return error ? { ok: false, error: error.message } : { ok: true, message: 'Alterações salvas.' };
+  const { error } = await sb
+    .from('admin_users')
+    .update({ role_id: input.roleId, role: 'equipe', permissions: [], ...(input.isActive ? {} : { is_active: false }) }) // campos antigos zerados
+    .eq('user_id', userId);
+  if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para desativar membros.' : error.message };
+  // reativar: grava true explicitamente (sem a coluna, ignora)
+  if (input.isActive && row.is_active === false) await sb.from('admin_users').update({ is_active: true }).eq('user_id', userId);
+  return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
 }
 
 /**

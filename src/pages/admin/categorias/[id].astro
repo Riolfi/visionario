@@ -10,7 +10,7 @@ const isNew = id === 'nova';
 const category = isNew || !id ? null : await getCategoryById(id);
 if (!isNew && !category) return Astro.redirect('/admin/categorias');
 
-const all = await getCategories();
+const all = await getCategories({ includeInactive: true });
 const roots = all.filter((c) => !c.parent_id).map((c) => ({ id: c.id, name: c.name }));
 const parentName = category?.parent_id ? (all.find((c) => c.id === category.parent_id)?.name ?? null) : null;
 ---

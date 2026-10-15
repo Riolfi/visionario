@@ -1,6 +1,8 @@
 import type { ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import type { SiteSectionKey } from '../lib/types';
+import { askSaveActive, confirmDialog } from '../lib/confirm-dialog';
+import FormActions, { SavedNotice } from './FormActions';
 
 interface Props {
   section: SiteSectionKey;
@@ -16,6 +18,7 @@ export default function SiteSectionForm({ section, entry }: Props) {
   const [uploading, setUploading] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
 
   function set(key: string, value: unknown) {
     setData((d) => ({ ...d, [key]: value }));
@@ -59,8 +62,14 @@ export default function SiteSectionForm({ section, entry }: Props) {
 
   async function submit(e: Event) {
     e.preventDefault();
+    // só as seções da home ligam/desligam; as outras estão sempre no site
+    if (TOGGLEABLE.includes(section)) {
+      const ok = await askSaveActive(isActive, { fem: true, on: 'A seção aparece na home.', off: 'A seção some da home.' });
+      if (!ok) return;
+    }
     setSaving(true);
     setError(null);
+    setSaved(false);
     try {
       const res = await fetch('/api/admin/site', {
         method: 'POST',
@@ -69,26 +78,35 @@ export default function SiteSectionForm({ section, entry }: Props) {
       });
       const out = await res.json();
       if (!res.ok) throw new Error(out.error || 'Erro ao salvar.');
-      window.location.href = '/admin/site';
+      // fica na edição, como em Produtos
+      setSaved(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao salvar.');
+    } finally {
       setSaving(false);
     }
   }
 
   async function restore() {
-    if (!confirm('Restaurar o texto padrão desta seção? As edições atuais serão perdidas.')) return;
+    const ok = await confirmDialog({
+      title: 'Restaurar o texto padrão?',
+      message: 'As edições atuais desta seção serão perdidas.',
+      confirmLabel: 'Restaurar',
+    });
+    if (!ok) return;
     const res = await fetch('/api/admin/site?action=reset', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ section }),
     });
-    if (res.ok) window.location.href = '/admin/site';
+    if (res.ok) window.location.reload();
     else setError('Não foi possível restaurar.');
   }
 
   return (
     <form onSubmit={submit} class="max-w-2xl space-y-5">
+      {saved && <SavedNotice text="Seção salva com sucesso!" />}
       {error && <p class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       {notice && <p class="rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">{notice}</p>}
 
@@ -123,7 +141,7 @@ export default function SiteSectionForm({ section, entry }: Props) {
       {TOGGLEABLE.includes(section) && (
         <label class="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={isActive} onChange={(e) => setIsActive((e.target as HTMLInputElement).checked)} />
-          Mostrar esta seção na home
+          Ativa (aparece na home)
         </label>
       )}
 
@@ -262,15 +280,16 @@ export default function SiteSectionForm({ section, entry }: Props) {
         </>
       )}
 
-      <div class="flex items-center gap-3 pt-2">
-        <button type="submit" class="btn-primary" disabled={saving}>
-          {saving ? 'Salvando…' : 'Salvar'}
-        </button>
-        <a href="/admin/site" class="btn-outline">Cancelar</a>
-        <button type="button" onClick={restore} class="ml-auto text-sm text-red-700 hover:underline">
-          Restaurar padrão
-        </button>
-      </div>
+      <FormActions
+        listHref="/admin/site"
+        saving={saving}
+        isNew={false}
+        deleteTitle="Excluir seção?"
+        deleteBlock="As seções do site são fixas e não podem ser excluídas. Para voltar ao texto original, use “Restaurar texto padrão”."
+      />
+      <button type="button" onClick={restore} class="text-sm text-red-700 hover:underline">
+        Restaurar texto padrão
+      </button>
     </form>
   );
 }

@@ -5,7 +5,7 @@ import { getCategoryTree, getProducts } from '../../../lib/repo/catalog';
 
 export const prerender = false;
 
-const [tree, products] = await Promise.all([getCategoryTree(), getProducts({ includeInactive: true })]);
+const [tree, products] = await Promise.all([getCategoryTree({ includeInactive: true }), getProducts({ includeInactive: true })]);
 
 const countBySlug = new Map<string, number>();
 const imageBySlug = new Map<string, string>();
@@ -20,6 +20,7 @@ const toNode = (c: (typeof tree)[number] | (typeof tree)[number]['children'][num
   slug: c.slug,
   thumb: c.image_url || imageBySlug.get(c.slug) || '',
   count: countBySlug.get(c.slug) ?? 0,
+  is_active: c.is_active,
   children: 'children' in c ? c.children.map(toNode) : [],
 });
 

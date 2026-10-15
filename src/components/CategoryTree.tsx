@@ -6,6 +6,7 @@ interface Node {
   slug: string;
   thumb: string;
   count: number;
+  is_active: boolean;
   children: Node[];
 }
 
@@ -182,8 +183,8 @@ export default function CategoryTree({ tree }: { tree: Node[] }) {
     const inside = hint?.overId === node.id && hint.mode === 'inside' && depth === 0 && !isDragged;
     const line = hint?.overId === node.id && hint.mode !== 'inside' && !isDragged ? hint.mode : null;
     return (
-      <li class={depth === 1 ? 'ml-6 sm:ml-10' : ''}>
-        {line === 'before' && <div class="mb-1 h-1 rounded bg-agua" />}
+      <li class="border-t border-ink/10 first:border-t-0">
+        {line === 'before' && <div class="h-1 bg-agua" />}
         <div
           draggable
           onDragStart={(e) => {
@@ -203,9 +204,9 @@ export default function CategoryTree({ tree }: { tree: Node[] }) {
             e.preventDefault();
             doDrop();
           }}
-          class={`flex items-center gap-2 rounded-card border bg-white p-3 transition-colors ${
+          class={`flex items-center gap-2 px-3 py-2 transition-colors hover:bg-bone-50 ${depth === 1 ? 'pl-8 sm:pl-12' : ''} ${
             isDragged ? 'opacity-40' : ''
-          } ${inside ? 'border-agua ring-1 ring-agua' : 'border-ink/10'}`}
+          } ${inside ? 'bg-agua-wash ring-1 ring-inset ring-agua' : ''}`}
         >
           <span class="cursor-grab select-none px-1 text-lg leading-none text-ink-muted" title="Arraste para mover" aria-hidden="true">⠿</span>
 
@@ -214,7 +215,10 @@ export default function CategoryTree({ tree }: { tree: Node[] }) {
           </div>
 
           <div class="min-w-0 flex-1">
-            <a href={`/admin/categorias/${node.id}`} draggable={false} class="font-medium text-agua-dark">{node.name}</a>
+            <span class="block truncate font-medium">
+              {node.name}
+              {!node.is_active && <span class="ml-1 rounded-full bg-bone-200 px-2 py-0.5 align-middle text-[10px] uppercase text-ink-muted">Inativa</span>}
+            </span>
             <p class="truncate text-[12px] text-ink-muted">
               {depth === 0
                 ? `raiz · ${node.children.length} ${node.children.length === 1 ? 'subcategoria' : 'subcategorias'}`
@@ -241,18 +245,21 @@ export default function CategoryTree({ tree }: { tree: Node[] }) {
                 {roots.filter((r) => r.id !== node.id).map((r) => <option value={r.id}>{r.name}</option>)}
               </select>
             )}
+            <a href={`/admin/categorias/${node.id}`} draggable={false} class="ml-1 rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
           </div>
         </div>
-        {line === 'after' && <div class="mt-1 h-1 rounded bg-agua" />}
+        {line === 'after' && <div class="h-1 bg-agua" />}
       </li>
     );
   }
 
   return (
     <div>
-      <div class="mb-3 flex items-center gap-3">
-        <a href="/admin/categorias/nova" class="btn-primary text-[13px]">Nova categoria</a>
-        {saving && <span class="text-[12px] text-ink-muted">salvando…</span>}
+      <div class="mb-4 flex items-center justify-between gap-3">
+        <p class="font-sans text-sm text-ink-muted">
+          {flatten(nodes).length} categorias{saving && ' · salvando…'}
+        </p>
+        <a href="/admin/categorias/nova" class="btn-primary">Nova categoria</a>
       </div>
       {error && <p class="mb-3 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{error}</p>}
       <p class="mb-4 text-[12px] text-ink-muted">
@@ -261,8 +268,13 @@ export default function CategoryTree({ tree }: { tree: Node[] }) {
         subcategorias não pode virar subcategoria.
       </p>
 
+      <div class="rounded-card border border-ink/10 bg-white">
+      <div class="flex border-b border-ink/10 px-3 py-3 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+        <span class="flex-1 pl-8">Nome</span>
+        <span class="sr-only">Ações</span>
+      </div>
       <ul
-        class="space-y-1"
+        class=""
         onDragOver={(e) => {
           if (e.target === e.currentTarget) {
             e.preventDefault();
@@ -278,6 +290,7 @@ export default function CategoryTree({ tree }: { tree: Node[] }) {
           <Row {...f} key={f.node.id} />
         ))}
       </ul>
+      </div>
     </div>
   );
 }

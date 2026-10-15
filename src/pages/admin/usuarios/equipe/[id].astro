@@ -1,0 +1,172 @@
+---
+import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import { can } from '../../../../lib/rbac';
+import { listTeam } from '../../../../lib/repo/team';
+import { listRoles } from '../../../../lib/repo/roles';
+import { getOwnerEmail, isProprietor } from '../../../../lib/repo/owner';
+import { takeFlash } from '../../../../lib/flash';
+
+export const prerender = false;
+
+const access = Astro.locals.admin!;
+if (!can(access, 'equipe.ver')) return Astro.redirect('/admin/usuarios');
+const id = Astro.params.id ?? '';
+const isNew = id === 'novo';
+const canManage = can(access, 'equipe.gerenciar');
+if (isNew && !canManage) return Astro.redirect('/admin/usuarios?aba=equipe');
+
+const [team, roles, ownerEmail, proprietor] = await Promise.all([
+  isNew ? Promise.resolve([]) : listTeam(),
+  listRoles().catch(() => []),
+  getOwnerEmail(),
+  isProprietor(Astro.locals.user?.email),
+]);
+const member = isNew ? null : team.find((m) => m.id === id);
+if (!isNew && !member) return Astro.redirect('/admin/usuarios?aba=equipe');
+
+const me = Astro.locals.user!.id;
+const isMe = member?.id === me;
+const isOwnerAccount = !!member && !!ownerEmail && member.email.toLowerCase() === ownerEmail;
+// só o Proprietário dá/tira o cargo Administrador (o servidor confere o resto)
+const assignable = roles.filter((r) => proprietor || !r.is_owner);
+const options = member?.is_owner && !proprietor ? roles.filter((r) => r.is_owner) : assignable;
+const readOnly = !canManage || isMe;
+const deleteBlock = isMe
+  ? 'Você não pode excluir a sua própria conta.'
+  : isOwnerAccount
+    ? 'Esta conta é o Proprietário. Troque o Proprietário em Cargos › Administrador antes de excluir.'
+    : '';
+const flash = takeFlash(Astro.cookies);
+---
+
+<AdminLayout title={isNew ? 'Novo usuário' : 'Usuário'}>
+  <a href="/admin/usuarios?aba=equipe" class="font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink">← Usuários</a>
+
+  {flash && (
+    <p role="status" class:list={['mt-4 max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+  )}
+  <div id="top-notice" role="alert" class="notice-in mt-4 hidden max-w-2xl rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700"></div>
+
+  {isMe && (
+    <p class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">
+      Esta é a sua conta. Os seus dados ficam em <a href="/admin/perfil" class="underline">Meu perfil</a>; o seu cargo só outra pessoa altera.
+    </p>
+  )}
+  {!canManage && (
+    <p class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">Somente leitura: seu cargo não permite alterar a equipe.</p>
+  )}
+
+  <form id="member-form" method="POST" action="/api/admin/users" class="mt-4 max-w-2xl space-y-5">
+    <input type="hidden" name="acao" value={isNew ? 'criar' : 'editar'} />
+    <input type="hidden" name="id" value={member?.id ?? ''} />
+    <fieldset disabled={readOnly} class="space-y-5">
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="block"><span class="label">Nome</span><input class="field" name="name" value={member?.name ?? ''} required={isNew} /></label>
+        <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" /></label>
+        <label class="block">
+          <span class="label">{isNew ? 'Senha inicial' : <>Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></>}</span>
+          <input class="field" type="password" name="password" minlength="8" required={isNew} autocomplete="new-password" />
+        </label>
+        <label class="block">
+          <span class="label">Cargo</span>
+          <select class="field" name="role_id" required>
+            {!member?.role_id && <option value="" disabled selected>Escolha o cargo</option>}
+            {options.map((r) => <option value={r.id} selected={r.id === member?.role_id}>{r.name}</option>)}
+          </select>
+        </label>
+      </div>
+      {isNew && (
+        <p class="text-[12px] text-ink-muted">A conta da equipe é sempre nova: use um e-mail que ainda não tenha cadastro na loja. Passe a senha inicial para a pessoa e peça para trocar em "Meu perfil".</p>
+      )}
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" name="is_active" checked={member?.is_active ?? true} />
+        Ativo (entra no painel com o acesso do cargo)
+      </label>
+    </fieldset>
+
+    <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! {deleteBlock}</p>
+    {!readOnly ? (
+      <div class="grid grid-cols-3 gap-3 pt-2">
+        <button type="submit" id="save-btn" class="btn-primary w-full">{isNew ? 'Criar usuário' : 'Salvar'}</button>
+        <button type="button" id="cancel-btn" class="btn-outline w-full">Cancelar</button>
+        <button type="button" id="delete-btn" class:list={['btn-outline w-full', deleteBlock && 'cursor-not-allowed opacity-40']} aria-disabled={deleteBlock ? 'true' : undefined}>Excluir</button>
+      </div>
+    ) : (
+      <a href="/admin/usuarios?aba=equipe" class="btn-outline inline-block">Voltar</a>
+    )}
+  </form>
+
+  {member && !readOnly && (
+    <form id="delete-form" method="POST" action="/api/admin/users" class="hidden">
+      <input type="hidden" name="acao" value="excluir" />
+      <input type="hidden" name="id" value={member.id} />
+    </form>
+  )}
+</AdminLayout>
+
+<script define:vars={{ deleteBlock, isNew, label: member?.name || member?.email || '' }}>
+  window.__member = { deleteBlock, isNew, label };
+</script>
+
+<script>
+  import { askSaveActive, confirmDialog } from '../../../../lib/confirm-dialog';
+
+  const { deleteBlock, isNew, label } = (window as any).__member as { deleteBlock: string; isNew: boolean; label: string };
+  const form = document.getElementById('member-form') as HTMLFormElement;
+  const top = document.getElementById('top-notice')!;
+  const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
+
+  function showTop(text: string) {
+    top.textContent = `! ${text}`;
+    top.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!saveBtn || !form.reportValidity()) return;
+    const active = (form.querySelector('input[name=is_active]') as HTMLInputElement).checked;
+    const ok = await askSaveActive(active, {
+      on: 'A pessoa entra no painel com o acesso do cargo.',
+      off: 'A pessoa continua na equipe, mas fica sem acesso a nenhuma tela.',
+    });
+    if (!ok) return;
+    saveBtn.disabled = true;
+    top.classList.add('hidden');
+    try {
+      const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { accept: 'application/json' } });
+      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
+      if (r.ok && r.id) return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
+      showTop(r.error || 'Não foi possível salvar.');
+    } catch {
+      showTop('Sem conexão com o servidor.');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  document.getElementById('cancel-btn')?.addEventListener('click', async () => {
+    const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
+    if (leave) window.location.href = '/admin/usuarios?aba=equipe';
+  });
+
+  document.getElementById('delete-btn')?.addEventListener('click', async () => {
+    if (deleteBlock) {
+      const n = document.getElementById('delete-notice')!;
+      n.classList.remove('hidden', 'notice-in');
+      void n.offsetWidth; // repete a animação a cada clique
+      n.classList.add('notice-in');
+      return;
+    }
+    if (isNew) {
+      const discard = await confirmDialog({ title: 'Descartar este cadastro?', message: 'Nada foi salvo ainda.', confirmLabel: 'Descartar' });
+      if (discard) window.location.href = '/admin/usuarios?aba=equipe';
+      return;
+    }
+    const ok = await confirmDialog({
+      title: 'Excluir usuário?',
+      message: `${label} perde o acesso ao painel. Se a conta nunca comprou na loja, ela é apagada.`,
+    });
+    if (ok) (document.getElementById('delete-form') as HTMLFormElement).submit();
+  });
+</script>

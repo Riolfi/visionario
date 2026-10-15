@@ -50,6 +50,7 @@ export function normalizeCategory(row: any): Category {
     position: row.position ?? 0,
     image_url: row.image_url ?? '',
     parent_id: row.parent_id ?? null,
+    is_active: row.is_active !== false,
   };
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
@@ -138,7 +139,16 @@ function rowToProduct(row: any): Product {
 // API pública do repositório
 // ---------------------------------------------------------------------------
 
-export async function getCategories(): Promise<Category[]> {
+/** Loja: só as ativas. Área administrativa: passe includeInactive. */
+export async function getCategories(opts: { includeInactive?: boolean } = {}): Promise<Category[]> {
+  const all = await allCategories();
+  if (opts.includeInactive) return all;
+  // subcategoria de uma raiz inativa também some
+  const off = new Set(all.filter((c) => !c.is_active).map((c) => c.id));
+  return all.filter((c) => c.is_active && !(c.parent_id && off.has(c.parent_id)));
+}
+
+async function allCategories(): Promise<Category[]> {
   const sb = supabaseAdmin();
   if (hasSupabase && sb) {
     const { data, error } = await sb.from('categories').select('*').order('position');
@@ -152,13 +162,13 @@ export async function getCategories(): Promise<Category[]> {
 }
 
 export async function getCategoryById(id: string): Promise<Category | null> {
-  const all = await getCategories();
+  const all = await getCategories({ includeInactive: true });
   return all.find((c) => c.id === id) ?? null;
 }
 
 /** raízes (nível 1) com suas subcategorias (nível 2) */
-export async function getCategoryTree(): Promise<CategoryNode[]> {
-  return toTree(await getCategories());
+export async function getCategoryTree(opts: { includeInactive?: boolean } = {}): Promise<CategoryNode[]> {
+  return toTree(await getCategories(opts));
 }
 
 /** só as subcategorias (nível 2) — usado no formulário de produto */
@@ -172,13 +182,14 @@ export interface CategoryInput {
   name: string;
   description: string;
   image_url: string;
+  is_active: boolean;
   /** só considerado ao CRIAR; a hierarquia depois é editada na lista (drag) */
   parent_id?: string | null;
 }
 
 export async function saveCategory(
   input: CategoryInput,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; id?: string }> {
   const sb = supabaseAdmin();
   const isNew = !input.id;
   const base = {
@@ -187,6 +198,9 @@ export async function saveCategory(
     description: input.description,
     image_url: input.image_url,
   };
+  // is_active só vai quando desliga: antes da migration 0020 salvar ativa continua funcionando
+  const activeCol = input.is_active ? {} : { is_active: false };
+  const colMissing = (m: string) => (/is_active/.test(m) ? 'Rode a migration 0020_active_flags.sql no Supabase para desativar categorias.' : m);
 
   if (hasSupabase && sb) {
     if (isNew) {
@@ -195,11 +209,18 @@ export async function saveCategory(
         .from('categories')
         .select('id', { count: 'exact', head: true })
         .is('parent_id', parent_id === null ? null : (parent_id as never));
-      const { error } = await sb.from('categories').insert({ ...base, parent_id, position: (count ?? 0) + 1 });
-      return error ? { ok: false, error: error.message } : { ok: true };
+      const { data, error } = await sb
+        .from('categories')
+        .insert({ ...base, ...activeCol, parent_id, position: (count ?? 0) + 1 })
+        .select('id')
+        .single();
+      return error ? { ok: false, error: colMissing(error.message) } : { ok: true, id: data.id };
     }
-    const { error } = await sb.from('categories').update(base).eq('id', input.id);
-    return error ? { ok: false, error: error.message } : { ok: true };
+    const { error } = await sb.from('categories').update({ ...base, ...activeCol }).eq('id', input.id);
+    if (error) return { ok: false, error: colMissing(error.message) };
+    // reativar: grava true explicitamente (sem a coluna, ignora)
+    if (input.is_active) await sb.from('categories').update({ is_active: true }).eq('id', input.id).then(() => {}, () => {});
+    return { ok: true, id: input.id };
   }
 
   const catalog = await readCatalog();

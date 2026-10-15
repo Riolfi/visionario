@@ -37,6 +37,9 @@ const deleteBlock = isMe
     ? 'Esta conta é o Proprietário. Troque o Proprietário em Cargos › Administrador antes de excluir.'
     : '';
 const flash = takeFlash(Astro.cookies);
+// Proprietário: só aparece com o cargo Administrador; só o Proprietário atual liga em outra pessoa
+const adminRoleId = roles.find((r) => r.is_owner)?.id ?? '';
+const canTransfer = proprietor && !readOnly && !isOwnerAccount;
 ---
 
 <AdminLayout title={isNew ? 'Novo usuário' : 'Usuário'}>
@@ -84,6 +87,24 @@ const flash = takeFlash(Astro.cookies);
       </label>
     </fieldset>
 
+    {/* fora do fieldset: o Proprietário atual liga mesmo quando a tela é só leitura para os outros campos */}
+    <div id="owner-field" class:list={['rounded-card border border-ink/10 bg-white px-4 py-3', member?.role_id !== adminRoleId && 'hidden']}>
+      <label class:list={['flex items-center justify-between gap-4', canTransfer ? 'cursor-pointer' : 'cursor-not-allowed opacity-60']}>
+        <span>
+          <span class="block text-sm font-medium">Proprietário</span>
+          <span class="block text-[12px] text-ink-muted">
+            {isOwnerAccount
+              ? 'Esta pessoa é o Proprietário (responsável legal da conta). Para trocar, ligue em outro Administrador.'
+              : canTransfer
+                ? 'Ligar passa a posse da conta para esta pessoa. Enviamos um código ao seu e-mail para confirmar.'
+                : 'Só o Proprietário atual pode passar a posse da conta.'}
+          </span>
+        </span>
+        <input type="checkbox" name="proprietario" checked={isOwnerAccount} disabled={!canTransfer} class="peer sr-only" />
+        <span class="relative h-6 w-11 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-agua" aria-hidden="true"></span>
+      </label>
+    </div>
+
     <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! {deleteBlock}</p>
     {!readOnly ? (
       <div class="grid grid-cols-3 gap-3 pt-2">
@@ -96,6 +117,20 @@ const flash = takeFlash(Astro.cookies);
     )}
   </form>
 
+  {/* código da troca do Proprietário (enviado ao e-mail do Proprietário atual) */}
+  <dialog id="token-dialog" class="w-[min(92vw,26rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
+    <form id="token-form" class="p-6">
+      <h2 class="font-display text-xl">Confirme a troca do Proprietário</h2>
+      <p class="mt-2 font-sans text-sm text-ink-soft">Enviamos um código de 6 dígitos para o seu e-mail. Digite-o para concluir; ele vale por 15 minutos.</p>
+      <input id="token-code" class="field mt-4 text-center text-xl tracking-[0.4em]" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de 6 dígitos" />
+      <p id="token-error" class="mt-2 hidden font-sans text-[13px] text-red-700"></p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button type="button" id="token-cancel" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Cancelar</button>
+        <button type="submit" class="rounded-card bg-ink px-4 py-2 font-sans text-sm text-bone hover:bg-ink-soft">Concluir</button>
+      </div>
+    </form>
+  </dialog>
+
   {member && !readOnly && (
     <form id="delete-form" method="POST" action="/api/admin/users" class="hidden">
       <input type="hidden" name="acao" value="excluir" />
@@ -104,14 +139,19 @@ const flash = takeFlash(Astro.cookies);
   )}
 </AdminLayout>
 
-<script define:vars={{ deleteBlock, isNew, label: member?.name || member?.email || '' }}>
-  window.__member = { deleteBlock, isNew, label };
+<script define:vars={{ deleteBlock, isNew, label: member?.name || member?.email || '', adminRoleId }}>
+  window.__member = { deleteBlock, isNew, label, adminRoleId };
 </script>
 
 <script>
   import { askSaveActive, confirmDialog } from '../../../../lib/confirm-dialog';
 
-  const { deleteBlock, isNew, label } = (window as any).__member as { deleteBlock: string; isNew: boolean; label: string };
+  const { deleteBlock, isNew, label, adminRoleId } = (window as any).__member as {
+    deleteBlock: string;
+    isNew: boolean;
+    label: string;
+    adminRoleId: string;
+  };
   const form = document.getElementById('member-form') as HTMLFormElement;
   const top = document.getElementById('top-notice')!;
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
@@ -121,6 +161,49 @@ const flash = takeFlash(Astro.cookies);
     top.classList.remove('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+
+  // Proprietário só aparece com o cargo Administrador escolhido
+  const roleSelect = form.querySelector('select[name=role_id]') as HTMLSelectElement;
+  const ownerField = document.getElementById('owner-field')!;
+  const ownerToggle = form.querySelector('input[name=proprietario]') as HTMLInputElement;
+  roleSelect.addEventListener('change', () => {
+    const isAdmin = !!adminRoleId && roleSelect.value === adminRoleId;
+    ownerField.classList.toggle('hidden', !isAdmin);
+    if (!isAdmin && !ownerToggle.disabled) ownerToggle.checked = false;
+  });
+
+  // ---- código da troca do Proprietário ----
+  const dialog = document.getElementById('token-dialog') as HTMLDialogElement;
+  const codeInput = document.getElementById('token-code') as HTMLInputElement;
+  const tokenError = document.getElementById('token-error')!;
+  let savedId = '';
+  function openToken(id: string) {
+    savedId = id;
+    codeInput.value = '';
+    tokenError.classList.add('hidden');
+    dialog.showModal();
+    codeInput.focus();
+  }
+  document.getElementById('token-cancel')!.addEventListener('click', () => {
+    dialog.close();
+    // o usuário já foi salvo; o Proprietário continua o mesmo
+    window.location.href = `/admin/usuarios/equipe/${savedId}`;
+  });
+  document.getElementById('token-form')!.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = new FormData();
+    body.set('acao', 'confirmar_proprietario');
+    body.set('code', codeInput.value);
+    try {
+      const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
+      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (r.ok) return void (window.location.href = `/admin/usuarios/equipe/${savedId}`);
+      tokenError.textContent = r.error || 'Código incorreto.';
+    } catch {
+      tokenError.textContent = 'Sem conexão com o servidor.';
+    }
+    tokenError.classList.remove('hidden');
+  });
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -135,7 +218,8 @@ const flash = takeFlash(Astro.cookies);
     top.classList.add('hidden');
     try {
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { accept: 'application/json' } });
-      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
+      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string; needsToken?: boolean };
+      if (r.ok && r.needsToken && r.id) return openToken(r.id);
       if (r.ok && r.id) return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
       showTop(r.error || 'Não foi possível salvar.');
     } catch {

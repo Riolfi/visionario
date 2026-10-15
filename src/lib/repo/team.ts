@@ -59,10 +59,11 @@ export async function listTeam(): Promise<TeamMember[]> {
     .sort((a, b) => Number(b.is_owner) - Number(a.is_owner) || a.email.localeCompare(b.email));
 }
 
+/** Administradores ATIVOS (inativo não conta: não entra no painel). */
 async function ownerCount(): Promise<number> {
   const sb = supabaseAdmin()!;
-  const { data } = await sb.from('admin_users').select('role_id, admin_roles(is_owner)');
-  return (data ?? []).filter((r) => (r.admin_roles as unknown as { is_owner: boolean } | null)?.is_owner).length;
+  const { data } = await sb.from('admin_users').select('*, admin_roles(is_owner)');
+  return (data ?? []).filter((r) => r.is_active !== false && (r.admin_roles as unknown as { is_owner: boolean } | null)?.is_owner).length;
 }
 
 /** O cargo cabe no acesso de quem está atribuindo? (sem escalada) */
@@ -148,6 +149,7 @@ export async function updateMember(
   if (!input.isActive && row.is_active !== false) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
     if (await isOwnerEmail(u.user?.email ?? '')) return { ok: false, error: 'O Proprietário não pode ficar inativo.' };
+    if ((await roleRules(row.role_id ?? ''))?.isOwner && (await ownerCount()) <= 1) return { ok: false, error: 'O cargo Administrador precisa ter pelo menos uma pessoa ativa.' };
   }
 
   if (input.roleId !== row.role_id) {
@@ -203,6 +205,7 @@ export async function setMemberActive(actor: Actor & { userId: string }, userId:
   if (!active) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
     if (await isOwnerEmail(u.user?.email ?? '')) return { ok: false, error: 'O Proprietário não pode ficar inativo.' };
+    if ((await roleRules(row.role_id ?? ''))?.isOwner && (await ownerCount()) <= 1) return { ok: false, error: 'O cargo Administrador precisa ter pelo menos uma pessoa ativa.' };
   }
   const { error } = await sb.from('admin_users').update({ is_active: active }).eq('user_id', userId);
   if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0020_active_flags.sql no Supabase.' : error.message };

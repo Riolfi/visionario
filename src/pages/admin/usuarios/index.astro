@@ -5,7 +5,6 @@ import { listTeam } from '../../../lib/repo/team';
 import { listRoles } from '../../../lib/repo/roles';
 import { CUSTOMER_STATUS_LABELS, listCustomers } from '../../../lib/repo/customers';
 import { takeFlash } from '../../../lib/flash';
-import { brl } from '../../../lib/format';
 
 export const prerender = false;
 
@@ -155,11 +154,9 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
       <table class="w-full table-fixed text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class="px-3 py-3">Nome</th>
-            <th class="hidden w-20 px-3 py-3 text-right sm:table-cell">Pedidos</th>
-            <th class="hidden w-28 px-3 py-3 text-right md:table-cell">Total gasto</th>
-            <th class="w-28 px-3 py-3">Status</th>
-            <th class="w-20 px-3 py-3 sm:w-24"><span class="sr-only">Ações</span></th>
+            <th class="px-3 py-3">Cliente</th>
+            <th class="w-28 px-3 py-3">Conta</th>
+            <th class="w-24 px-3 py-3 sm:w-28"><span class="sr-only">Ações</span></th>
           </tr>
         </thead>
         <tbody>
@@ -169,11 +166,9 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                 <span class="block truncate font-medium">{c.name || '—'}</span>
                 <span class="block truncate text-[12px] text-ink-muted">{c.email}</span>
               </td>
-              <td class="hidden px-3 py-3 text-right sm:table-cell">{c.orders}</td>
-              <td class="hidden px-3 py-3 text-right md:table-cell">{brl(c.spent_cents)}</td>
               <td class="px-3 py-3"><span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span></td>
               <td class="px-3 py-3 text-right">
-                <a href={`/admin/usuarios/clientes/${c.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">{can(access, 'clientes.estado') ? 'Editar' : 'Ver'}</a>
+                <a href={`/admin/usuarios/clientes/${c.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Visualizar</a>
               </td>
             </tr>
           ))}

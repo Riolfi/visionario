@@ -32,6 +32,8 @@ export const env = {
   supabaseUrl: read('SUPABASE_URL'),
   supabaseAnonKey: read('SUPABASE_ANON_KEY'),
   supabaseServiceKey: read('SUPABASE_SERVICE_ROLE_KEY'),
+  /** assina o cookie de inatividade (sem ele, usa um derivado da service role) */
+  sessionSecret: read('SESSION_SECRET'),
 
   mpPublicKey: read('PUBLIC_MP_PUBLIC_KEY'),
   mpAccessToken: read('MP_ACCESS_TOKEN'),

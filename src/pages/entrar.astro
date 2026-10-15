@@ -29,6 +29,8 @@ const nextQs = `next=${encodeURIComponent(next)}`;
             ? 'Não conseguimos concluir o login. Tente de novo.'
             : erro === 'conta'
               ? 'Esta conta está desativada ou bloqueada. Fale com a loja para saber mais.'
+              : erro === 'expirou'
+                ? 'Sua sessão expirou (2 horas sem uso ou 4 horas logado). Entre de novo.'
               : 'E-mail ou senha incorretos.'}
         </p>
       )}

@@ -6,6 +6,7 @@ import { DEFAULT_SITE_CONTENT } from './lib/site-defaults';
 import { checkStoreIdentity } from './lib/supabase';
 import { canAccess, getAdminAccess, homeFor, type AdminAccess } from './lib/repo/admin';
 import { getCustomerStatus } from './lib/repo/customers';
+import { sessionExpired } from './lib/session-limits';
 
 // O que uma conta de administrador pode abrir fora de /admin: login/sair,
 // fotos enviadas e as APIs que o próprio painel chama (status do Pix na
@@ -56,9 +57,24 @@ export const onRequest = defineMiddleware(async (context, next) => {
     const supabase = getServerClient(context.request, context.cookies);
     context.locals.supabase = supabase;
     if (supabase) {
-      const {
+      let {
         data: { user },
       } = await supabase.auth.getUser();
+
+      // 2 h sem uso ou 4 h logado: encerra a sessão (ver session-limits)
+      if (user && (await sessionExpired(supabase, context.cookies))) {
+        await supabase.auth.signOut();
+        user = null;
+        if (pathname.startsWith('/api/')) {
+          return new Response(JSON.stringify({ error: 'Sessão expirada. Entre de novo.' }), {
+            status: 401,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        if (!pathname.startsWith('/auth/') && pathname !== '/entrar') {
+          return context.redirect(`/entrar?erro=expirou&next=${encodeURIComponent(pathname)}`);
+        }
+      }
       context.locals.user = user;
       access = user ? await getAdminAccess(user.id) : null;
       context.locals.admin = access;

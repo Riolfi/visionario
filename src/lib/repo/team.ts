@@ -191,6 +191,24 @@ export async function updateMember(
   return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
 }
 
+/** Liga/desliga o acesso de um membro (botão da lista), com as mesmas travas da edição. */
+export async function setMemberActive(actor: Actor & { userId: string }, userId: string, active: boolean): Promise<Result> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
+  if (userId === actor.userId) return { ok: false, error: 'Você não pode ativar ou desativar a sua própria conta.' };
+  const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
+  if (!row) return { ok: false, error: 'Membro não encontrado.' };
+  const manage = await checkManageable(actor, row.role_id);
+  if (manage) return { ok: false, error: manage };
+  if (!active) {
+    const { data: u } = await sb.auth.admin.getUserById(userId);
+    if (await isOwnerEmail(u.user?.email ?? '')) return { ok: false, error: 'O Proprietário não pode ficar inativo.' };
+  }
+  const { error } = await sb.from('admin_users').update({ is_active: active }).eq('user_id', userId);
+  if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0020_active_flags.sql no Supabase.' : error.message };
+  return { ok: true, message: active ? 'Usuário ativado.' : 'Usuário desativado.' };
+}
+
 /**
  * Tira da equipe. Conta só de equipe é apagada; conta que já comprou na loja
  * continua existindo como cliente (o histórico de pedidos não se perde).

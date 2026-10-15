@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { setFlash } from '../../../lib/flash';
-import { createMember, removeMember, updateMember } from '../../../lib/repo/team';
+import { createMember, removeMember, setMemberActive, updateMember } from '../../../lib/repo/team';
 
 /**
  * POST /api/admin/users — equipe do painel (regra equipe.gerenciar, ver
@@ -8,6 +8,7 @@ import { createMember, removeMember, updateMember } from '../../../lib/repo/team
  *   acao=criar    name, email, password, role_id, is_active
  *   acao=editar   id, name, email, password (opcional), role_id, is_active
  *   acao=excluir  id
+ *   acao=ativo    id, ativo=1|0 (botão da lista)
  * A tela de criar/editar pede JSON (fetch) para não perder o que foi digitado
  * num erro; sem isso, redireciona com aviso.
  */
@@ -32,7 +33,9 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
         ? await updateMember(actor, id, input)
         : acao === 'excluir' && id
           ? await removeMember(actor, id)
-          : ({ ok: false, error: 'Ação inválida.' } as const);
+          : acao === 'ativo' && id
+            ? await setMemberActive(actor, id, form.get('ativo') === '1')
+            : ({ ok: false, error: 'Ação inválida.' } as const);
 
   if (result.ok) setFlash(cookies, 'ok', result.message ?? 'Pronto.');
   if (wantsJson) {
@@ -42,6 +45,6 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
     });
   }
   if (!result.ok) setFlash(cookies, 'erro', result.error);
-  if (acao === 'excluir' && result.ok) return redirect('/admin/usuarios?aba=equipe');
+  if ((acao === 'excluir' && result.ok) || acao === 'ativo') return redirect('/admin/usuarios?aba=equipe');
   return redirect(id ? `/admin/usuarios/equipe/${id}` : '/admin/usuarios?aba=equipe');
 };

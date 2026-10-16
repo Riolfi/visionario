@@ -26,12 +26,21 @@ const aguaVars = {
   wash: 'rgb(var(--agua-wash) / <alpha-value>)',
 };
 
+/**
+ * Fundo (bone) e texto (ink) também viram variável: o modo escuro da área
+ * administrativa troca só os valores (html.admin-dark em global.css). Os
+ * valores claros saem do theme.json via ThemeVars.
+ */
+const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+const boneVars = { DEFAULT: v('bone'), 50: v('bone-50'), 100: v('bone-100'), 200: v('bone-200'), 300: v('bone-300') };
+const inkVars = { DEFAULT: v('ink'), soft: v('ink-soft'), muted: v('ink-muted') };
+
 /** @type {import('tailwindcss').Config} */
 export default {
   content: ['./src/**/*.{astro,html,js,jsx,ts,tsx,md,mdx}'],
   theme: {
     extend: {
-      colors: { ...theme.colors, agua: aguaVars },
+      colors: { ...theme.colors, agua: aguaVars, bone: boneVars, ink: inkVars },
       fontFamily: {
         // Famílias em theme.json > fonts.{display,sans,accent}.
         // Os @font-face vêm do src/styles/global.css (fontsource).

@@ -9,7 +9,11 @@ import { theme } from '../lib/theme';
 import { hexToRgbTriplet } from '../lib/color';
 
 const a = theme.colors.agua;
-const css = `:root{--agua-default:${hexToRgbTriplet(a.DEFAULT)};--agua-light:${hexToRgbTriplet(a.light)};--agua-dark:${hexToRgbTriplet(a.dark)};--agua-wash:${hexToRgbTriplet(a.wash)}}`;
+const b = theme.colors.bone as Record<string, string>;
+const i = theme.colors.ink as Record<string, string>;
+const t = hexToRgbTriplet;
+// fundo/texto em variável para o modo escuro do painel (html.admin-dark troca os valores)
+const css = `:root{--agua-default:${t(a.DEFAULT)};--agua-light:${t(a.light)};--agua-dark:${t(a.dark)};--agua-wash:${t(a.wash)};--bone:${t(b.DEFAULT)};--bone-50:${t(b['50'])};--bone-100:${t(b['100'])};--bone-200:${t(b['200'])};--bone-300:${t(b['300'])};--ink:${t(i.DEFAULT)};--ink-soft:${t(i.soft)};--ink-muted:${t(i.muted)}}`;
 ---
 
 <style is:global set:html={css} />

@@ -608,3 +608,110 @@ section.tb-cat-sec {
 .filter-sheet[open] { animation: sheet-up 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
 @media (min-width: 640px) { .filter-sheet[open] { animation: sheet-in 0.2s ease-out; } }
 @media (prefers-reduced-motion: reduce) { .filter-sheet[open] { animation: none; } }
+
+/* ==========================================================================
+   Área administrativa — modo escuro (html.admin-dark, botão sol/lua no
+   cabeçalho). Troca só as variáveis de fundo/texto; o que usa cor fixa do
+   Tailwind (cards brancos, avisos coloridos, pop-up de filtro) é ajustado aqui.
+   ========================================================================== */
+html.admin-dark {
+  color-scheme: dark;
+  --bone: 24 19 34;
+  --bone-50: 17 13 25;
+  --bone-100: 30 24 42;
+  --bone-200: 44 36 60;
+  --bone-300: 60 50 82;
+  --ink: 239 233 247;
+  --ink-soft: 207 196 228;
+  --ink-muted: 156 144 181;
+  --agua-wash: 52 40 82;
+}
+html.admin-dark body {
+  background-image: none;
+}
+html.admin-dark .bg-white,
+html.admin-dark .bg-white\/70 {
+  background-color: rgb(32 26 45);
+}
+html.admin-dark .bg-\[\#f2f1f6\] {
+  background-color: rgb(var(--bone));
+}
+html.admin-dark .bg-red-50 { background-color: rgb(127 29 29 / 0.35); }
+html.admin-dark .bg-green-50 { background-color: rgb(20 83 45 / 0.4); }
+html.admin-dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.4); }
+html.admin-dark .text-red-700,
+html.admin-dark .text-red-800 { color: rgb(252 165 165); }
+html.admin-dark .text-green-700,
+html.admin-dark .text-green-800 { color: rgb(134 239 172); }
+html.admin-dark .text-amber-700,
+html.admin-dark .text-amber-800 { color: rgb(252 211 77); }
+html.admin-dark .border-red-200,
+html.admin-dark .border-red-300 { border-color: rgb(248 113 113 / 0.45); }
+html.admin-dark .border-green-200 { border-color: rgb(74 222 128 / 0.4); }
+html.admin-dark .text-agua-dark { color: rgb(var(--agua-light)); }
+html.admin-dark .btn-primary { color: #fff; box-shadow: 4px 4px 0 rgb(0 0 0 / 0.55); }
+html.admin-dark .btn-outline { box-shadow: 4px 4px 0 rgb(108 43 217); }
+html.admin-dark img { opacity: 0.95; }
+
+/* ==========================================================================
+   Área administrativa — carregando: aparece quando a tela começa a sair
+   (link, formulário, recarregar, redirecionar) e some com a tela nova.
+   ========================================================================== */
+#page-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  pointer-events: none;
+  visibility: hidden;
+}
+#page-loader.is-loading {
+  visibility: visible;
+  pointer-events: auto;
+  cursor: progress;
+}
+#page-loader .bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 3px;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgb(var(--agua-default)), rgb(108 43 217), transparent);
+  animation: page-loader-bar 1s ease-in-out infinite;
+}
+#page-loader .card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin: -32px 0 0 -32px;
+  border-radius: 18px;
+  background: rgb(var(--bone) / 0.92);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
+  opacity: 0;
+  /* navegação rápida nem mostra o quadrado: só depois de 300 ms */
+  animation: page-loader-in 0.2s ease 0.3s forwards;
+}
+#page-loader .spin {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 3px solid rgb(var(--ink) / 0.15);
+  border-top-color: rgb(108 43 217);
+  animation: page-loader-spin 0.7s linear infinite;
+}
+@keyframes page-loader-bar { 0% { transform: translateX(-100%); } 100% { transform: translateX(250%); } }
+@keyframes page-loader-spin { to { transform: rotate(360deg); } }
+@keyframes page-loader-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  #page-loader .bar { animation: none; width: 100%; opacity: 0.6; }
+  #page-loader .spin { animation-duration: 1.6s; }
+}
+/* ícone do botão sol/lua conforme o modo */
+.admin-dark-show { display: none; }
+html.admin-dark .admin-dark-show { display: inline; }
+html.admin-dark .admin-dark-hide { display: none; }
+/* logo escuro em fundo escuro: inverte (preto vira branco) */
+html.admin-dark .admin-logo { filter: invert(1) hue-rotate(180deg); }

@@ -274,3 +274,24 @@ export async function sendTeamInviteEmail(opts: { to: string; name: string }): P
   }
   return { delivered: 'none' };
 }
+
+/** Aviso ao endereço novo quando um Administrador troca o e-mail de acesso de alguém da equipe. */
+export async function sendTeamEmailChanged(opts: { to: string; name: string }): Promise<MailResult> {
+  const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
+    <p>O seu e-mail de acesso à equipe da ${escapeHtml(env.brandName)} agora é <strong>${escapeHtml(opts.to)}</strong>.</p>
+    <p>Use este e-mail para entrar: <a href="${env.siteUrl}/entrar?next=%2Fadmin">entrar no painel</a>. Se não reconhece esta mudança, fale com um Administrador.</p>`;
+  if (!hasResend) return { delivered: (await writeEmailFile(`equipe-email-${Date.now()}`, html)) ? 'file' : 'none' };
+  try {
+    const { data, error } = await new Resend(env.resendApiKey).emails.send({
+      from: env.resendFrom,
+      to: opts.to,
+      subject: `Seu e-mail de acesso foi alterado — ${env.brandName}`,
+      html,
+    });
+    if (!error) return { delivered: 'resend', ref: data?.id ?? null };
+    console.error('[email] troca de e-mail Resend falhou:', error.message);
+  } catch (err) {
+    console.error('[email] troca de e-mail Resend falhou:', err);
+  }
+  return { delivered: 'none' };
+}

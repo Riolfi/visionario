@@ -4,7 +4,7 @@ import { can, type AdminAccess } from '../rbac';
 import { listAuthUsers } from './customers';
 import { roleRules } from './roles';
 import { getOwnerEmail, isProprietor } from './owner';
-import { sendTeamInviteEmail, sendTeamPasswordEmail } from '../email';
+import { sendTeamEmailChanged, sendTeamInviteEmail, sendTeamPasswordEmail } from '../email';
 
 /**
  * Equipe do painel (admin_users + cargo). Administradores criam, editam,
@@ -30,6 +30,8 @@ export interface TeamMember {
   last_seen_at: string | null;
   /** nunca entrou ou ainda está com a senha temporária */
   pending: boolean;
+  /** o último e-mail automático (boas-vindas ou troca de e-mail) não pôde ser enviado */
+  email_failed: boolean;
 }
 
 /** Usou o painel nos últimos 5 minutos. */
@@ -70,9 +72,17 @@ export async function listTeam(): Promise<TeamMember[]> {
         last_sign_in_at: byId.get(r.user_id)?.last_sign_in_at ?? null,
         last_seen_at: r.last_seen_at ?? null,
         pending: !byId.get(r.user_id)?.last_sign_in_at || !!byId.get(r.user_id)?.app_metadata?.must_change_password,
+        email_failed: !!byId.get(r.user_id)?.app_metadata?.email_failed,
       };
     })
     .sort((a, b) => Number(b.is_owner) - Number(a.is_owner) || a.email.localeCompare(b.email));
+}
+
+/** Guarda se o e-mail automático foi enviado (vira a etiqueta "E-mail não enviado" na lista). */
+async function markEmailSent(userId: string, sent: boolean) {
+  const sb = supabaseAdmin()!;
+  const { data } = await sb.auth.admin.getUserById(userId);
+  await sb.auth.admin.updateUserById(userId, { app_metadata: { ...(data.user?.app_metadata ?? {}), email_failed: !sent } });
 }
 
 /** Administradores ATIVOS (inativo não conta: não entra no painel). */
@@ -156,6 +166,7 @@ export async function createMember(
   }
   if (basic) {
     const invite = await sendTeamInviteEmail({ to: email, name: input.name });
+    await markEmailSent(userId, invite.delivered === 'resend');
     return {
       ok: true,
       id: userId,
@@ -165,6 +176,7 @@ export async function createMember(
     };
   }
   const mail = await sendTeamPasswordEmail({ to: email, name: input.name, password: input.password, kind: 'welcome' });
+  await markEmailSent(userId, mail.delivered === 'resend');
   return {
     ok: true,
     id: userId,
@@ -222,10 +234,12 @@ export async function updateMember(
 
   const auth: { email?: string; email_confirm?: boolean; password?: string } = {};
   const email = input.email.trim().toLowerCase();
+  let emailChanged = false;
   if (email) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' };
     const { data: cur } = await sb.auth.admin.getUserById(userId);
-    if (email !== (cur.user?.email ?? '').toLowerCase() && (await isOwnerEmail(email))) return { ok: false, error: 'Esse é o e-mail do Proprietário.' };
+    emailChanged = email !== (cur.user?.email ?? '').toLowerCase();
+    if (emailChanged && (await isOwnerEmail(email))) return { ok: false, error: 'Esse é o e-mail do Proprietário.' };
     auth.email = email;
     auth.email_confirm = true;
   }
@@ -248,15 +262,22 @@ export async function updateMember(
   if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para desativar membros.' : error.message };
   // reativar: grava true explicitamente (sem a coluna, ignora)
   if (input.isActive && row.is_active === false) await sb.from('admin_users').update({ is_active: true }).eq('user_id', userId);
-  // aviso por e-mail só se o Administrador marcou a caixa
+  // e-mail novo: aviso automático no endereço novo (falhou = etiqueta na lista)
+  let emailNote = '';
+  if (emailChanged) {
+    const sent = (await sendTeamEmailChanged({ to: email, name: input.name })).delivered === 'resend';
+    await markEmailSent(userId, sent);
+    emailNote = sent ? ' Avisamos o novo e-mail.' : ' Atenção: o aviso para o novo e-mail não foi enviado.';
+  }
+  // aviso da senha por e-mail só se o Administrador marcou a caixa
   if (input.password && input.notify) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
     const mail = await sendTeamPasswordEmail({ to: u.user?.email ?? email, name: input.name, password: input.password, kind: 'reset' });
-    if (mail.delivered !== 'resend') return { ok: true, id: userId, message: 'Usuário salvo, mas o e-mail com a nova senha não foi enviado. Passe a senha para a pessoa.' };
-    return { ok: true, id: userId, message: 'Usuário salvo! Enviamos a nova senha para o e-mail dele.' };
+    if (mail.delivered !== 'resend') return { ok: true, id: userId, message: `Usuário salvo, mas o e-mail com a nova senha não foi enviado. Passe a senha para a pessoa.${emailNote}` };
+    return { ok: true, id: userId, message: `Usuário salvo! Enviamos a nova senha para o e-mail dele.${emailNote}` };
   }
-  if (input.password) return { ok: true, id: userId, message: 'Usuário salvo! No próximo login ele vai criar uma senha nova.' };
-  return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
+  if (input.password) return { ok: true, id: userId, message: `Usuário salvo! No próximo login ele vai criar uma senha nova.${emailNote}` };
+  return { ok: true, message: `Usuário salvo com sucesso!${emailNote}`, id: userId };
 }
 
 /**

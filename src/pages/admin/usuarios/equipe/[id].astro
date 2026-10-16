@@ -48,6 +48,9 @@ const deleteBlock = isMe
     ? 'Esta conta é o Proprietário. Troque o Proprietário em Cargos › Administrador antes de excluir.'
     : '';
 const flash = takeFlash(Astro.cookies);
+// nome completo guardado junto: a primeira palavra é o Nome, o resto o Sobrenome
+const [firstName = '', ...rest] = (member?.name ?? '').trim().split(/\s+/);
+const lastName = rest.join(' ');
 // Proprietário: só aparece com o cargo Administrador; só o Proprietário atual liga em outra pessoa
 const adminRoleId = roles.find((r) => r.is_owner)?.id ?? '';
 const canTransfer = proprietor && !readOnly && !isOwnerAccount;
@@ -88,50 +91,61 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
             : `Último login: ${member.last_sign_in_at ? new Date(member.last_sign_in_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'nunca entrou'}`}
         </p>
       )}
+      {/* ordem: Nome · Sobrenome · Cargo · E-mail · Senha */}
       <div class="grid gap-4 sm:grid-cols-2">
-        <label class="block"><span class="label">Nome</span><input class="field" name="name" value={member?.name ?? ''} required={isNew} /></label>
-        {/* e-mail: quem não é Administrador só define ao criar */}
-        <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" readonly={basic && !isNew} /></label>
+        <label class="block">
+          <span class="label">Nome</span>
+          {/* uma palavra só (o resto vai em Sobrenome) */}
+          <input class="field" name="nome" value={firstName} required pattern="\S+" title="Uma palavra só; o resto vai em Sobrenome" autocomplete="off" />
+        </label>
+        <label class="block"><span class="label">Sobrenome <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="sobrenome" value={lastName} autocomplete="off" /></label>
         {basic ? (
           <label class="block">
             <span class="label">Cargo</span>
             <input class="field bg-bone-50" value={isNew ? 'Um Administrador define' : member?.role_name ?? 'Sem cargo'} readonly />
           </label>
         ) : (
-          <>
-            <div class="block">
-              <label class="block">
-                <span class="label">{isNew ? 'Senha inicial' : <>Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></>}</span>
-                <input class="field" type="password" name="password" minlength="8" required={isNew} autocomplete="new-password" />
-              </label>
-              {/* trocar a senha de alguém: aviso por e-mail só se marcar (a senha atual ninguém vê) */}
-              {!isNew && (
-                <label class="mt-2 flex items-start gap-2 text-[13px] text-ink-soft">
-                  <input type="checkbox" name="avisar_senha" class="mt-0.5" />
-                  Enviar e-mail de aviso de alteração informando a nova senha para o usuário?
-                </label>
-              )}
-            </div>
+          <label class="block">
+            <span class="label">Cargo</span>
+            {/* cargo: na criação quem cria escolhe; depois, só o Proprietário muda */}
+            <select class="field" name="role_id" required disabled={!isNew && !proprietor} title={!isNew && !proprietor ? 'Só o Administrador Proprietário altera o cargo de outros usuários' : undefined}>
+              {!member?.role_id && <option value="" disabled selected>Escolha o cargo</option>}
+              {options.map((r) => <option value={r.id} selected={r.id === member?.role_id}>{r.name}</option>)}
+            </select>
+          </label>
+        )}
+        {/* e-mail: sempre validado; quem não é Administrador só define ao criar */}
+        <label class="block">
+          <span class="label">E-mail</span>
+          <input class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" readonly={basic && !isNew} />
+        </label>
+        {!basic && (
+          <div class="sm:col-span-2">
             <label class="block">
-              <span class="label">Cargo</span>
-              {/* cargo: na criação quem cria escolhe; depois, só o Proprietário muda */}
-              <select class="field" name="role_id" required disabled={!isNew && !proprietor} title={!isNew && !proprietor ? 'Só o Administrador Proprietário altera o cargo de outros usuários' : undefined}>
-                {!member?.role_id && <option value="" disabled selected>Escolha o cargo</option>}
-                {options.map((r) => <option value={r.id} selected={r.id === member?.role_id}>{r.name}</option>)}
-              </select>
+              <span class="label">{isNew ? 'Senha temporária' : <>Redefinir senha temporária <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></>}</span>
+              <input class="field" type="password" name="password" minlength="8" required={isNew} autocomplete="new-password" />
             </label>
-          </>
+            <p class="mt-1 text-[12px] text-ink-muted">
+              {isNew
+                ? 'Defina uma senha temporária (o usuário irá redefini-la em seu primeiro login).'
+                : 'Redefina temporariamente a senha deste usuário. A senha atual de ninguém aparece aqui.'}
+            </p>
+            {/* trocar a senha de alguém: aviso por e-mail só se marcar */}
+            {!isNew && (
+              <label class="mt-2 flex items-start gap-2 text-[13px] text-ink-soft">
+                <input type="checkbox" name="avisar_senha" class="mt-0.5" />
+                Enviar e-mail de aviso de alteração informando a nova senha para o usuário?
+              </label>
+            )}
+          </div>
         )}
       </div>
       {isNew && (
         <p class="text-[12px] text-ink-muted">
           {basic
             ? 'A conta é criada sem cargo; a pessoa recebe um e-mail para criar a própria senha. Use um e-mail que ainda não tenha cadastro na loja.'
-            : 'A conta da equipe é sempre nova: use um e-mail que ainda não tenha cadastro na loja. A pessoa recebe a senha inicial por e-mail e cria outra no primeiro login.'}
+            : 'Use um e-mail que ainda não tenha cadastro na loja. A pessoa recebe um e-mail de boas-vindas com a senha temporária.'}
         </p>
-      )}
-      {!isNew && (
-        <p class="text-[12px] text-ink-muted">A senha atual de ninguém aparece aqui. Senha definida por um Administrador vale só até o próximo login, quando a pessoa cria outra.</p>
       )}
       {!basic && (
         <label class="flex items-center gap-2 text-sm">

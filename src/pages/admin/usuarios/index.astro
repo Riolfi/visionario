@@ -141,10 +141,11 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                 )}
               </td>
               <td class="px-3 py-3">
-                {/* situação: Sua conta · Usuário pendente · Online/Offline */}
+                {/* situação: Sua conta · Usuário pendente · E-mail não enviado · Online/Offline */}
                 <span class="flex justify-end gap-1 whitespace-nowrap">
                   {m.id === me && <span class:list={[FLAG, 'bg-agua-wash text-agua-dark']}>Sua conta</span>}
                   {m.pending && <span class:list={[FLAG, 'bg-amber-50 text-amber-800']} title="Nunca entrou ou ainda está com a senha temporária">Usuário pendente</span>}
+                  {m.email_failed && <span class:list={[FLAG, 'bg-red-50 text-red-700']} title="O e-mail automático (boas-vindas ou troca de e-mail) não pôde ser enviado. Confira o endereço.">E-mail não enviado</span>}
                   {isOnline(m) || m.id === me
                     ? <span class:list={[FLAG, 'bg-green-50 text-green-800']}>Online</span>
                     : <span class:list={[FLAG, 'bg-bone-200 text-ink-muted']}>Offline</span>}

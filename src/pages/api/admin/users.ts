@@ -22,8 +22,11 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
   const acao = String(form.get('acao') || '');
   const id = String(form.get('id') || '');
   const wantsJson = (request.headers.get('accept') || '').includes('application/json');
+  // Nome (uma palavra) + Sobrenome viram o nome completo
+  const nome = String(form.get('nome') ?? '').trim();
+  const sobrenome = String(form.get('sobrenome') ?? '').trim().replace(/\s+/g, ' ');
   const input = {
-    name: String(form.get('name') || '').trim().slice(0, 120),
+    name: (form.has('nome') ? [nome, sobrenome].filter(Boolean).join(' ') : String(form.get('name') || '').trim()).slice(0, 120),
     email: String(form.get('email') || ''),
     password: String(form.get('password') || ''),
     roleId: String(form.get('role_id') || ''),
@@ -35,6 +38,13 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
     const r = await confirmOwnerTransfer(actor, String(form.get('code') || ''));
     if (r.ok) setFlash(cookies, 'ok', `Proprietário transferido para ${r.newEmail}.`);
     return new Response(JSON.stringify(r), { status: r.ok ? 200 : 400, headers: { 'content-type': 'application/json; charset=utf-8' } });
+  }
+
+  if ((acao === 'criar' || acao === 'editar') && form.has('nome') && (!nome || /\s/.test(nome))) {
+    const error = 'Nome: escreva uma palavra só (o resto vai em Sobrenome).';
+    return wantsJson
+      ? new Response(JSON.stringify({ ok: false, error }), { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' } })
+      : (setFlash(cookies, 'erro', error), redirect(id ? `/admin/usuarios/equipe/${id}` : '/admin/usuarios/equipe/novo'));
   }
 
   const result =

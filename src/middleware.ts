@@ -11,7 +11,8 @@ import { sessionExpired } from './lib/session-limits';
 // O que uma conta de administrador pode abrir fora de /admin: login/sair,
 // fotos enviadas e as APIs que o próprio painel chama (status do Pix na
 // Caixa, CEP). O resto é loja, e admin não compra como cliente.
-const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/cep/'];
+// /trocar-senha: a equipe também troca a senha temporária ali (sem isso, vira loop com o painel)
+const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/cep/', '/trocar-senha'];
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;

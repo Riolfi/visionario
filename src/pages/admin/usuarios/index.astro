@@ -30,6 +30,10 @@ const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') 
 // só o primeiro nome na lista (sem nome: a parte do e-mail antes do @)
 const firstName = (m: { name: string; email: string }) => m.name.trim().split(/\s+/)[0] || m.email.split('@')[0];
 const FLAG = 'whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] uppercase';
+// coluna Ativo: chave liga/desliga (mesmo visual dos toggles das telas de cadastro)
+const TOGGLE = "relative inline-block h-6 w-11 shrink-0 rounded-full align-middle transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform after:content-['']";
+const TOGGLE_ON = 'bg-agua-dark after:translate-x-5';
+const TOGGLE_OFF = 'bg-ink/25';
 const rows = aba === 'equipe' ? team.length : customers.length;
 // botão Ativo: só Administradores, nunca na própria conta nem no Proprietário (que não fica inativo)
 const ownerEmail = aba === 'equipe' ? await getOwnerEmail() : null;
@@ -103,7 +107,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
       <table class="w-full text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class="w-px whitespace-nowrap px-3 py-3">Nome</th>
+            <th class="w-px whitespace-nowrap px-3 py-3">Usuário</th>
             <th class="hidden px-3 py-3 md:table-cell">E-mail</th>
             <th class="hidden w-px whitespace-nowrap px-3 py-3 sm:table-cell">Cargo</th>
             <th class="w-px whitespace-nowrap px-3 py-3 text-center">Ativo</th>
@@ -134,20 +138,16 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                 <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', m.is_owner ? 'bg-blush-light text-blush' : m.role_id ? 'bg-bone-200 text-ink-soft' : 'bg-red-50 text-red-700']}>{m.role_name}</span>
               </td>
               <td class="px-3 py-3 text-center">
-                {/* ✓ ativo / ✕ inativo; só Administradores clicam para trocar (não na própria conta nem no Proprietário) */}
+                {/* chave ativo/inativo; só Administradores clicam para trocar (não na própria conta nem no Proprietário) */}
                 {canToggle(m) ? (
                   <form method="POST" action="/api/admin/users" class="inline" data-confirm={`Deseja ${m.is_active ? 'desativar' : 'ativar'} usuário?|${m.name || m.email} ${m.is_active ? 'fica sem acesso ao painel' : 'volta a entrar no painel com o acesso do cargo'}.|Sim|Não|primary`}>
                     <input type="hidden" name="acao" value="ativo" />
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="ativo" value={m.is_active ? '0' : '1'} />
-                    <button class:list={['grid h-8 w-8 place-items-center rounded-full border', m.is_active ? 'border-green-600 bg-green-600 text-white' : 'border-red-200 bg-red-50 text-red-700']} aria-label={m.is_active ? 'Ativo — clique para desativar' : 'Inativo — clique para ativar'} title={m.is_active ? 'Ativo' : 'Inativo'}>
-                      {m.is_active ? '✓' : '✕'}
-                    </button>
+                    <button class:list={[TOGGLE, m.is_active ? TOGGLE_ON : TOGGLE_OFF]} role="switch" aria-checked={m.is_active ? 'true' : 'false'} aria-label={m.is_active ? 'Ativo — clique para desativar' : 'Inativo — clique para ativar'} title={m.is_active ? 'Ativo' : 'Inativo'}></button>
                   </form>
                 ) : (
-                  <span class:list={['inline-grid h-8 w-8 place-items-center rounded-full', m.is_active ? 'bg-green-600 text-white' : 'bg-red-50 text-red-700']} aria-label={m.is_active ? 'Ativo' : 'Inativo'} title={m.is_active ? 'Ativo' : 'Inativo'}>
-                    {m.is_active ? '✓' : '✕'}
-                  </span>
+                  <span class:list={[TOGGLE, m.is_active ? TOGGLE_ON : TOGGLE_OFF, 'cursor-not-allowed opacity-50']} role="switch" aria-checked={m.is_active ? 'true' : 'false'} aria-disabled="true" aria-label={m.is_active ? 'Ativo' : 'Inativo'} title={m.is_active ? 'Ativo' : 'Inativo'}></span>
                 )}
               </td>
               <td class="hidden px-3 py-3 sm:table-cell">
@@ -185,7 +185,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
       <table class="w-full text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class="w-px whitespace-nowrap px-3 py-3">Nome</th>
+            <th class="w-px whitespace-nowrap px-3 py-3">Usuário</th>
             <th class="hidden w-px whitespace-nowrap px-3 py-3 md:table-cell">CPF</th>
             <th class="hidden px-3 py-3 sm:table-cell">E-mail</th>
             <th class="hidden w-px whitespace-nowrap px-3 py-3 lg:table-cell">Telefone</th>

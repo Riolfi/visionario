@@ -43,6 +43,7 @@ export interface Product {
 export type OrderStatus =
   | 'pending'
   | 'paid'
+  | 'separating'
   | 'failed'
   | 'cancelled'
   | 'shipped'
@@ -50,12 +51,16 @@ export type OrderStatus =
 
 export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   pending: 'Aguardando pagamento',
-  paid: 'Pago — em separação',
+  paid: 'Pago',
+  separating: 'Em separação',
   failed: 'Pagamento não concluído',
   cancelled: 'Cancelado',
   shipped: 'Enviado',
   delivered: 'Entregue',
 };
+
+/** Situações em que o pagamento entrou (contam como recebido e o estoque já saiu). */
+export const RECEIVED_STATUSES: OrderStatus[] = ['paid', 'separating', 'shipped', 'delivered'];
 
 export function orderStatusLabel(status: OrderStatus, source: 'web' | 'caixa'): string {
   return source === 'caixa' && status === 'paid' ? 'Concluída' : ORDER_STATUS_LABELS[status];
@@ -117,6 +122,9 @@ export interface Order {
   /** Caixa (0023): quem vendeu e quanto recebeu em dinheiro (só pagamento simples em dinheiro) */
   operator_id?: string | null;
   received_cents?: number | null;
+  /** o cliente pediu o cancelamento (0024): só então a equipe cancela uma compra online */
+  cancel_requested_at?: string | null;
+  cancel_request_reason?: string | null;
   /** auditoria do cancelamento (0023) */
   cancel_reason?: string | null;
   cancelled_by?: string | null;

@@ -13,6 +13,17 @@ const order = number ? await getUserOrder(user.id, number) : null;
 if (!order) return Astro.redirect('/conta/pedidos');
 
 const a = order.shipping_address;
+// pedir o cancelamento: enquanto não foi postado (a equipe confirma e estorna)
+const canRequestCancel = ['pending', 'paid', 'separating'].includes(order.status) && !order.cancel_requested_at;
+const MSG: Record<string, [string, string]> = {
+  ok: ['ok', 'Pedido de cancelamento enviado. A equipe confirma e, se já foi pago, o valor é estornado.'],
+  ja: ['erro', 'O cancelamento deste pedido já foi solicitado.'],
+  fora: ['erro', 'Este pedido não pode mais ser cancelado por aqui. Fale com a loja.'],
+  motivo: ['erro', 'Conte o motivo do cancelamento.'],
+  falha: ['erro', 'Não foi possível enviar agora. Tente de novo.'],
+};
+const msg = MSG[Astro.url.searchParams.get('cancelamento') ?? ''];
+const REASONS = ['Desisti da compra', 'Comprei o produto errado', 'Encontrei mais barato', 'Prazo de entrega muito longo', 'Outro'];
 ---
 
 <AccountLayout title={`Pedido ${orderLabel(order.order_number)}`} active="pedidos">
@@ -26,6 +37,15 @@ const a = order.shipping_address;
       {new Date(order.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
     </span>
   </div>
+
+  {msg && (
+    <p class:list={['mt-4 rounded-card border px-3 py-2 text-sm', msg[0] === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{msg[1]}</p>
+  )}
+  {order.cancel_requested_at && order.status !== 'cancelled' && (
+    <p class="mt-4 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+      Cancelamento solicitado em {new Date(order.cancel_requested_at).toLocaleDateString('pt-BR')}. Aguardando a confirmação da loja.
+    </p>
+  )}
 
   {order.tracking_code && (
     <div class="mt-4 rounded-card border border-agua/40 bg-agua-wash px-4 py-3 text-[14px] text-ink-soft">
@@ -61,4 +81,23 @@ const a = order.shipping_address;
       <p class="mt-4 text-[12px] text-ink-muted">Pagamento: {order.payment_method ?? '—'}</p>
     </section>
   </div>
+
+  {canRequestCancel && (
+    <details class="mt-6 rounded-card border border-ink/10 bg-white/50 p-5 text-sm">
+      <summary class="cursor-pointer font-medium text-red-700">Solicitar cancelamento</summary>
+      <form method="POST" action="/api/account/cancelar-pedido" class="mt-4 max-w-md space-y-3">
+        <input type="hidden" name="order_number" value={order.order_number} />
+        <label class="block">
+          <span class="label">Motivo</span>
+          <select name="motivo" class="field" required>
+            <option value="" disabled selected>Selecione</option>
+            {REASONS.map((r) => <option value={r}>{r}</option>)}
+          </select>
+        </label>
+        <label class="block"><span class="label">Detalhes <span class="text-[11px] font-normal text-ink-muted/60">(obrigatório em "Outro")</span></span><textarea name="detalhe" rows="3" maxlength="400" class="field"></textarea></label>
+        <p class="text-[12px] text-ink-muted">A loja confirma o cancelamento. Se o pedido já foi pago, o valor é estornado pelo mesmo meio de pagamento.</p>
+        <button class="rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Enviar pedido de cancelamento</button>
+      </form>
+    </details>
+  )}
 </AccountLayout>

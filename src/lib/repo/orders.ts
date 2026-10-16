@@ -38,6 +38,8 @@ function rowToOrder(row: any, items: any[]): Order {
     operator_id: row.operator_id ?? null,
     received_cents: row.received_cents ?? null,
     cancel_reason: row.cancel_reason ?? null,
+    cancel_requested_at: row.cancel_requested_at ?? null,
+    cancel_request_reason: row.cancel_request_reason ?? null,
     cancelled_by: row.cancelled_by ?? null,
     cancelled_at: row.cancelled_at ?? null,
     mp_payment_id: row.mp_payment_id,

@@ -22,7 +22,7 @@ const wa = whatsappUrl(c.profile.phone);
 const addressText = (a: (typeof c.addresses)[number]) =>
   `${a.street}, ${a.number}${a.complement ? ` - ${a.complement}` : ''} - ${a.district} - ${a.city}/${a.state} - CEP ${a.cep}`;
 const name = c.profile.full_name || String(c.user.user_metadata?.full_name ?? '') || c.user.email || 'Cliente';
-const PAID = ['paid', 'shipped', 'delivered'];
+const PAID = ['paid', 'separating', 'shipped', 'delivered'];
 // histórico de compras: os itens dos pedidos pagos
 const purchases = c.orders
   .filter((o) => PAID.includes(o.status))

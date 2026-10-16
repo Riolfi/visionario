@@ -23,6 +23,7 @@ const FORMATS = [
 const STATUSES = [
   ['pending', 'Aguardando pagamento'],
   ['paid', 'Pago / Concluída'],
+  ['separating', 'Em separação'],
   ['shipped', 'Enviado'],
   ['delivered', 'Entregue'],
   ['failed', 'Pagamento não concluído'],
@@ -93,7 +94,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
     });
   }, [orders, query, applied]);
   // total recebido: só pago/enviado/entregue (cancelada, pendente e não paga ficam fora)
-  const RECEIVED = ['paid', 'shipped', 'delivered'];
+  const RECEIVED = ['paid', 'separating', 'shipped', 'delivered'];
   const total = visible.filter((o) => RECEIVED.includes(o.status)).reduce((s, o) => s + o.total_cents, 0);
 
   function openFilter() {

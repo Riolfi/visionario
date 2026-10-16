@@ -2,8 +2,8 @@
 import { orderLabel } from '../../../lib/format';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getOrderByNumber } from '../../../lib/repo/orders';
-import { brl, formatCpf, formatPhone } from '../../../lib/format';
-import { orderStatusLabel, PAYMENT_METHOD_LABELS, type OrderStatus } from '../../../lib/types';
+import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../lib/format';
+import { orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
 
 export const prerender = false;
 
@@ -14,11 +14,14 @@ if (!order) return Astro.redirect('/admin/pedidos');
 const a = order.shipping_address;
 const saved = Astro.url.searchParams.get('ok') === '1';
 const updateError = Astro.url.searchParams.get('erro') === 'update';
-const statuses = Object.entries({ pending: 'Aguardando pagamento', paid: 'Pago — em separação', failed: 'Pagamento não concluído', cancelled: 'Cancelado', shipped: 'Enviado', delivered: 'Entregue' }) as [OrderStatus, string][];
+// cancelar não é por aqui (motivo + pedido do cliente + estorno, no botão próprio)
+const statuses = Object.entries({ pending: 'Aguardando pagamento', paid: 'Pago', separating: 'Em separação', shipped: 'Enviado', delivered: 'Entregue', failed: 'Pagamento não concluído' }) as [OrderStatus, string][];
 import { can } from '../../../lib/rbac';
 import { takeFlash } from '../../../lib/flash';
 const canStatus = can(Astro.locals.admin, 'pedidos.status');
 const canCancel = can(Astro.locals.admin, 'pedidos.cancelar') && order.status !== 'cancelled';
+// compra online: só cancela se o cliente pediu (Minha conta › Pedidos)
+const cancelBlocked = order.source !== 'caixa' && !order.cancel_requested_at;
 const flash = takeFlash(Astro.cookies);
 import { getPersonSummary } from '../../../lib/repo/team';
 const isCaixa = order.source === 'caixa';
@@ -60,7 +63,9 @@ const CANCEL_REASONS = [
     <p class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
       {Astro.url.searchParams.get('motivo') === 'estoque'
         ? 'Não dá para marcar como pago: falta estoque de um dos produtos. Reponha o estoque e tente de novo.'
-        : 'Não foi possível atualizar o status. Tente de novo.'}
+        : Astro.url.searchParams.get('motivo') === 'rastreio'
+          ? 'Para marcar como Enviado, informe o código de rastreio.'
+          : 'Não foi possível atualizar o status. Tente de novo.'}
     </p>
   )}
 
@@ -69,10 +74,9 @@ const CANCEL_REASONS = [
       <div class="flex items-center justify-between">
         <h2 class="font-display text-lg">Itens</h2>
         <div class="flex items-center gap-2">
-          {order.source === 'caixa' && (
-            <span class="rounded-full bg-blush-light px-2 py-0.5 text-[11px] uppercase tracking-[0.1em] text-ink-soft">Venda no caixa</span>
-          )}
-          <span class="rounded-full bg-bone-200 px-2 py-0.5 text-[11px] uppercase">{orderStatusLabel(order.status, order.source)}</span>
+          {/* canal: físico (Caixa) ou digital (loja online) */}
+          <span class="rounded-full bg-blush-light px-2 py-0.5 text-[11px] uppercase tracking-[0.1em] text-ink-soft">{order.source === 'caixa' ? 'Venda no caixa' : 'Venda online'}</span>
+          <span class:list={['rounded-full px-2 py-0.5 text-[11px] font-medium uppercase', orderStatusBadge(order.status, order.source)]}>{orderStatusLabel(order.status, order.source)}</span>
         </div>
       </div>
       <table class="mt-4 w-full text-left text-sm">
@@ -140,18 +144,19 @@ const CANCEL_REASONS = [
         <h2 class="font-display text-lg">Atualizar status</h2>
         <input type="hidden" name="order_number" value={order.order_number} />
         <label class="label mt-3" for="status">Status do pedido</label>
-        <select id="status" name="status" class="field">
+        <select id="status" name="status" class="field" data-status-select>
           {statuses.map(([value, label]) => (
             <option value={value} selected={value === order.status}>{label}</option>
           ))}
         </select>
 
-        <label class="label mt-3" for="tracking_code">Código de rastreio (para "Enviado")</label>
+        <label class="label mt-3" for="tracking_code">Código de rastreio <span id="tracking-req" class:list={['text-red-600', order.status !== 'shipped' && 'hidden']}>* (obrigatório para Enviado)</span></label>
         <input
           id="tracking_code"
           name="tracking_code"
           class="field"
           value={order.tracking_code ?? ''}
+          required={order.status === 'shipped'}
           placeholder="ex.: AA123456789BR"
         />
 
@@ -167,8 +172,17 @@ const CANCEL_REASONS = [
       {canCancel && (
         <div class="rounded-card border border-red-200 bg-white p-5">
           <h2 class="font-display text-lg">Cancelar compra</h2>
-          <p class="mt-1 text-sm text-ink-soft">Cancela a compra e devolve os itens ao estoque. O valor sai dos totais recebidos.</p>
-          <button type="button" id="cancel-open" class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Cancelar compra</button>
+          {order.source !== 'caixa' && order.cancel_requested_at && (
+            <p class="mt-2 rounded-card bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
+              O cliente pediu o cancelamento em {new Date(order.cancel_requested_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: {order.cancel_request_reason}
+            </p>
+          )}
+          <p class="mt-2 text-sm text-ink-soft">
+            {cancelBlocked
+              ? 'Compras online só podem ser canceladas a pedido do cliente (em Minha conta › Pedidos).'
+              : 'Cancela a compra, devolve os itens ao estoque e tira o valor dos totais recebidos.'}
+          </p>
+          <button type="button" id="cancel-open" disabled={cancelBlocked} class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">Cancelar compra</button>
         </div>
       )}
 
@@ -191,7 +205,16 @@ const CANCEL_REASONS = [
           {order.user_id ? <a href={`/admin/usuarios/clientes/${order.user_id}`} class="text-agua-dark underline">{customerName}</a> : customerName}
         </p>
         {order.customer_email && <p class="text-ink-soft">{order.customer_email}</p>}
-        {order.customer_phone && <p class="text-ink-soft">{formatPhone(order.customer_phone)}</p>}
+        {order.customer_phone && (
+          <p class="flex items-center gap-2 text-ink-soft">
+            {formatPhone(order.customer_phone)}
+            {whatsappUrl(order.customer_phone) && (
+              <a href={whatsappUrl(order.customer_phone)} target="_blank" rel="noopener" class="grid h-7 w-7 place-items-center rounded-full bg-[#25D366] text-white hover:brightness-95" aria-label="Conversar no WhatsApp" title="Conversar no WhatsApp">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z" /></svg>
+              </a>
+            )}
+          </p>
+        )}
         {order.customer_cpf && <p class="text-ink-soft">CPF {formatCpf(order.customer_cpf)}</p>}
       </div>
       <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
@@ -199,11 +222,14 @@ const CANCEL_REASONS = [
         {isCaixa || !a?.street ? (
           <p class="mt-2 text-ink-soft">Retirada presencial / Balcão</p>
         ) : (
-          <p class="mt-2 text-ink-soft">
-            {a.street}, {a.number}{a.complement ? ` — ${a.complement}` : ''}<br />
-            {a.district} — {a.city}/{a.state}<br />
-            CEP {a.cep}
-          </p>
+          <>
+            <p class="mt-2 text-ink-soft">
+              {a.street}, {a.number}{a.complement ? ` — ${a.complement}` : ''}<br />
+              {a.district} — {a.city}/{a.state}<br />
+              CEP {a.cep}
+            </p>
+            <button type="button" data-copy={`${a.street}, ${a.number}${a.complement ? ` - ${a.complement}` : ''} - ${a.district} - ${a.city}/${a.state} - CEP ${a.cep}`} class="mt-3 rounded-card border border-ink/20 px-3 py-1 text-[12px] hover:bg-bone-100">Copiar endereço</button>
+          </>
         )}
       </div>
       {canCancel && (
@@ -213,7 +239,9 @@ const CANCEL_REASONS = [
             <h2 class="font-display text-xl">Cancelar a compra {orderLabel(order.order_number)}?</h2>
             <p class="text-sm text-ink-soft">
               Os itens voltam ao estoque e o valor sai dos totais recebidos.
-              {['paid', 'shipped', 'delivered'].includes(order.status) && ' O dinheiro não é devolvido sozinho: estorne pelo Mercado Pago ou devolva ao cliente.'}
+              {RECEIVED_STATUSES.includes(order.status) && (order.source === 'caixa'
+                ? ' Devolva o valor ao cliente no balcão.'
+                : ' O valor é estornado automaticamente pelo Mercado Pago; se o estorno falhar, nada é cancelado.')}
             </p>
             <label class="block">
               <span class="label">Motivo <span class="text-red-600">*</span></span>
@@ -253,4 +281,26 @@ const CANCEL_REASONS = [
   motivo?.addEventListener('change', () => {
     if (detalhe) detalhe.required = motivo.value === 'Outro';
   });
+
+  // rastreio obrigatório só quando o status escolhido é Enviado
+  const statusSel = document.querySelector<HTMLSelectElement>('[data-status-select]');
+  const tracking = document.getElementById('tracking_code') as HTMLInputElement | null;
+  statusSel?.addEventListener('change', () => {
+    const shipped = statusSel.value === 'shipped';
+    if (tracking) tracking.required = shipped;
+    document.getElementById('tracking-req')?.classList.toggle('hidden', !shipped);
+  });
+
+  // "Copiar endereço": linha pronta para etiqueta dos Correios/transportadora
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(b.dataset.copy ?? '');
+        b.textContent = 'Copiado ✓';
+      } catch {
+        b.textContent = 'Não deu para copiar';
+      }
+      setTimeout(() => (b.textContent = 'Copiar endereço'), 2000);
+    }),
+  );
 </script>

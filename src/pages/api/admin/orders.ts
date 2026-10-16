@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { changeOrderStatus } from '../../../lib/repo/orders';
+import { changeOrderStatus, getOrderByNumber } from '../../../lib/repo/orders';
 import { sendOrderStatusEmail } from '../../../lib/email';
 import { ORDER_STATUS_LABELS, type OrderStatus } from '../../../lib/types';
 
@@ -10,10 +10,19 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const orderNumber = String(form.get('order_number') || '').trim();
   const status = String(form.get('status') || '') as OrderStatus;
   const trackingCode = String(form.get('tracking_code') || '').trim();
-  const notify = form.get('notify') !== 'off';
+  // checkbox desmarcado não vem no formulário: só notifica se veio marcado
+  const notify = form.get('notify') === 'on';
 
-  if (!orderNumber || !VALID.includes(status)) {
-    return redirect(`/admin/pedidos/${orderNumber}?erro=1`);
+  // cancelar tem fluxo próprio (motivo + pedido do cliente + estorno)
+  if (!orderNumber || !VALID.includes(status) || status === 'cancelled') {
+    return redirect(`/admin/pedidos/${orderNumber}?erro=update`);
+  }
+  // venda do Caixa: só Concluída ou Cancelada (pelo botão de cancelar)
+  const current = await getOrderByNumber(orderNumber);
+  if (current?.source === 'caixa') return redirect(`/admin/pedidos/${orderNumber}?erro=update`);
+  // Enviado exige o código de rastreio
+  if (status === 'shipped' && !trackingCode) {
+    return redirect(`/admin/pedidos/${orderNumber}?erro=update&motivo=rastreio`);
   }
 
   const { order, error } = await changeOrderStatus(orderNumber, status, {

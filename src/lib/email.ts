@@ -30,7 +30,13 @@ function statusCopy(order: Order, status: OrderStatus): StatusCopy {
       return {
         subject: `Pagamento confirmado — pedido ${n} — ${env.brandName}`,
         headline: 'Pagamento confirmado',
-        body: `Olá, ${first}. O pagamento do pedido <strong>${n}</strong> foi confirmado e já entrou em separação. Você recebe o código de rastreio assim que ele for postado.`,
+        body: `Olá, ${first}. O pagamento do pedido <strong>${n}</strong> foi confirmado. Avisamos quando ele entrar em separação e quando for postado.`,
+      };
+    case 'separating':
+      return {
+        subject: `Seu pedido ${n} está em separação — ${env.brandName}`,
+        headline: 'Pedido em separação',
+        body: `Olá, ${first}. Já estamos separando os produtos do pedido <strong>${n}</strong>. Você recebe o código de rastreio assim que ele for postado.`,
       };
     case 'shipped':
       return {
@@ -38,7 +44,7 @@ function statusCopy(order: Order, status: OrderStatus): StatusCopy {
         headline: 'Seu pedido está a caminho',
         body: `Olá, ${first}. O pedido <strong>${n}</strong> foi postado e está a caminho do seu endereço.${
           order.tracking_code
-            ? ` Acompanhe pelo código de rastreio <strong>${escapeHtml(order.tracking_code)}</strong>.`
+            ? ` Acompanhe pelo código de rastreio <strong>${escapeHtml(order.tracking_code)}</strong>: <a href="https://rastreamento.correios.com.br/app/index.php?objetos=${encodeURIComponent(order.tracking_code)}">rastrear nos Correios</a>.`
             : ''
         }`,
       };

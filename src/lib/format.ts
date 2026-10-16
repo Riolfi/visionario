@@ -119,14 +119,15 @@ export const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '')
 
 /**
  * Cores da etiqueta de situação do pedido (classes Tailwind):
- * aguardando = amarelo · pago/em separação = azul · enviado = roxo ·
+ * aguardando = amarelo · pago = verde claro · em separação = azul · enviado = roxo ·
  * entregue/concluída = verde cheio · cancelado/não pago = vermelho.
  */
 export function orderStatusBadge(status: string, source: 'web' | 'caixa' = 'web'): string {
-  if (status === 'paid') return source === 'caixa' ? 'bg-green-600 text-white' : 'bg-sky-100 text-sky-800';
+  if (status === 'paid') return source === 'caixa' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-800';
   return (
     {
       pending: 'bg-amber-100 text-amber-800',
+      separating: 'bg-sky-100 text-sky-800',
       shipped: 'bg-purple-100 text-purple-800',
       delivered: 'bg-green-600 text-white',
       failed: 'bg-red-100 text-red-800',

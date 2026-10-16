@@ -3,11 +3,14 @@ import { cancelCaixaSale, changeOrderStatus, getOrderByNumber, recordCancellatio
 import { sendOrderStatusEmail } from '../../../../lib/email';
 import { setFlash } from '../../../../lib/flash';
 import { can } from '../../../../lib/rbac';
+import { refundPayment } from '../../../../lib/mercadopago';
+import { RECEIVED_STATUSES } from '../../../../lib/types';
 
 /**
  * POST /api/admin/orders/cancel — order_number, motivo (obrigatório; "Outro" pede detalhe)
  * Cancela a compra e devolve os itens ao estoque (regra pedidos.cancelar).
- * Compra online: avisa o cliente por e-mail. Estorno do pagamento é manual.
+ * Compra online: só com pedido do cliente (0024); estorna no Mercado Pago
+ * antes de cancelar (se o estorno falhar, nada muda) e avisa o cliente.
  */
 export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => {
   const form = await request.formData();
@@ -31,6 +34,21 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     setFlash(cookies, 'erro', 'Informe o motivo do cancelamento.');
     return redirect(back);
   }
+  // compra online: só quando o próprio cliente pediu o cancelamento
+  if (order.source !== 'caixa' && !order.cancel_requested_at) {
+    setFlash(cookies, 'erro', 'Compra online só pode ser cancelada quando o cliente pede (em Minha conta › Pedidos).');
+    return redirect(back);
+  }
+  // pago: devolve o dinheiro antes (estorno falhou = não cancela)
+  let refundNote = '';
+  if (order.source !== 'caixa' && RECEIVED_STATUSES.includes(order.status) && order.mp_payment_id) {
+    const r = await refundPayment(order.mp_payment_id);
+    if (!r.ok) {
+      setFlash(cookies, 'erro', r.error);
+      return redirect(back);
+    }
+    refundNote = r.simulated ? ' (pagamento de teste: nada a estornar)' : ' O valor foi estornado ao cliente pelo Mercado Pago.';
+  }
 
   try {
     if (order.source === 'caixa') {
@@ -45,6 +63,6 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     return redirect(back);
   }
   await recordCancellation(number, locals.user?.id ?? null, reason);
-  setFlash(cookies, 'ok', 'Compra cancelada. Os itens voltaram ao estoque.');
+  setFlash(cookies, 'ok', `Compra cancelada. Os itens voltaram ao estoque.${refundNote}`);
   return redirect(back);
 };

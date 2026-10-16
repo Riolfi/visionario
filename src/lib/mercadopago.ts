@@ -1,4 +1,4 @@
-import { MercadoPagoConfig, Payment } from 'mercadopago';
+import { MercadoPagoConfig, Payment, PaymentRefund } from 'mercadopago';
 import { env, hasMercadoPago } from './env';
 import { onlyDigits } from './format';
 import type { Order } from './types';
@@ -124,5 +124,21 @@ export async function getPaymentStatus(
   } catch (err) {
     console.error('[mercadopago] getPaymentStatus falhou:', err);
     return null;
+  }
+}
+
+/**
+ * Estorno total de um pagamento (cancelamento de compra online). Pagamento
+ * simulado (sem Mercado Pago configurado) não tem o que estornar.
+ */
+export async function refundPayment(paymentId: string): Promise<{ ok: true; simulated?: boolean } | { ok: false; error: string }> {
+  const cfg = client();
+  if (!cfg || paymentId.startsWith('SIMULADO')) return { ok: true, simulated: true };
+  try {
+    await new PaymentRefund(cfg).create({ payment_id: paymentId, requestOptions: { idempotencyKey: `refund-${paymentId}` } });
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? err);
+    return { ok: false, error: `O Mercado Pago recusou o estorno (${msg}). Nada foi cancelado.` };
   }
 }

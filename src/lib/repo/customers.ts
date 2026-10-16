@@ -55,7 +55,7 @@ export interface CustomerRow {
   spent_cents: number;
 }
 
-const PAID = ['paid', 'shipped', 'delivered'];
+const PAID = ['paid', 'separating', 'shipped', 'delivered'];
 
 export async function listCustomers(): Promise<CustomerRow[]> {
   const sb = supabaseAdmin();

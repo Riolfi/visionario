@@ -217,3 +217,36 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
 }
+
+/**
+ * Boas-vindas à equipe (ou senha redefinida) com a senha temporária definida
+ * pelo administrador. No primeiro login a pessoa é obrigada a trocá-la.
+ */
+export async function sendTeamPasswordEmail(opts: {
+  to: string;
+  name: string;
+  password: string;
+  kind: 'welcome' | 'reset';
+}): Promise<MailResult> {
+  const welcome = opts.kind === 'welcome';
+  const loginUrl = `${env.siteUrl}/entrar?next=%2Fadmin`;
+  const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
+    <p>${welcome ? `Você foi adicionado(a) à equipe da ${escapeHtml(env.brandName)}.` : 'A sua senha de acesso foi redefinida por um administrador.'}</p>
+    <p>E-mail: <strong>${escapeHtml(opts.to)}</strong><br>Senha temporária: <strong>${escapeHtml(opts.password)}</strong></p>
+    <p>Ao entrar, você vai criar uma senha nova. A temporária deixa de valer e ninguém da equipe vê a nova.</p>
+    <p><a href="${loginUrl}">Entrar no painel</a></p>`;
+  if (!hasResend) return { delivered: (await writeEmailFile(`equipe-${Date.now()}`, html)) ? 'file' : 'none' };
+  try {
+    const { data, error } = await new Resend(env.resendApiKey).emails.send({
+      from: env.resendFrom,
+      to: opts.to,
+      subject: welcome ? `Boas-vindas à equipe — ${env.brandName}` : `Sua senha foi redefinida — ${env.brandName}`,
+      html,
+    });
+    if (!error) return { delivered: 'resend', ref: data?.id ?? null };
+    console.error('[email] equipe Resend falhou:', error.message);
+  } catch (err) {
+    console.error('[email] equipe Resend falhou:', err);
+  }
+  return { delivered: 'none' };
+}

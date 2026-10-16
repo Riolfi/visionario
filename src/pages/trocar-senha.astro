@@ -1,0 +1,37 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+export const prerender = false;
+
+// só quem está logado com senha temporária chega aqui (o middleware manda)
+const user = Astro.locals.user;
+if (!user) return Astro.redirect('/entrar');
+if (!user.app_metadata?.must_change_password) return Astro.redirect('/');
+
+const ERRO: Record<string, string> = {
+  curta: 'A nova senha precisa ter pelo menos 8 caracteres.',
+  diferente: 'A confirmação não bate com a nova senha.',
+  igual: 'Escolha uma senha diferente da temporária.',
+  falha: 'Não foi possível salvar. Tente de novo.',
+};
+const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
+---
+
+<BaseLayout title="Criar nova senha" description="Troque a senha temporária." noindex>
+  <section class="container-x flex justify-center py-16 md:py-24">
+    <div class="w-full max-w-sm">
+      <h1 class="font-display text-3xl">Crie a sua senha</h1>
+      <p class="mt-2 text-sm text-ink-soft">
+        Você entrou com uma senha temporária. Para continuar, crie uma senha nova — só você vai saber qual é.
+      </p>
+      {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
+      <form method="POST" action="/api/auth/trocar-senha" class="mt-6 space-y-4">
+        <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" autofocus /></label>
+        <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+        <p class="text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
+        <button class="btn-primary w-full">Salvar e continuar</button>
+      </form>
+      <a href="/auth/sair" class="mt-4 block text-center text-sm text-ink-muted underline">Sair</a>
+    </div>
+  </section>
+</BaseLayout>

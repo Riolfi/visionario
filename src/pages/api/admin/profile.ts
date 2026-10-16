@@ -3,13 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 import { env } from '../../../lib/env';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getOwnerEmail, isProprietor } from '../../../lib/repo/owner';
+import { consumeCode, issueCode } from '../../../lib/repo/email-codes';
 
 /**
  * POST /api/admin/profile — perfil de quem está logado no painel (qualquer
  * membro da equipe; o middleware já garantiu que é admin). Formulário HTML:
  * volta para /admin/perfil com ?ok=… ou ?erro=….
  *   acao=dados       full_name, phone
- *   acao=email       email, senha_atual
+ *   acao=email       email, senha_atual → manda um código ao e-mail ATUAL
+ *   acao=email-codigo code → confere o código e só então troca o e-mail
  *   acao=senha       senha_atual, nova, confirmar
  *   acao=sair-todos  encerra a sessão em todos os aparelhos
  */
@@ -53,8 +55,26 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     if (!(await passwordMatches(user.email ?? '', String(form.get('senha_atual') || '')))) {
       return back(redirect, 'erro', 'senha-atual');
     }
-    // admin API: troca direto, sem e-mail de confirmação (a loja pode não ter SMTP)
-    const { error } = await admin.auth.admin.updateUserById(user.id, { email, email_confirm: true });
+    // a troca só vale com o código enviado ao e-mail atual (sessão roubada não troca o e-mail)
+    const sent = await issueCode({
+      userId: user.id,
+      purpose: 'email',
+      newEmail: email,
+      sendTo: user.email ?? '',
+      subject: 'Código para trocar o seu e-mail',
+      intro: `Foi pedida a troca do e-mail da sua conta para ${email}.`,
+    });
+    if (!sent.ok) return back(redirect, 'erro', /RESEND/.test(sent.error) ? 'sem-envio' : /migration/.test(sent.error) ? 'migration' : 'envio');
+    return back(redirect, 'ok', 'codigo-email');
+  }
+
+  if (acao === 'email-codigo') {
+    const r = await consumeCode(user.id, 'email', String(form.get('code') || ''));
+    if (!r.ok) return back(redirect, 'erro', /expirou/.test(r.error) ? 'codigo-expirou' : /Nenhum|tentativas/.test(r.error) ? 'codigo-novo' : 'codigo');
+    if (await isProprietor(user.email)) return back(redirect, 'erro', 'proprietario');
+    if (r.newEmail === (await getOwnerEmail())) return back(redirect, 'erro', 'email-em-uso');
+    // admin API: troca direto (o código já provou o pedido)
+    const { error } = await admin.auth.admin.updateUserById(user.id, { email: r.newEmail, email_confirm: true });
     if (error) return back(redirect, 'erro', /already|registered|exists/i.test(error.message) ? 'email-em-uso' : 'falha');
     return back(redirect, 'ok', 'email');
   }

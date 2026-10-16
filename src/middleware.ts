@@ -76,6 +76,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
         }
       }
       context.locals.user = user;
+
+      // senha temporária (definida por um administrador): troca obrigatória antes de qualquer outra tela
+      const passwordFree = ['/trocar-senha', '/api/auth/trocar-senha', '/auth/sair'];
+      if (user?.app_metadata?.must_change_password && !passwordFree.includes(pathname)) {
+        if (pathname.startsWith('/api/')) {
+          return new Response(JSON.stringify({ error: 'Crie uma senha nova antes de continuar.' }), {
+            status: 403,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return context.redirect('/trocar-senha');
+      }
       access = user ? await getAdminAccess(user.id) : null;
       context.locals.admin = access;
 

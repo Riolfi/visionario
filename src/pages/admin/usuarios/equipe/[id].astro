@@ -72,7 +72,8 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
         </label>
         <label class="block">
           <span class="label">Cargo</span>
-          <select class="field" name="role_id" required>
+          {/* cargo: na criação quem cria escolhe; depois, só o Proprietário muda */}
+          <select class="field" name="role_id" required disabled={!isNew && !proprietor} title={!isNew && !proprietor ? 'Só o Administrador Proprietário altera o cargo de outros usuários' : undefined}>
             {!member?.role_id && <option value="" disabled selected>Escolha o cargo</option>}
             {options.map((r) => <option value={r.id} selected={r.id === member?.role_id}>{r.name}</option>)}
           </select>

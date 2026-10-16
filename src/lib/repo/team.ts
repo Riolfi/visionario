@@ -4,6 +4,7 @@ import type { AdminAccess } from '../rbac';
 import { listAuthUsers } from './customers';
 import { roleRules } from './roles';
 import { getOwnerEmail, isProprietor } from './owner';
+import { sendTeamPasswordEmail } from '../email';
 
 /**
  * Equipe do painel (admin_users + cargo). Quem chega aqui tem a regra
@@ -113,11 +114,13 @@ export async function createMember(
     return { ok: false, error: 'Esse e-mail já tem uma conta na loja. Use outro e-mail para a conta da equipe.' };
   }
   if (input.password.length < 8) return { ok: false, error: 'A senha inicial precisa ter pelo menos 8 caracteres.' };
+  // senha temporária: no primeiro login a pessoa troca (app_metadata o usuário não altera)
   const { data, error } = await sb.auth.admin.createUser({
     email,
     password: input.password,
     email_confirm: true,
     user_metadata: { full_name: input.name },
+    app_metadata: { must_change_password: true },
   });
   if (error || !data.user) return { ok: false, error: error?.message ?? 'Não foi possível criar a conta.' };
   const userId = data.user.id;
@@ -130,7 +133,14 @@ export async function createMember(
     await sb.auth.admin.deleteUser(userId); // não deixa conta solta sem acesso
     return { ok: false, error: /is_active/.test(e2.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para criar membros inativos.' : e2.message };
   }
-  return { ok: true, message: 'Usuário criado com sucesso!', id: userId };
+  const mail = await sendTeamPasswordEmail({ to: email, name: input.name, password: input.password, kind: 'welcome' });
+  return {
+    ok: true,
+    id: userId,
+    message: mail.delivered === 'resend'
+      ? 'Usuário criado! Enviamos as boas-vindas com a senha temporária para o e-mail dele.'
+      : 'Usuário criado, mas o e-mail de boas-vindas não foi enviado (envio de e-mail não configurado). Passe a senha temporária para a pessoa.',
+  };
 }
 
 export async function updateMember(
@@ -152,7 +162,11 @@ export async function updateMember(
     if ((await roleRules(row.role_id ?? ''))?.isOwner && (await ownerCount()) <= 1) return { ok: false, error: 'O cargo Administrador precisa ter pelo menos uma pessoa ativa.' };
   }
 
+  // cargo travado na tela (select desativado não envia): mantém o atual
+  if (!input.roleId) input.roleId = row.role_id;
   if (input.roleId !== row.role_id) {
+    // ninguém muda o próprio cargo (barrado acima) e só o Proprietário muda o cargo dos outros
+    if (!(await isProprietor(actor.email))) return { ok: false, error: 'Só o Administrador Proprietário pode alterar o cargo de outros usuários.' };
     const block = await checkAssignable(actor, input.roleId);
     if (block) return { ok: false, error: block };
     const wasOwner = row.role_id ? (await roleRules(row.role_id))?.isOwner : false;
@@ -179,7 +193,10 @@ export async function updateMember(
     auth.password = input.password;
   }
   if (Object.keys(auth).length) {
-    const { error } = await sb.auth.admin.updateUserById(userId, auth);
+    // senha definida pelo administrador é temporária: a pessoa troca no próximo login
+    const { data: cur } = await sb.auth.admin.getUserById(userId);
+    const extra = input.password ? { app_metadata: { ...(cur.user?.app_metadata ?? {}), must_change_password: true } } : {};
+    const { error } = await sb.auth.admin.updateUserById(userId, { ...auth, ...extra });
     if (error) return { ok: false, error: /already|registered|exists/i.test(error.message) ? 'Esse e-mail já é usado por outra conta.' : error.message };
   }
   if (input.name.trim()) await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
@@ -190,6 +207,12 @@ export async function updateMember(
   if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para desativar membros.' : error.message };
   // reativar: grava true explicitamente (sem a coluna, ignora)
   if (input.isActive && row.is_active === false) await sb.from('admin_users').update({ is_active: true }).eq('user_id', userId);
+  if (input.password) {
+    const { data: u } = await sb.auth.admin.getUserById(userId);
+    const mail = await sendTeamPasswordEmail({ to: u.user?.email ?? email, name: input.name, password: input.password, kind: 'reset' });
+    if (mail.delivered !== 'resend') return { ok: true, id: userId, message: 'Usuário salvo, mas o e-mail com a senha temporária não foi enviado. Passe a senha para a pessoa.' };
+    return { ok: true, id: userId, message: 'Usuário salvo! Enviamos a senha temporária para o e-mail dele.' };
+  }
   return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
 }
 

@@ -20,7 +20,6 @@ export const SCREENS = [
   { key: 'categorias', label: 'Categorias', href: '/admin/categorias', view: 'categorias.ver' },
   { key: 'conteudo', label: 'Conteúdo', href: '/admin/site', view: 'conteudo.ver' },
   { key: 'usuarios', label: 'Usuários', href: '/admin/usuarios', view: null },
-  { key: 'cargos', label: 'Cargos', href: '/admin/cargos', view: 'cargos.editar' },
   { key: 'notificacoes', label: 'Notificações', href: '/admin/notificacoes', view: 'notificacoes.ver' },
 ] as const;
 export type ScreenKey = (typeof SCREENS)[number]['key'];
@@ -41,9 +40,8 @@ export const RULES = [
   { key: 'categorias.editar', screen: 'categorias', label: 'Editar categorias', help: 'Criar, renomear, reordenar e excluir categorias.' },
   { key: 'conteudo.ver', screen: 'conteudo', label: 'Ver conteúdo do site', help: 'Textos editáveis da loja.' },
   { key: 'conteudo.editar', screen: 'conteudo', label: 'Editar conteúdo do site', help: 'Textos da loja, logo, rodapé, Sobre e Contato.' },
-  { key: 'equipe.ver', screen: 'usuarios', label: 'Ver a equipe', help: 'Quem tem acesso ao painel e com qual cargo.' },
-  { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Gerenciar a equipe', help: 'Abre as ações da equipe; criar, editar, excluir e ativar/desativar são só de Administradores (em outro Administrador, só o Proprietário).' },
-  { key: 'cargos.editar', screen: 'cargos', label: 'Criar e editar cargos', help: 'Só com permissões que você mesmo tem; nunca o cargo Administrador nem o seu.' },
+  { key: 'equipe.ver', screen: 'usuarios', label: 'Visualizar usuários', help: 'Ver a lista da equipe e a ficha de cada um (sem senha).' },
+  { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Criar/editar usuários', help: 'Criar usuários e editar o nome de quem não é Administrador. Senha, cargo, ativo e exclusão são só de Administradores.' },
   { key: 'clientes.ver', screen: 'usuarios', label: 'Ver clientes', help: 'Dados cadastrais, endereços, compras e pedidos dos clientes.' },
   { key: 'clientes.estado', screen: 'usuarios', label: 'Ativar, desativar e bloquear clientes', help: 'Muda o estado da conta, com motivo registrado.' },
   { key: 'notificacoes.ver', screen: 'notificacoes', label: 'Ver notificações', help: 'Avisos automáticos (estoque esgotado, pagamentos a conferir).' },
@@ -83,7 +81,8 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
 
   if (under('/admin/perfil', '/api/admin/profile')) return true;
   if (under('/admin/permissoes', '/api/admin/permissions')) return false;
-  if (under('/admin/cargos', '/api/admin/roles')) return can(a, 'cargos.editar');
+  // Permissões e Cargos: só Administradores (já liberados no topo)
+  if (under('/admin/cargos', '/api/admin/roles')) return false;
   if (under('/admin/notificacoes')) return can(a, 'notificacoes.ver');
   if (under('/admin/usuarios/clientes')) return can(a, 'clientes.ver');
   if (under('/admin/usuarios')) return can(a, 'equipe.ver') || can(a, 'clientes.ver');

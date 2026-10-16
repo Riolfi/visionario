@@ -252,3 +252,25 @@ export async function sendTeamPasswordEmail(opts: {
   }
   return { delivered: 'none' };
 }
+
+/** Convite à equipe sem senha (conta criada por quem não é Administrador): a pessoa cria a senha pelo "Esqueci minha senha". */
+export async function sendTeamInviteEmail(opts: { to: string; name: string }): Promise<MailResult> {
+  const url = `${env.siteUrl}/esqueci-senha?email=${encodeURIComponent(opts.to)}`;
+  const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
+    <p>Criamos a sua conta na equipe da ${escapeHtml(env.brandName)} com o e-mail <strong>${escapeHtml(opts.to)}</strong>.</p>
+    <p>Para entrar, crie a sua senha: <a href="${url}">criar minha senha</a>. Um Administrador vai definir o seu cargo.</p>`;
+  if (!hasResend) return { delivered: (await writeEmailFile(`convite-${Date.now()}`, html)) ? 'file' : 'none' };
+  try {
+    const { data, error } = await new Resend(env.resendApiKey).emails.send({
+      from: env.resendFrom,
+      to: opts.to,
+      subject: `Sua conta na equipe — ${env.brandName}`,
+      html,
+    });
+    if (!error) return { delivered: 'resend', ref: data?.id ?? null };
+    console.error('[email] convite Resend falhou:', error.message);
+  } catch (err) {
+    console.error('[email] convite Resend falhou:', err);
+  }
+  return { delivered: 'none' };
+}

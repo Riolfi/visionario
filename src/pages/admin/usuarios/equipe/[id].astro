@@ -12,8 +12,11 @@ const access = Astro.locals.admin!;
 if (!can(access, 'equipe.ver')) return Astro.redirect('/admin/usuarios');
 const id = Astro.params.id ?? '';
 const isNew = id === 'novo';
-// só Administradores criam/editam (o servidor confere de novo)
-if (isNew && !access.isOwner) return Astro.redirect('/admin/usuarios?aba=equipe');
+// criar: Administradores ou quem tem "Criar/editar usuários" (o servidor confere de novo)
+const canManageUsers = can(access, 'equipe.gerenciar');
+if (isNew && !canManageUsers) return Astro.redirect('/admin/usuarios?aba=equipe');
+// sem ser Administrador: só dados básicos (nome; e-mail ao criar) — senha, cargo, ativo e exclusão não
+const basic = !access.isOwner;
 
 const [team, roles, ownerEmail, proprietor] = await Promise.all([
   isNew ? Promise.resolve([]) : listTeam(),
@@ -33,11 +36,15 @@ const isOwnerAccount = !!member && !!ownerEmail && member.email.toLowerCase() ==
 const assignable = roles.filter((r) => proprietor || !r.is_owner);
 const options = member?.is_owner && !proprietor ? roles.filter((r) => r.is_owner) : assignable;
 // outro Administrador: só o Proprietário edita; o Proprietário ninguém edita (ele usa Meu perfil)
-const canManage = access.isOwner && !isOwnerAccount && (!member?.is_owner || proprietor);
+const canManage = basic
+  ? canManageUsers && !member?.is_owner
+  : !isOwnerAccount && (!member?.is_owner || proprietor);
 const readOnly = !canManage || isMe;
 const deleteBlock = isMe
   ? 'Você não pode excluir a sua própria conta.'
-  : isOwnerAccount
+  : basic
+    ? 'Só Administradores excluem usuários.'
+    : isOwnerAccount
     ? 'Esta conta é o Proprietário. Troque o Proprietário em Cargos › Administrador antes de excluir.'
     : '';
 const flash = takeFlash(Astro.cookies);
@@ -64,7 +71,9 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
       ? 'ninguém altera o Proprietário (ele edita os próprios dados em Meu perfil).'
       : member?.is_owner && access.isOwner
         ? 'só o Proprietário altera outros Administradores.'
-        : 'só Administradores alteram usuários da equipe.'}</p>
+        : basic
+          ? 'só o Proprietário altera Administradores.'
+          : 'seu cargo não permite alterar usuários da equipe.'}</p>
   )}
 
   <form id="member-form" method="POST" action="/api/admin/users" class="mt-4 max-w-2xl space-y-5">
@@ -73,27 +82,55 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     <fieldset disabled={readOnly} class="space-y-5">
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="block"><span class="label">Nome</span><input class="field" name="name" value={member?.name ?? ''} required={isNew} /></label>
-        <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" /></label>
-        <label class="block">
-          <span class="label">{isNew ? 'Senha inicial' : <>Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></>}</span>
-          <input class="field" type="password" name="password" minlength="8" required={isNew} autocomplete="new-password" />
-        </label>
-        <label class="block">
-          <span class="label">Cargo</span>
-          {/* cargo: na criação quem cria escolhe; depois, só o Proprietário muda */}
-          <select class="field" name="role_id" required disabled={!isNew && !proprietor} title={!isNew && !proprietor ? 'Só o Administrador Proprietário altera o cargo de outros usuários' : undefined}>
-            {!member?.role_id && <option value="" disabled selected>Escolha o cargo</option>}
-            {options.map((r) => <option value={r.id} selected={r.id === member?.role_id}>{r.name}</option>)}
-          </select>
-        </label>
+        {/* e-mail: quem não é Administrador só define ao criar */}
+        <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" readonly={basic && !isNew} /></label>
+        {basic ? (
+          <label class="block">
+            <span class="label">Cargo</span>
+            <input class="field bg-bone-50" value={isNew ? 'Um Administrador define' : member?.role_name ?? 'Sem cargo'} readonly />
+          </label>
+        ) : (
+          <>
+            <div class="block">
+              <label class="block">
+                <span class="label">{isNew ? 'Senha inicial' : <>Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></>}</span>
+                <input class="field" type="password" name="password" minlength="8" required={isNew} autocomplete="new-password" />
+              </label>
+              {/* trocar a senha de alguém: aviso por e-mail só se marcar (a senha atual ninguém vê) */}
+              {!isNew && (
+                <label class="mt-2 flex items-start gap-2 text-[13px] text-ink-soft">
+                  <input type="checkbox" name="avisar_senha" class="mt-0.5" />
+                  Enviar e-mail de aviso de alteração informando a nova senha para o usuário?
+                </label>
+              )}
+            </div>
+            <label class="block">
+              <span class="label">Cargo</span>
+              {/* cargo: na criação quem cria escolhe; depois, só o Proprietário muda */}
+              <select class="field" name="role_id" required disabled={!isNew && !proprietor} title={!isNew && !proprietor ? 'Só o Administrador Proprietário altera o cargo de outros usuários' : undefined}>
+                {!member?.role_id && <option value="" disabled selected>Escolha o cargo</option>}
+                {options.map((r) => <option value={r.id} selected={r.id === member?.role_id}>{r.name}</option>)}
+              </select>
+            </label>
+          </>
+        )}
       </div>
       {isNew && (
-        <p class="text-[12px] text-ink-muted">A conta da equipe é sempre nova: use um e-mail que ainda não tenha cadastro na loja. Passe a senha inicial para a pessoa e peça para trocar em "Meu perfil".</p>
+        <p class="text-[12px] text-ink-muted">
+          {basic
+            ? 'A conta é criada sem cargo; a pessoa recebe um e-mail para criar a própria senha. Use um e-mail que ainda não tenha cadastro na loja.'
+            : 'A conta da equipe é sempre nova: use um e-mail que ainda não tenha cadastro na loja. A pessoa recebe a senha inicial por e-mail e cria outra no primeiro login.'}
+        </p>
       )}
-      <label class="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="is_active" checked={member?.is_active ?? true} />
-        Ativo (entra no painel com o acesso do cargo)
-      </label>
+      {!isNew && (
+        <p class="text-[12px] text-ink-muted">A senha atual de ninguém aparece aqui. Senha definida por um Administrador vale só até o próximo login, quando a pessoa cria outra.</p>
+      )}
+      {!basic && (
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="is_active" checked={member?.is_active ?? true} />
+          Ativo (entra no painel com o acesso do cargo)
+        </label>
+      )}
     </fieldset>
 
     {/* Proprietário: só o Proprietário atual vê (e só nos Administradores); fora do fieldset */}
@@ -219,12 +256,15 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     if (!saveBtn || !form.reportValidity()) return;
-    const active = (form.querySelector('input[name=is_active]') as HTMLInputElement).checked;
-    const ok = await askSaveActive(active, {
-      on: 'A pessoa entra no painel com o acesso do cargo.',
-      off: 'A pessoa continua na equipe, mas fica sem acesso a nenhuma tela.',
-    });
-    if (!ok) return;
+    // Ativo só existe para Administradores (quem edita só dados básicos não vê)
+    const activeEl = form.querySelector('input[name=is_active]') as HTMLInputElement | null;
+    if (activeEl) {
+      const ok = await askSaveActive(activeEl.checked, {
+        on: 'A pessoa entra no painel com o acesso do cargo.',
+        off: 'A pessoa continua na equipe, mas fica sem acesso a nenhuma tela.',
+      });
+      if (!ok) return;
+    }
     saveBtn.disabled = true;
     top.classList.add('hidden');
     try {

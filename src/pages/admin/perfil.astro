@@ -1,6 +1,6 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import { RULES } from '../../lib/rbac';
+import { can, RULES } from '../../lib/rbac';
 import { supabaseAdmin } from '../../lib/supabase';
 import { isProprietor } from '../../lib/repo/owner';
 import { takeFlash } from '../../lib/flash';
@@ -26,6 +26,10 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
 ---
 
 <AdminLayout title="Meu perfil">
+  {/* atalho para a lista só para quem pode ver Usuários */}
+  {can(access, 'equipe.ver') && (
+    <a href="/admin/usuarios?aba=equipe" class="mb-4 inline-block font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink">← Usuários</a>
+  )}
   {flash && (
     <p role="status" class:list={['max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
   )}

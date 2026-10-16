@@ -12,6 +12,7 @@ const ERRO: Record<string, string> = {
   curta: 'A nova senha precisa ter pelo menos 8 caracteres.',
   diferente: 'A confirmação não bate com a nova senha.',
   igual: 'Escolha uma senha diferente da temporária.',
+  atual: 'A senha recebida não confere.',
   falha: 'Não foi possível salvar. Tente de novo.',
 };
 const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
@@ -22,11 +23,12 @@ const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
     <div class="w-full max-w-sm">
       <h1 class="font-display text-3xl">Crie a sua senha</h1>
       <p class="mt-2 text-sm text-ink-soft">
-        Você entrou com uma senha temporária. Para continuar, crie uma senha nova — só você vai saber qual é.
+        Você entrou com uma senha definida por um Administrador. Para continuar, informe a senha recebida e crie uma nova — só você vai saber qual é.
       </p>
       {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       <form method="POST" action="/api/auth/trocar-senha" class="mt-6 space-y-4">
-        <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" autofocus /></label>
+        <label class="block"><span class="label">Senha recebida</span><input class="field" type="password" name="atual" required autocomplete="current-password" autofocus /></label>
+        <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" /></label>
         <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
         <p class="text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
         <button class="btn-primary w-full">Salvar e continuar</button>

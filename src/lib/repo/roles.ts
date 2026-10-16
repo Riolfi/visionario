@@ -4,7 +4,7 @@ import { isRuleKey, type AdminAccess, type RuleKey } from '../rbac';
 
 /**
  * Permissões (grupos de regras por tela) e Cargos (conjuntos de permissões).
- * Permissões: só o Administrador; Cargos: Administrador ou regra cargos.editar
+ * Permissões e Cargos: só o Administrador
  * (ver canAccess). Migrations 0016, 0018 e 0019.
  */
 

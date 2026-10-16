@@ -1,14 +1,16 @@
 import { hasSupabase } from '../env';
 import { supabaseAdmin } from '../supabase';
-import type { AdminAccess } from '../rbac';
+import { can, type AdminAccess } from '../rbac';
 import { listAuthUsers } from './customers';
 import { roleRules } from './roles';
 import { getOwnerEmail, isProprietor } from './owner';
-import { sendTeamPasswordEmail } from '../email';
+import { sendTeamInviteEmail, sendTeamPasswordEmail } from '../email';
 
 /**
- * Equipe do painel (admin_users + cargo). Só Administradores criam, editam,
- * excluem e ativam/desativam membros; as travas contra escalada ficam aqui:
+ * Equipe do painel (admin_users + cargo). Administradores criam, editam,
+ * excluem e ativam/desativam membros. Quem tem só "Criar/editar usuários"
+ * mexe apenas em dados básicos (nome; e-mail ao criar) de quem não é
+ * Administrador — senha, cargo, ativo e exclusão, nunca. Travas:
  * ninguém mexe no próprio acesso, só o Proprietário dá ou tira o cargo
  * Administrador (e mexe em quem o tem), e quem não é Administrador só atribui
  * cargos com regras que ele mesmo tem.
@@ -29,7 +31,8 @@ export interface TeamMember {
 type Result = { ok: true; message?: string; id?: string } | { ok: false; error: string };
 type Actor = AdminAccess & { email?: string | null };
 
-const ONLY_ADMINS = 'Só Administradores criam, editam, excluem ou ativam/desativam usuários da equipe.';
+const ONLY_ADMINS = 'Só Administradores excluem ou ativam/desativam usuários da equipe.';
+const NO_ACCESS = 'Seu cargo não permite criar ou editar usuários.';
 
 export async function listTeam(): Promise<TeamMember[]> {
   const sb = supabaseAdmin();
@@ -103,12 +106,16 @@ export async function createMember(
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
-  if (!actor.isOwner) return { ok: false, error: ONLY_ADMINS };
+  if (!actor.isOwner && !can(actor, 'equipe.gerenciar')) return { ok: false, error: NO_ACCESS };
+  // sem ser Administrador: só dados básicos — conta sem cargo, ativa, e a pessoa cria a senha
+  const basic = !actor.isOwner;
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' };
   if (await isOwnerEmail(email)) return { ok: false, error: 'Esse é o e-mail do Proprietário.' };
-  const block = await checkAssignable(actor, input.roleId);
-  if (block) return { ok: false, error: block };
+  if (!basic) {
+    const block = await checkAssignable(actor, input.roleId);
+    if (block) return { ok: false, error: block };
+  }
 
   // Nunca promove uma conta que já existe: qualquer pessoa pode se cadastrar
   // na loja com o e-mail de um futuro funcionário (não há prova de posse do
@@ -116,6 +123,7 @@ export async function createMember(
   if ((await listAuthUsers()).some((u) => u.email?.toLowerCase() === email)) {
     return { ok: false, error: 'Esse e-mail já tem uma conta na loja. Use outro e-mail para a conta da equipe.' };
   }
+  if (basic) input.password = `${crypto.randomUUID()}Aa1!`; // ninguém conhece; a pessoa cria a dela
   if (input.password.length < 8) return { ok: false, error: 'A senha inicial precisa ter pelo menos 8 caracteres.' };
   // senha temporária: no primeiro login a pessoa troca (app_metadata o usuário não altera)
   const { data, error } = await sb.auth.admin.createUser({
@@ -131,10 +139,20 @@ export async function createMember(
   // is_active só vai quando desliga: antes da migration 0020 criar ativo continua funcionando
   const { error: e2 } = await sb
     .from('admin_users')
-    .insert({ user_id: userId, role_id: input.roleId, role: 'equipe', permissions: [], ...(input.isActive ? {} : { is_active: false }) });
+    .insert({ user_id: userId, role_id: basic ? null : input.roleId, role: 'equipe', permissions: [], ...(basic || input.isActive ? {} : { is_active: false }) });
   if (e2) {
     await sb.auth.admin.deleteUser(userId); // não deixa conta solta sem acesso
     return { ok: false, error: /is_active/.test(e2.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para criar membros inativos.' : e2.message };
+  }
+  if (basic) {
+    const invite = await sendTeamInviteEmail({ to: email, name: input.name });
+    return {
+      ok: true,
+      id: userId,
+      message: invite.delivered === 'resend'
+        ? 'Usuário criado sem cargo. Ele recebeu um e-mail para criar a senha; um Administrador define o cargo.'
+        : 'Usuário criado sem cargo, mas o e-mail não foi enviado. Ele pode criar a senha em "Esqueci minha senha".',
+    };
   }
   const mail = await sendTeamPasswordEmail({ to: email, name: input.name, password: input.password, kind: 'welcome' });
   return {
@@ -149,14 +167,23 @@ export async function createMember(
 export async function updateMember(
   actor: Actor & { userId: string },
   userId: string,
-  input: { name: string; email: string; password: string; roleId: string; isActive: boolean },
+  input: { name: string; email: string; password: string; roleId: string; isActive: boolean; notify?: boolean },
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
-  if (!actor.isOwner) return { ok: false, error: ONLY_ADMINS };
+  if (!actor.isOwner && !can(actor, 'equipe.gerenciar')) return { ok: false, error: NO_ACCESS };
   if (userId === actor.userId) return { ok: false, error: 'Para alterar os seus dados, use "Meu perfil". O seu cargo só outra pessoa altera.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
+
+  // sem ser Administrador: só o nome, e nunca de um Administrador
+  if (!actor.isOwner) {
+    if ((await roleRules(row.role_id ?? ''))?.isOwner) return { ok: false, error: 'Só o Proprietário altera Administradores.' };
+    if (input.name.trim().length < 2) return { ok: false, error: 'Informe o nome (mínimo 2 letras).' };
+    await sb.from('profiles').upsert({ id: userId, full_name: input.name.trim() }, { onConflict: 'id' });
+    return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
+  }
+
   const manage = await checkManageable(actor, row.role_id);
   if (manage) return { ok: false, error: manage };
 
@@ -211,12 +238,14 @@ export async function updateMember(
   if (error) return { ok: false, error: /is_active/.test(error.message) ? 'Rode a migration 0020_active_flags.sql no Supabase para desativar membros.' : error.message };
   // reativar: grava true explicitamente (sem a coluna, ignora)
   if (input.isActive && row.is_active === false) await sb.from('admin_users').update({ is_active: true }).eq('user_id', userId);
-  if (input.password) {
+  // aviso por e-mail só se o Administrador marcou a caixa
+  if (input.password && input.notify) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
     const mail = await sendTeamPasswordEmail({ to: u.user?.email ?? email, name: input.name, password: input.password, kind: 'reset' });
-    if (mail.delivered !== 'resend') return { ok: true, id: userId, message: 'Usuário salvo, mas o e-mail com a senha temporária não foi enviado. Passe a senha para a pessoa.' };
-    return { ok: true, id: userId, message: 'Usuário salvo! Enviamos a senha temporária para o e-mail dele.' };
+    if (mail.delivered !== 'resend') return { ok: true, id: userId, message: 'Usuário salvo, mas o e-mail com a nova senha não foi enviado. Passe a senha para a pessoa.' };
+    return { ok: true, id: userId, message: 'Usuário salvo! Enviamos a nova senha para o e-mail dele.' };
   }
+  if (input.password) return { ok: true, id: userId, message: 'Usuário salvo! No próximo login ele vai criar uma senha nova.' };
   return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
 }
 

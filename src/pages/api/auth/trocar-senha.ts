@@ -20,8 +20,12 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   if (nova.length < 8) return redirect('/trocar-senha?erro=curta');
   if (nova !== String(form.get('confirmar') || '')) return redirect('/trocar-senha?erro=diferente');
 
-  // a nova não pode ser a temporária (o administrador a conhece)
   const probe = createClient(env.supabaseUrl, env.supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  // confirma a senha recebida (definida pelo Administrador)
+  const { error: wrong } = await probe.auth.signInWithPassword({ email: user.email ?? '', password: String(form.get('atual') || '') });
+  if (wrong) return redirect('/trocar-senha?erro=atual');
+  await probe.auth.signOut({ scope: 'local' });
+  // a nova não pode ser a temporária (o administrador a conhece)
   const { error: same } = await probe.auth.signInWithPassword({ email: user.email ?? '', password: nova });
   if (!same) {
     await probe.auth.signOut({ scope: 'local' });

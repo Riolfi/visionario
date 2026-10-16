@@ -3,7 +3,7 @@ import { setFlash } from '../../../lib/flash';
 import { deleteRole, saveRole } from '../../../lib/repo/roles';
 
 /**
- * POST /api/admin/roles — cargos (Administrador ou regra cargos.editar; as
+ * POST /api/admin/roles — cargos (só Administradores; as
  * travas contra escalada ficam em repo/roles).
  *   acao=salvar      id (vazio = novo), name, description, permissions[], is_active
  *   (o Proprietário é trocado na tela do usuário: /api/admin/users)

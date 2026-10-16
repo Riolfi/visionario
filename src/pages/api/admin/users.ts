@@ -28,6 +28,7 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
     password: String(form.get('password') || ''),
     roleId: String(form.get('role_id') || ''),
     isActive: form.get('is_active') === 'on',
+    notify: form.get('avisar_senha') === 'on',
   };
 
   if (acao === 'confirmar_proprietario') {

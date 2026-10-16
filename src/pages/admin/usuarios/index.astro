@@ -12,8 +12,8 @@ export const prerender = false;
 
 const access = Astro.locals.admin!;
 const canTeam = can(access, 'equipe.ver');
-// só Administradores gerenciam a equipe (o servidor confere de novo)
-const canManageTeam = access.isOwner;
+// criar: Administradores ou "Criar/editar usuários" (o servidor confere de novo)
+const canManageTeam = can(access, 'equipe.gerenciar');
 const canCustomers = can(access, 'clientes.ver');
 const tabs = [canTeam && ['equipe', 'Equipe'], canCustomers && ['clientes', 'Clientes']].filter(Boolean) as [string, string][];
 const wanted = Astro.url.searchParams.get('aba');
@@ -34,7 +34,11 @@ const viewerIsProprietor = !!ownerEmail && (Astro.locals.user?.email ?? '').toLo
 // ninguém mexe na própria conta (Meu perfil) nem no Proprietário
 const canManageMember = (m: (typeof team)[number]) =>
   access.isOwner && m.id !== me && m.email.toLowerCase() !== ownerEmail && (!m.is_owner || viewerIsProprietor);
+// Ativo: só Administradores (mesmas travas de cima)
 const canToggle = canManageMember;
+// Editar: Administradores (regras acima) ou "Criar/editar usuários" em quem não é Administrador
+const canEditMember = (m: (typeof team)[number]) =>
+  canManageMember(m) || (!access.isOwner && canManageTeam && m.id !== me && !m.is_owner);
 const noun = aba === 'equipe' ? ['membro', 'membros'] : ['cliente', 'clientes'];
 // filtros como em Compras: Cargo (só Equipe) e Status (as duas abas)
 const STATUS: [string, string][] = [['ativo', 'Ativo'], ['inativo', 'Inativo']];
@@ -138,7 +142,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                 {/* a própria conta edita em Meu perfil; sem permissão, botão desativado */}
                 {m.id === me ? (
                   <a href="/admin/perfil" class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
-                ) : canManageMember(m) ? (
+                ) : canEditMember(m) ? (
                   <a href={`/admin/usuarios/equipe/${m.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
                 ) : (
                   <span class="cursor-not-allowed rounded-card border border-ink/20 px-2 py-1 text-[12px] opacity-40 sm:px-3 sm:text-[13px]" aria-disabled="true" title="Seu cargo não permite editar a equipe">Editar</span>

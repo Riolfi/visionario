@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { isValidEmail } from '../../lib/format';
 import { sendContactMessage } from '../../lib/email';
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, locals }) => {
   const form = await request.formData().catch(() => null);
   const body = form
     ? Object.fromEntries(form)
@@ -22,7 +22,8 @@ export const POST: APIRoute = async ({ request }) => {
     });
   }
 
-  await sendContactMessage({ name, email, phone, message });
+  // vai para o e-mail de atendimento da loja (o do remetente é nao-responda, sem caixa)
+  await sendContactMessage({ name, email, phone, message, to: locals.site?.contact?.data?.email });
   return redirectDone(request);
 };
 

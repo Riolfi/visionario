@@ -177,6 +177,8 @@ export async function sendContactMessage(msg: {
   email: string;
   phone?: string;
   message: string;
+  /** e-mail de atendimento (Conteúdo › Atendimento); sem ele, o do remetente */
+  to?: string;
 }): Promise<{ delivered: 'resend' | 'file' | 'none' }> {
   const html = `<h2>Mensagem pelo site</h2>
     <p><strong>Nome:</strong> ${escapeHtml(msg.name)}</p>
@@ -185,7 +187,7 @@ export async function sendContactMessage(msg: {
     <p><strong>Mensagem:</strong></p>
     <p>${escapeHtml(msg.message).replace(/\n/g, '<br>')}</p>`;
 
-  const to = env.resendFrom.match(/<(.+)>/)?.[1] || 'ola@lojavisionario.com.br';
+  const to = msg.to?.trim() || env.resendFrom.match(/<(.+)>/)?.[1] || 'ola@lojavisionario.com.br';
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
   if (hasResend) {
     try {

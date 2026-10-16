@@ -1,5 +1,6 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
+import PasswordInput from '../../../../components/PasswordInput.astro';
 import { can } from '../../../../lib/rbac';
 import { isOnline, listTeam } from '../../../../lib/repo/team';
 import { listRoles } from '../../../../lib/repo/roles';
@@ -54,6 +55,8 @@ const lastName = rest.join(' ');
 // Proprietário: só aparece com o cargo Administrador; só o Proprietário atual liga em outra pessoa
 const adminRoleId = roles.find((r) => r.is_owner)?.id ?? '';
 const canTransfer = proprietor && !readOnly && !isOwnerAccount;
+// para onde vai o código (e-mail do Proprietário atual), meio escondido: ad***@dominio
+const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2') : 'o seu e-mail';
 ---
 
 <AdminLayout title={isNew ? 'Novo usuário' : 'Usuário'}>
@@ -114,16 +117,20 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
             </select>
           </label>
         )}
-        {/* e-mail: sempre validado; quem não é Administrador só define ao criar */}
-        <label class="block">
-          <span class="label">E-mail</span>
-          <input class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" readonly={basic && !isNew} />
-        </label>
-        {!basic && (
-          <div class="sm:col-span-2">
+        {/* e-mail: validado ao sair do campo; quem não é Administrador só define ao criar */}
+        <div>
+          <label class="block">
+            <span class="label">E-mail</span>
+            <input id="email" class="field" type="email" name="email" value={member?.email ?? ''} required autocomplete="off" readonly={basic && !isNew} />
+          </label>
+          <p id="email-notice" class="mt-1 hidden text-[12px] text-red-700">! E-mail inválido. Confira o endereço.</p>
+        </div>
+        {!basic ? (
+          <div>
+            {/* senha: mesma largura do Cargo, logo abaixo dele */}
             <label class="block">
               <span class="label">{isNew ? 'Senha temporária' : <>Redefinir senha temporária <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></>}</span>
-              <input class="field" type="password" name="password" minlength="8" required={isNew} autocomplete="new-password" />
+              <PasswordInput name="password" minlength="8" required={isNew} autocomplete="new-password" />
             </label>
             <p class="mt-1 text-[12px] text-ink-muted">
               {isNew
@@ -138,7 +145,15 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
               </label>
             )}
           </div>
-        )}
+        ) : <div class="hidden sm:block" />}
+        {/* confirmar e-mail: só aparece/é exigido quando o e-mail é novo ou mudou */}
+        <div id="email-confirm-wrap" class:list={[!isNew && 'hidden']}>
+          <label class="block">
+            <span class="label">Confirmar e-mail</span>
+            <input id="email-confirm" class="field" type="email" autocomplete="off" />
+          </label>
+          <p id="email-confirm-notice" class="mt-1 hidden text-[12px] text-red-700">! Os e-mails não conferem.</p>
+        </div>
       </div>
       {isNew && (
         <p class="text-[12px] text-ink-muted">
@@ -192,13 +207,14 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
   </form>
 
   {/* código da troca do Proprietário (enviado ao e-mail do Proprietário atual) */}
-  <dialog id="token-dialog" class="w-[min(92vw,26rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
+  <dialog id="token-dialog" class="m-auto w-[min(92vw,26rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
     <form id="token-form" class="p-6">
       <h2 class="font-display text-xl">Confirme a troca do Proprietário</h2>
-      <p class="mt-2 font-sans text-sm text-ink-soft">Enviamos um código de 6 dígitos para o seu e-mail. Digite-o para concluir; ele vale por 15 minutos.</p>
+      <p class="mt-2 font-sans text-sm text-ink-soft">Enviamos um código de 6 dígitos para <strong>{ownerMasked}</strong>. Digite-o para concluir; ele vale por 15 minutos. Não chegou? Olhe o spam ou reenvie.</p>
       <input id="token-code" class="field mt-4 text-center text-xl tracking-[0.4em]" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de 6 dígitos" />
       <p id="token-error" class="mt-2 hidden font-sans text-[13px] text-red-700"></p>
       <div class="mt-6 flex justify-end gap-2">
+        <button type="button" id="token-resend" class="mr-auto font-sans text-[13px] text-ink-muted underline">Reenviar código</button>
         <button type="button" id="token-cancel" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Cancelar</button>
         <button type="submit" class="rounded-card bg-ink px-4 py-2 font-sans text-sm text-bone hover:bg-ink-soft">Concluir</button>
       </div>
@@ -219,6 +235,7 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
 
 <script>
   import { askSaveActive, confirmDialog } from '../../../../lib/confirm-dialog';
+  import { enableEmailConfirm } from '../../../../lib/form-helpers';
 
   const { deleteBlock, isNew, label, adminRoleId } = (window as any).__member as {
     deleteBlock: string;
@@ -230,6 +247,20 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
   const top = document.getElementById('top-notice')!;
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
 
+  // e-mail validado ao sair do campo + confirmação igual (Salvar desabilitado se errado)
+  const emailInput = document.getElementById('email') as HTMLInputElement;
+  const checkEmail = saveBtn
+    ? enableEmailConfirm({
+        email: emailInput,
+        confirm: document.getElementById('email-confirm') as HTMLInputElement,
+        emailNotice: document.getElementById('email-notice')!,
+        confirmNotice: document.getElementById('email-confirm-notice')!,
+        confirmWrap: document.getElementById('email-confirm-wrap'),
+        submit: saveBtn,
+        initial: isNew ? '' : emailInput.defaultValue,
+      })
+    : () => true;
+
   function showTop(text: string) {
     top.textContent = `! ${text}`;
     top.classList.remove('hidden');
@@ -237,14 +268,21 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
   }
 
   // Proprietário só aparece com o cargo Administrador escolhido
-  const roleSelect = form.querySelector('select[name=role_id]') as HTMLSelectElement;
+  // e o toggle só liga se o Cargo escolhido for Administrador
+  const roleSelect = form.querySelector('select[name=role_id]') as HTMLSelectElement | null; // não existe no modo básico
   const ownerField = document.getElementById('owner-field'); // só existe para o Proprietário
   const ownerToggle = form.querySelector('input[name=proprietario]') as HTMLInputElement | null;
-  roleSelect.addEventListener('change', () => {
-    const isAdmin = !!adminRoleId && roleSelect.value === adminRoleId;
+  const ownerLocked = !!ownerToggle?.disabled; // travado pelo servidor (sem permissão ou já é o Proprietário)
+  const syncOwnerField = () => {
+    const isAdmin = !!adminRoleId && roleSelect?.value === adminRoleId;
     ownerField?.classList.toggle('hidden', !isAdmin);
-    if (ownerToggle && !isAdmin && !ownerToggle.disabled) ownerToggle.checked = false;
-  });
+    if (ownerToggle && !ownerLocked) {
+      ownerToggle.disabled = !isAdmin;
+      if (!isAdmin) ownerToggle.checked = false;
+    }
+  };
+  roleSelect?.addEventListener('change', syncOwnerField);
+  syncOwnerField();
 
   // ---- ligar "Proprietário": confirma, mas só envia ao salvar ----
   const ownerNotice = document.getElementById('owner-notice')!;
@@ -263,12 +301,28 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     }
     syncOwnerNotice();
   });
-  roleSelect.addEventListener('change', syncOwnerNotice);
+  roleSelect?.addEventListener('change', syncOwnerNotice);
 
   // ---- código da troca do Proprietário ----
   const dialog = document.getElementById('token-dialog') as HTMLDialogElement;
   const codeInput = document.getElementById('token-code') as HTMLInputElement;
   const tokenError = document.getElementById('token-error')!;
+  /** pede o código ao e-mail do Proprietário atual (vai junto o cargo escolhido) */
+  async function requestOwnerCode() {
+    const body = new FormData();
+    body.set('acao', 'pedir_codigo_proprietario');
+    body.set('id', (form.querySelector('input[name=id]') as HTMLInputElement).value);
+    if (roleSelect) body.set('role_id', roleSelect.value);
+    const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
+    return (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+  }
+  document.getElementById('token-resend')!.addEventListener('click', async () => {
+    tokenError.classList.remove('hidden');
+    tokenError.textContent = 'Enviando…';
+    const r = await requestOwnerCode().catch(() => ({ ok: false, error: 'Sem conexão com o servidor.' }));
+    tokenError.textContent = r.ok ? 'Código reenviado. Use o mais recente.' : r.error || 'Não foi possível reenviar.';
+  });
+
   // nada foi salvo ainda: o código confirma e aí o salvar vai junto
   function openToken() {
     codeInput.value = '';
@@ -309,11 +363,7 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     try {
       // passando a posse: primeiro o código (ao seu e-mail); o salvar vai depois, junto com ele
       if (transferring()) {
-        const body = new FormData();
-        body.set('acao', 'pedir_codigo_proprietario');
-        body.set('id', (form.querySelector('input[name=id]') as HTMLInputElement).value);
-        const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
-        const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        const r = await requestOwnerCode();
         if (r.ok) return openToken();
         return showTop(r.error || 'Não foi possível enviar o código.');
       }
@@ -325,6 +375,7 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
       showTop('Sem conexão com o servidor.');
     } finally {
       saveBtn.disabled = false;
+      checkEmail(); // volta a travar se o e-mail estiver errado
     }
   });
 

@@ -715,3 +715,9 @@ html.admin-dark .admin-dark-show { display: inline; }
 html.admin-dark .admin-dark-hide { display: none; }
 /* logo escuro em fundo escuro: inverte (preto vira branco) */
 html.admin-dark .admin-logo { filter: invert(1) hue-rotate(180deg); }
+
+/* olho de mostrar/ocultar senha: troca de ícone com giro curto */
+[data-pw-toggle] svg { transition: transform 0.2s ease, opacity 0.2s ease; }
+[data-pw-toggle] .eye-off { position: absolute; inset: 0; margin: auto; opacity: 0; transform: rotate(-90deg) scale(0.6); }
+[data-pw-toggle][data-shown='1'] .eye-on { opacity: 0; transform: rotate(90deg) scale(0.6); }
+[data-pw-toggle][data-shown='1'] .eye-off { opacity: 1; transform: none; }

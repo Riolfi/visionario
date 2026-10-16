@@ -1,4 +1,5 @@
 ---
+import PasswordInput from '../components/PasswordInput.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 export const prerender = false;
@@ -35,8 +36,8 @@ const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
               <span class="label">Código</span>
               <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus />
             </label>
-            <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" /></label>
-            <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+            <label class="block"><span class="label">Nova senha</span><PasswordInput  name="nova" required minlength="8" autocomplete="new-password" /></label>
+            <label class="block"><span class="label">Confirmar nova senha</span><PasswordInput  name="confirmar" required minlength="8" autocomplete="new-password" /></label>
             <button class="btn-primary w-full">Salvar nova senha</button>
           </form>
           <form method="POST" action="/api/auth/esqueci-senha" class="mt-3 text-center">

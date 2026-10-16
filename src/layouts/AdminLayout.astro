@@ -199,5 +199,10 @@ const isActive = (href: string) =>
       document.querySelectorAll('[data-admin-close]').forEach((el) => el.addEventListener('click', () => setOpen(false)));
       document.addEventListener('keydown', (e) => e.key === 'Escape' && setOpen(false));
     </script>
+      <script>
+      // olho de mostrar/ocultar senha em todo campo PasswordInput
+      import { enablePasswordToggles } from '../lib/form-helpers';
+      enablePasswordToggles();
+    </script>
   </body>
 </html>

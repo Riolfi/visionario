@@ -1,4 +1,5 @@
 ---
+import PasswordInput from '../components/PasswordInput.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { safeNextPath } from '../lib/auth';
 
@@ -48,7 +49,7 @@ const prefillEmail = params.get('email') ?? '';
             <span class="h-px flex-1 bg-ink/10"></span>ou<span class="h-px flex-1 bg-ink/10"></span>
           </div>
 
-          <form method="POST" action="/api/auth/signup" class="space-y-4">
+          <form id="signup-form" method="POST" action="/api/auth/signup" class="space-y-4">
             <input type="hidden" name="next" value={next} />
             <div>
               <label class="label" for="name">Nome completo</label>
@@ -57,13 +58,19 @@ const prefillEmail = params.get('email') ?? '';
             <div>
               <label class="label" for="email">E-mail</label>
               <input id="email" name="email" type="email" class="field" required autocomplete="email" value={prefillEmail} />
+              <p id="email-notice" class="mt-1 hidden text-[12px] text-red-700">! E-mail inválido. Confira o endereço.</p>
+            </div>
+            <div>
+              <label class="label" for="email-confirm">Confirmar e-mail</label>
+              <input id="email-confirm" type="email" class="field" required autocomplete="off" />
+              <p id="email-confirm-notice" class="mt-1 hidden text-[12px] text-red-700">! Os e-mails não conferem.</p>
             </div>
             <div>
               <label class="label" for="password">Senha</label>
-              <input id="password" name="password" type="password" class="field" required minlength="8" autocomplete="new-password" />
+              <PasswordInput id="password" name="password" required minlength="8" autocomplete="new-password" />
               <p class="mt-1 text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
             </div>
-            <button type="submit" class="btn-primary w-full">Criar conta</button>
+            <button type="submit" id="signup-btn" class="btn-primary w-full disabled:opacity-50">Criar conta</button>
           </form>
         </>
       )}
@@ -75,3 +82,18 @@ const prefillEmail = params.get('email') ?? '';
     </div>
   </section>
 </BaseLayout>
+
+<script>
+  // e-mail validado ao sair do campo + digitado duas vezes igual
+  import { enableEmailConfirm } from '../lib/form-helpers';
+  const email = document.getElementById('email') as HTMLInputElement | null;
+  if (email) {
+    enableEmailConfirm({
+      email,
+      confirm: document.getElementById('email-confirm') as HTMLInputElement,
+      emailNotice: document.getElementById('email-notice')!,
+      confirmNotice: document.getElementById('email-confirm-notice')!,
+      submit: document.getElementById('signup-btn') as HTMLButtonElement,
+    });
+  }
+</script>

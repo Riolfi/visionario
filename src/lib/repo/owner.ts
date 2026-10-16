@@ -33,7 +33,12 @@ export async function isProprietor(email: string | null | undefined): Promise<bo
  * Pede a troca: confere quem pede, valida o novo e-mail (precisa ser de alguém
  * com o cargo Administrador) e manda o código ao e-mail atual.
  */
-export async function requestOwnerTransfer(actor: { userId: string; email: string | null | undefined }, newEmailRaw: string): Promise<Result> {
+export async function requestOwnerTransfer(
+  actor: { userId: string; email: string | null | undefined },
+  newEmailRaw: string,
+  /** o cargo Administrador está sendo dado no mesmo salvar (o Proprietário escolheu no Cargo) */
+  opts: { becomingAdmin?: boolean } = {},
+): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
   const current = await getOwnerEmail();
@@ -51,7 +56,7 @@ export async function requestOwnerTransfer(actor: { userId: string; email: strin
     const { data } = await sb.auth.admin.getUserById(a.user_id);
     if (norm(data.user?.email) === newEmail) found = true;
   }
-  if (!found) return { ok: false, error: 'O novo Proprietário precisa ter uma conta com o cargo Administrador. Dê o cargo a ele em Usuários antes.' };
+  if (!found && !opts.becomingAdmin) return { ok: false, error: 'O novo Proprietário precisa ter o cargo Administrador. Escolha Administrador no campo Cargo.' };
 
   // código sempre ao e-mail ATUAL, nunca ao novo
   return issueCode({

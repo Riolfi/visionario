@@ -1,4 +1,5 @@
 ---
+import PasswordInput from '../components/PasswordInput.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { safeNextPath } from '../lib/auth';
 import { isAdmin } from '../lib/repo/admin';
@@ -59,7 +60,7 @@ const nextQs = `next=${encodeURIComponent(next)}`;
         </div>
         <div>
           <label class="label" for="password">Senha</label>
-          <input id="password" name="password" type="password" class="field" required autocomplete="current-password" />
+          <PasswordInput id="password" name="password" required autocomplete="current-password" />
           <a href="/esqueci-senha" class="mt-1.5 inline-block font-sans text-[13px] text-ink-muted underline">Esqueci minha senha</a>
         </div>
         <button type="submit" class="btn-primary w-full">Entrar</button>

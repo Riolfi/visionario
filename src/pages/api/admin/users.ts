@@ -4,6 +4,7 @@ import { createMember, removeMember, setMemberActive, updateMember } from '../..
 import { getOwnerEmail, isProprietor, requestOwnerTransfer } from '../../../lib/repo/owner';
 import { consumeCode } from '../../../lib/repo/email-codes';
 import { supabaseAdmin } from '../../../lib/supabase';
+import { roleRules } from '../../../lib/repo/roles';
 
 /**
  * POST /api/admin/users — equipe do painel (regra equipe.gerenciar, ver
@@ -44,7 +45,9 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
 
   // passar a posse: primeiro só o código (ao e-mail do Proprietário atual); salvar vem depois
   if (acao === 'pedir_codigo_proprietario' && id) {
-    const t = await requestOwnerTransfer(actor, await emailOf(id));
+    const roleId = String(form.get('role_id') || '');
+    const becomingAdmin = !!roleId && !!(await roleRules(roleId))?.isOwner;
+    const t = await requestOwnerTransfer(actor, await emailOf(id), { becomingAdmin });
     return json(t, t.ok ? 200 : 400);
   }
 
@@ -62,6 +65,8 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
     const target = await emailOf(id);
     if (target && target !== (await getOwnerEmail())) {
       if (!(await isProprietor(actor.email))) return json({ ok: false, error: 'Só o Proprietário pode passar a posse.' }, 403);
+      // o novo Proprietário precisa terminar este salvar como Administrador
+      if (!(await roleRules(input.roleId))?.isOwner) return json({ ok: false, error: 'Para passar a posse, o Cargo precisa ser Administrador.' }, 400);
       const code = await consumeCode(actor.userId, 'owner', String(form.get('codigo_proprietario') || ''));
       if (!code.ok) return json(code, 400);
       if (code.newEmail !== target) return json({ ok: false, error: 'O código não é desta pessoa. Peça outro.' }, 400);

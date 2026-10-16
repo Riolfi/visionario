@@ -1,4 +1,5 @@
 ---
+import PasswordInput from '../../components/PasswordInput.astro';
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { can, RULES } from '../../lib/rbac';
 import { supabaseAdmin } from '../../lib/supabase';
@@ -42,19 +43,27 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
     <div class="grid gap-4 sm:grid-cols-2">
       <label class="block"><span class="label">Nome</span><input class="field" name="full_name" value={profile?.full_name ?? ''} required minlength="2" autocomplete="name" /></label>
       <label class="block"><span class="label">Telefone <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="phone" value={profile?.phone ?? ''} inputmode="tel" autocomplete="tel" /></label>
-      <label class="block">
-        <span class="label">E-mail</span>
-        <input class="field" type="email" name="email" value={user.email ?? ''} required autocomplete="email" data-initial={user.email ?? ''} />
-      </label>
+      <div>
+        <label class="block">
+          <span class="label">E-mail</span>
+          <input id="email" class="field" type="email" name="email" value={user.email ?? ''} required autocomplete="email" data-initial={user.email ?? ''} />
+        </label>
+        <p id="email-notice" class="mt-1 hidden text-[12px] text-red-700">! E-mail inválido. Confira o endereço.</p>
+        {/* confirmar e-mail: aparece quando o e-mail muda */}
+        <div id="email-confirm-wrap" class="mt-3 hidden">
+          <label class="block"><span class="label">Confirmar e-mail</span><input id="email-confirm" class="field" type="email" autocomplete="off" /></label>
+          <p id="email-confirm-notice" class="mt-1 hidden text-[12px] text-red-700">! Os e-mails não conferem.</p>
+        </div>
+      </div>
       <label class="block">
         <span class="label">Cargo</span>
         <select class="field" disabled title="Ninguém altera o próprio cargo"><option>{access.roleName}</option></select>
       </label>
-      <label class="block"><span class="label">Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" type="password" name="nova" minlength="8" autocomplete="new-password" /></label>
-      <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" minlength="8" autocomplete="new-password" /></label>
+      <label class="block"><span class="label">Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><PasswordInput  name="nova" minlength="8" autocomplete="new-password" /></label>
+      <label class="block"><span class="label">Confirmar nova senha</span><PasswordInput  name="confirmar" minlength="8" autocomplete="new-password" /></label>
       <label id="current-pass" class="block hidden sm:col-span-2">
         <span class="label">Senha atual <span class="text-[11px] font-normal text-ink-muted/60">(para trocar e-mail ou senha)</span></span>
-        <input class="field" type="password" name="senha_atual" autocomplete="current-password" />
+        <PasswordInput  name="senha_atual" autocomplete="current-password" />
       </label>
     </div>
     <p class="text-[12px] text-ink-muted">Trocar o e-mail pede a senha atual e um código enviado ao e-mail de agora.</p>
@@ -124,12 +133,23 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
 <script>
   import { confirmDialog } from '../../lib/confirm-dialog';
   import { enableConfirmForms } from '../../lib/confirm-forms';
+  import { enableEmailConfirm } from '../../lib/form-helpers';
   enableConfirmForms();
 
   const form = document.getElementById('profile-form') as HTMLFormElement;
   const top = document.getElementById('top-notice')!;
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
   const emailInput = form.querySelector('input[name=email]') as HTMLInputElement;
+  // e-mail validado ao sair do campo + confirmação igual (Salvar desabilitado se errado)
+  const checkEmail = enableEmailConfirm({
+    email: emailInput,
+    confirm: document.getElementById('email-confirm') as HTMLInputElement,
+    emailNotice: document.getElementById('email-notice')!,
+    confirmNotice: document.getElementById('email-confirm-notice')!,
+    confirmWrap: document.getElementById('email-confirm-wrap'),
+    submit: saveBtn,
+    initial: emailInput.dataset.initial ?? '',
+  });
   const nova = form.querySelector('input[name=nova]') as HTMLInputElement;
   const currentPass = document.getElementById('current-pass')!;
   const currentInput = currentPass.querySelector('input')!;
@@ -169,6 +189,7 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
       showTop('Sem conexão com o servidor.');
     } finally {
       saveBtn.disabled = false;
+      checkEmail(); // volta a travar se o e-mail estiver errado
     }
   });
 

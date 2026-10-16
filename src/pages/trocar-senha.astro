@@ -1,4 +1,5 @@
 ---
+import PasswordInput from '../components/PasswordInput.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 
 export const prerender = false;
@@ -27,9 +28,9 @@ const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
       </p>
       {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       <form method="POST" action="/api/auth/trocar-senha" class="mt-6 space-y-4">
-        <label class="block"><span class="label">Senha recebida</span><input class="field" type="password" name="atual" required autocomplete="current-password" autofocus /></label>
-        <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" /></label>
-        <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+        <label class="block"><span class="label">Senha recebida</span><PasswordInput  name="atual" required autocomplete="current-password" autofocus /></label>
+        <label class="block"><span class="label">Nova senha</span><PasswordInput  name="nova" required minlength="8" autocomplete="new-password" /></label>
+        <label class="block"><span class="label">Confirmar nova senha</span><PasswordInput  name="confirmar" required minlength="8" autocomplete="new-password" /></label>
         <p class="text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
         <button class="btn-primary w-full">Salvar e continuar</button>
       </form>

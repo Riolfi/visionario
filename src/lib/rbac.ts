@@ -42,7 +42,7 @@ export const RULES = [
   { key: 'conteudo.ver', screen: 'conteudo', label: 'Ver conteúdo do site', help: 'Textos editáveis da loja.' },
   { key: 'conteudo.editar', screen: 'conteudo', label: 'Editar conteúdo do site', help: 'Textos da loja, logo, rodapé, Sobre e Contato.' },
   { key: 'equipe.ver', screen: 'usuarios', label: 'Ver a equipe', help: 'Quem tem acesso ao painel e com qual cargo.' },
-  { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Gerenciar a equipe', help: 'Criar, editar e excluir membros e definir o cargo (nunca o de Administrador nem um cargo com mais acesso que o seu).' },
+  { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Gerenciar a equipe', help: 'Abre as ações da equipe; criar, editar, excluir e ativar/desativar são só de Administradores (em outro Administrador, só o Proprietário).' },
   { key: 'cargos.editar', screen: 'cargos', label: 'Criar e editar cargos', help: 'Só com permissões que você mesmo tem; nunca o cargo Administrador nem o seu.' },
   { key: 'clientes.ver', screen: 'usuarios', label: 'Ver clientes', help: 'Dados cadastrais, endereços, compras e pedidos dos clientes.' },
   { key: 'clientes.estado', screen: 'usuarios', label: 'Ativar, desativar e bloquear clientes', help: 'Muda o estado da conta, com motivo registrado.' },

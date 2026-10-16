@@ -12,8 +12,8 @@ const access = Astro.locals.admin!;
 if (!can(access, 'equipe.ver')) return Astro.redirect('/admin/usuarios');
 const id = Astro.params.id ?? '';
 const isNew = id === 'novo';
-const canManage = can(access, 'equipe.gerenciar');
-if (isNew && !canManage) return Astro.redirect('/admin/usuarios?aba=equipe');
+// só Administradores criam/editam (o servidor confere de novo)
+if (isNew && !access.isOwner) return Astro.redirect('/admin/usuarios?aba=equipe');
 
 const [team, roles, ownerEmail, proprietor] = await Promise.all([
   isNew ? Promise.resolve([]) : listTeam(),
@@ -32,6 +32,8 @@ const isOwnerAccount = !!member && !!ownerEmail && member.email.toLowerCase() ==
 // só o Proprietário dá/tira o cargo Administrador (o servidor confere o resto)
 const assignable = roles.filter((r) => proprietor || !r.is_owner);
 const options = member?.is_owner && !proprietor ? roles.filter((r) => r.is_owner) : assignable;
+// outro Administrador: só o Proprietário edita; o Proprietário ninguém edita (ele usa Meu perfil)
+const canManage = access.isOwner && !isOwnerAccount && (!member?.is_owner || proprietor);
 const readOnly = !canManage || isMe;
 const deleteBlock = isMe
   ? 'Você não pode excluir a sua própria conta.'
@@ -58,7 +60,11 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     </p>
   )}
   {!canManage && (
-    <p class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">Somente leitura: seu cargo não permite alterar a equipe.</p>
+    <p class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">Somente leitura: {isOwnerAccount
+      ? 'ninguém altera o Proprietário (ele edita os próprios dados em Meu perfil).'
+      : member?.is_owner && access.isOwner
+        ? 'só o Proprietário altera outros Administradores.'
+        : 'só Administradores alteram usuários da equipe.'}</p>
   )}
 
   <form id="member-form" method="POST" action="/api/admin/users" class="mt-4 max-w-2xl space-y-5">

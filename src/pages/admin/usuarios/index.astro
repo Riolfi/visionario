@@ -12,7 +12,8 @@ export const prerender = false;
 
 const access = Astro.locals.admin!;
 const canTeam = can(access, 'equipe.ver');
-const canManageTeam = can(access, 'equipe.gerenciar');
+// só Administradores gerenciam a equipe (o servidor confere de novo)
+const canManageTeam = access.isOwner;
 const canCustomers = can(access, 'clientes.ver');
 const tabs = [canTeam && ['equipe', 'Equipe'], canCustomers && ['clientes', 'Clientes']].filter(Boolean) as [string, string][];
 const wanted = Astro.url.searchParams.get('aba');
@@ -28,7 +29,12 @@ const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') 
 const rows = aba === 'equipe' ? team.length : customers.length;
 // botão Ativo: só Administradores, nunca na própria conta nem no Proprietário (que não fica inativo)
 const ownerEmail = aba === 'equipe' ? await getOwnerEmail() : null;
-const canToggle = (m: (typeof team)[number]) => access.isOwner && m.id !== me && m.email.toLowerCase() !== ownerEmail;
+const viewerIsProprietor = !!ownerEmail && (Astro.locals.user?.email ?? '').toLowerCase() === ownerEmail;
+// pode mexer neste membro? Administradores mexem na equipe; em outro Administrador, só o Proprietário;
+// ninguém mexe na própria conta (Meu perfil) nem no Proprietário
+const canManageMember = (m: (typeof team)[number]) =>
+  access.isOwner && m.id !== me && m.email.toLowerCase() !== ownerEmail && (!m.is_owner || viewerIsProprietor);
+const canToggle = canManageMember;
 const noun = aba === 'equipe' ? ['membro', 'membros'] : ['cliente', 'clientes'];
 // filtros como em Compras: Cargo (só Equipe) e Status (as duas abas)
 const STATUS: [string, string][] = [['ativo', 'Ativo'], ['inativo', 'Inativo']];
@@ -132,7 +138,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                 {/* a própria conta edita em Meu perfil; sem permissão, botão desativado */}
                 {m.id === me ? (
                   <a href="/admin/perfil" class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
-                ) : canManageTeam ? (
+                ) : canManageMember(m) ? (
                   <a href={`/admin/usuarios/equipe/${m.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
                 ) : (
                   <span class="cursor-not-allowed rounded-card border border-ink/20 px-2 py-1 text-[12px] opacity-40 sm:px-3 sm:text-[13px]" aria-disabled="true" title="Seu cargo não permite editar a equipe">Editar</span>

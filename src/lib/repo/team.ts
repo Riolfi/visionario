@@ -7,8 +7,8 @@ import { getOwnerEmail, isProprietor } from './owner';
 import { sendTeamPasswordEmail } from '../email';
 
 /**
- * Equipe do painel (admin_users + cargo). Quem chega aqui tem a regra
- * equipe.gerenciar; as travas contra escalada de privilégio ficam aqui:
+ * Equipe do painel (admin_users + cargo). Só Administradores criam, editam,
+ * excluem e ativam/desativam membros; as travas contra escalada ficam aqui:
  * ninguém mexe no próprio acesso, só o Proprietário dá ou tira o cargo
  * Administrador (e mexe em quem o tem), e quem não é Administrador só atribui
  * cargos com regras que ele mesmo tem.
@@ -28,6 +28,8 @@ export interface TeamMember {
 
 type Result = { ok: true; message?: string; id?: string } | { ok: false; error: string };
 type Actor = AdminAccess & { email?: string | null };
+
+const ONLY_ADMINS = 'Só Administradores criam, editam, excluem ou ativam/desativam usuários da equipe.';
 
 export async function listTeam(): Promise<TeamMember[]> {
   const sb = supabaseAdmin();
@@ -101,6 +103,7 @@ export async function createMember(
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
+  if (!actor.isOwner) return { ok: false, error: ONLY_ADMINS };
   const email = input.email.trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'E-mail inválido.' };
   if (await isOwnerEmail(email)) return { ok: false, error: 'Esse é o e-mail do Proprietário.' };
@@ -150,6 +153,7 @@ export async function updateMember(
 ): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
+  if (!actor.isOwner) return { ok: false, error: ONLY_ADMINS };
   if (userId === actor.userId) return { ok: false, error: 'Para alterar os seus dados, use "Meu perfil". O seu cargo só outra pessoa altera.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
@@ -226,7 +230,10 @@ export async function setMemberActive(actor: Actor & { userId: string }, userId:
   if (userId === actor.userId) return { ok: false, error: 'Você não pode ativar ou desativar a sua própria conta.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
-  if (!actor.isOwner) return { ok: false, error: 'Só Administradores ativam ou desativam usuários.' };
+  if (!actor.isOwner) return { ok: false, error: ONLY_ADMINS };
+  // outro Administrador: só o Proprietário (e ninguém mexe no Proprietário)
+  const manage = await checkManageable(actor, row.role_id);
+  if (manage) return { ok: false, error: manage };
   if (!active) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
     if (await isOwnerEmail(u.user?.email ?? '')) return { ok: false, error: 'O Proprietário não pode ficar inativo.' };
@@ -244,6 +251,7 @@ export async function setMemberActive(actor: Actor & { userId: string }, userId:
 export async function removeMember(actor: Actor & { userId: string }, userId: string): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
+  if (!actor.isOwner) return { ok: false, error: ONLY_ADMINS };
   if (userId === actor.userId) return { ok: false, error: 'Você não pode excluir a sua própria conta.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };

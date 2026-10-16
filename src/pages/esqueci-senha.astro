@@ -1,0 +1,61 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+
+export const prerender = false;
+
+const etapa = Astro.url.searchParams.get('etapa');
+const email = Astro.url.searchParams.get('email') ?? '';
+const ERRO: Record<string, string> = {
+  email: 'Informe um e-mail válido.',
+  envio: 'Não foi possível enviar o código agora. Tente de novo em alguns minutos.',
+  curta: 'A nova senha precisa ter pelo menos 8 caracteres.',
+  diferente: 'A confirmação não bate com a nova senha.',
+  codigo: 'Código incorreto.',
+  'codigo-novo': 'O código expirou ou teve tentativas demais. Peça outro.',
+  falha: 'Não foi possível salvar. Tente de novo.',
+};
+const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
+---
+
+<BaseLayout title="Esqueci minha senha" description="Crie uma nova senha para a sua conta." noindex>
+  <section class="container-x flex justify-center py-16 md:py-24">
+    <div class="w-full max-w-sm">
+      <h1 class="font-display text-3xl">Esqueci minha senha</h1>
+      {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
+
+      {etapa === 'codigo' ? (
+        <>
+          <p class="mt-2 text-sm text-ink-soft">
+            Se existir uma conta com <strong>{email}</strong>, enviamos um código de 6 dígitos para esse e-mail. Ele vale por 15 minutos.
+          </p>
+          <form method="POST" action="/api/auth/esqueci-senha" class="mt-6 space-y-4">
+            <input type="hidden" name="acao" value="trocar" />
+            <input type="hidden" name="email" value={email} />
+            <label class="block">
+              <span class="label">Código</span>
+              <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus />
+            </label>
+            <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" /></label>
+            <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+            <button class="btn-primary w-full">Salvar nova senha</button>
+          </form>
+          <form method="POST" action="/api/auth/esqueci-senha" class="mt-3 text-center">
+            <input type="hidden" name="acao" value="pedir" />
+            <input type="hidden" name="email" value={email} />
+            <button class="text-sm text-ink-muted underline">Não recebeu? Enviar outro código</button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p class="mt-2 text-sm text-ink-soft">Informe o e-mail da sua conta. Vamos mandar um código para você criar uma senha nova.</p>
+          <form method="POST" action="/api/auth/esqueci-senha" class="mt-6 space-y-4">
+            <input type="hidden" name="acao" value="pedir" />
+            <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={email} required autocomplete="email" autofocus /></label>
+            <button class="btn-primary w-full">Enviar código</button>
+          </form>
+        </>
+      )}
+      <a href="/entrar" class="mt-6 block text-center text-sm text-ink-muted underline">Voltar para o login</a>
+    </div>
+  </section>
+</BaseLayout>

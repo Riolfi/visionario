@@ -4,11 +4,11 @@ import { supabaseAdmin } from '../supabase';
 
 /**
  * Códigos de 6 dígitos por e-mail (15 min, 5 tentativas), para confirmar
- * ações sensíveis: troca do Proprietário e do próprio e-mail. Guarda só o
+ * ações sensíveis: troca do Proprietário, do próprio e-mail e senha esquecida. Guarda só o
  * hash (tabela owner_transfer_tokens, migrations 0019 e 0021). Um código
  * novo do mesmo tipo invalida o anterior.
  */
-export type CodePurpose = 'owner' | 'email';
+export type CodePurpose = 'owner' | 'email' | 'reset';
 
 const TTL_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;

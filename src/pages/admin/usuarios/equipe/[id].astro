@@ -96,7 +96,7 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
         <label class="block">
           <span class="label">Nome</span>
           {/* uma palavra só (o resto vai em Sobrenome) */}
-          <input class="field" name="nome" value={firstName} required pattern="\S+" title="Uma palavra só; o resto vai em Sobrenome" autocomplete="off" />
+          <input class="field" name="nome" value={firstName} required pattern="[^ ]+" title="Uma palavra só; o resto vai em Sobrenome" autocomplete="off" />
         </label>
         <label class="block"><span class="label">Sobrenome <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="sobrenome" value={lastName} autocomplete="off" /></label>
         {basic ? (
@@ -128,7 +128,7 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
             <p class="mt-1 text-[12px] text-ink-muted">
               {isNew
                 ? 'Defina uma senha temporária (o usuário irá redefini-la em seu primeiro login).'
-                : 'Redefina temporariamente a senha deste usuário. A senha atual de ninguém aparece aqui.'}
+                : <>Por segurança, as senhas não são exibidas.<br />Ao definir uma nova senha para este usuário, ela será temporária e ele deverá criar uma nova senha no próximo acesso.</>}
             </p>
             {/* trocar a senha de alguém: aviso por e-mail só se marcar */}
             {!isNew && (
@@ -163,9 +163,9 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
             <span class="block text-sm font-medium">Proprietário</span>
             <span class="block text-[12px] text-ink-muted">
               {isOwnerAccount
-                ? 'Esta pessoa é o Proprietário (responsável legal da conta). Para trocar, ligue em outro Administrador.'
+                ? 'Esta pessoa é o Proprietário (responsável legal da conta).'
                 : canTransfer
-                  ? 'Ligar passa a posse da conta para esta pessoa. Enviamos um código ao seu e-mail para confirmar.'
+                  ? 'Responsável legal da conta.'
                   : 'Só o Proprietário atual pode passar a posse da conta.'}
             </span>
           </span>
@@ -175,6 +175,10 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
       </div>
     )}
 
+    {/* fixo enquanto o toggle Proprietário estiver ligado (some ao desligar) */}
+    <p id="owner-notice" role="alert" class="notice-in hidden rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 font-sans text-[13px] text-amber-800">
+      ! Ao salvar você deixará de ser o proprietário do sistema; para desfazer essa ação será preciso solicitar para <strong>{member?.name || member?.email}</strong>.
+    </p>
     <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! {deleteBlock}</p>
     {!readOnly ? (
       <div class="grid grid-cols-3 gap-3 pt-2">
@@ -242,32 +246,45 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     if (ownerToggle && !isAdmin && !ownerToggle.disabled) ownerToggle.checked = false;
   });
 
+  // ---- ligar "Proprietário": confirma, mas só envia ao salvar ----
+  const ownerNotice = document.getElementById('owner-notice')!;
+  const transferring = () => !!ownerToggle && !ownerToggle.disabled && ownerToggle.checked && !ownerToggle.defaultChecked;
+  const syncOwnerNotice = () => ownerNotice.classList.toggle('hidden', !transferring());
+  ownerToggle?.addEventListener('change', async () => {
+    if (ownerToggle.checked) {
+      const go = await confirmDialog({
+        title: 'Atenção: Você deixará de ser o proprietário do sistema.',
+        message: 'Ao salvar, um código de segurança será enviado ao seu e-mail. Após a confirmação, você não poderá desfazer esta alteração. Deseja continuar?',
+        confirmLabel: 'Continuar',
+        cancelLabel: 'Cancelar',
+        tone: 'primary',
+      });
+      if (!go) ownerToggle.checked = false;
+    }
+    syncOwnerNotice();
+  });
+  roleSelect.addEventListener('change', syncOwnerNotice);
+
   // ---- código da troca do Proprietário ----
   const dialog = document.getElementById('token-dialog') as HTMLDialogElement;
   const codeInput = document.getElementById('token-code') as HTMLInputElement;
   const tokenError = document.getElementById('token-error')!;
-  let savedId = '';
-  function openToken(id: string) {
-    savedId = id;
+  // nada foi salvo ainda: o código confirma e aí o salvar vai junto
+  function openToken() {
     codeInput.value = '';
     tokenError.classList.add('hidden');
     dialog.showModal();
     codeInput.focus();
   }
-  document.getElementById('token-cancel')!.addEventListener('click', () => {
-    dialog.close();
-    // o usuário já foi salvo; o Proprietário continua o mesmo
-    window.location.href = `/admin/usuarios/equipe/${savedId}`;
-  });
+  document.getElementById('token-cancel')!.addEventListener('click', () => dialog.close()); // nada foi salvo
   document.getElementById('token-form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const body = new FormData();
-    body.set('acao', 'confirmar_proprietario');
-    body.set('code', codeInput.value);
+    const body = new FormData(form);
+    body.set('codigo_proprietario', codeInput.value);
     try {
       const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
       const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (r.ok) return void (window.location.href = `/admin/usuarios/equipe/${savedId}`);
+      if (r.ok) return void window.location.reload();
       tokenError.textContent = r.error || 'Código incorreto.';
     } catch {
       tokenError.textContent = 'Sem conexão com o servidor.';
@@ -290,15 +307,21 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     saveBtn.disabled = true;
     top.classList.add('hidden');
     try {
+      // passando a posse: primeiro o código (ao seu e-mail); o salvar vai depois, junto com ele
+      if (transferring()) {
+        const body = new FormData();
+        body.set('acao', 'pedir_codigo_proprietario');
+        body.set('id', (form.querySelector('input[name=id]') as HTMLInputElement).value);
+        const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
+        const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+        if (r.ok) return openToken();
+        return showTop(r.error || 'Não foi possível enviar o código.');
+      }
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { accept: 'application/json' } });
-      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string; needsToken?: boolean };
-      if (r.ok && r.needsToken && r.id) return openToken(r.id);
+      const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
       if (r.ok && r.id) return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
-      // o Proprietário não mudou: o toggle volta para como estava
-      if (ownerToggle) ownerToggle.checked = ownerToggle.defaultChecked;
       showTop(r.error || 'Não foi possível salvar.');
     } catch {
-      if (ownerToggle) ownerToggle.checked = ownerToggle.defaultChecked;
       showTop('Sem conexão com o servidor.');
     } finally {
       saveBtn.disabled = false;

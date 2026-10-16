@@ -1,5 +1,5 @@
 import { env, hasSupabase } from '../env';
-import { consumeCode, issueCode } from './email-codes';
+import { issueCode } from './email-codes';
 import { supabaseAdmin } from '../supabase';
 
 /**
@@ -62,16 +62,4 @@ export async function requestOwnerTransfer(actor: { userId: string; email: strin
     subject: 'Código para trocar o Proprietário',
     intro: `Foi pedida a troca do Proprietário da conta ${env.brandName} para ${newEmail}.`,
   });
-}
-
-/** Confere o código e só então grava o novo Proprietário. */
-export async function confirmOwnerTransfer(actor: { userId: string; email: string | null | undefined }, codeRaw: string): Promise<Result & { newEmail?: string }> {
-  const sb = supabaseAdmin();
-  if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
-  if (!(await isProprietor(actor.email))) return { ok: false, error: 'Só o Proprietário pode alterar este campo.' };
-  const r = await consumeCode(actor.userId, 'owner', codeRaw);
-  if (!r.ok) return r;
-  const { error } = await sb.from('admin_roles').update({ owner_email: r.newEmail }).eq('is_owner', true);
-  if (error) return { ok: false, error: error.message };
-  return { ok: true, newEmail: r.newEmail };
 }

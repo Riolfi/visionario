@@ -1,7 +1,9 @@
 import type { APIRoute } from 'astro';
 import { setFlash } from '../../../lib/flash';
 import { createMember, removeMember, setMemberActive, updateMember } from '../../../lib/repo/team';
-import { confirmOwnerTransfer, getOwnerEmail, requestOwnerTransfer } from '../../../lib/repo/owner';
+import { getOwnerEmail, isProprietor, requestOwnerTransfer } from '../../../lib/repo/owner';
+import { consumeCode } from '../../../lib/repo/email-codes';
+import { supabaseAdmin } from '../../../lib/supabase';
 
 /**
  * POST /api/admin/users — equipe do painel (regra equipe.gerenciar, ver
@@ -10,9 +12,10 @@ import { confirmOwnerTransfer, getOwnerEmail, requestOwnerTransfer } from '../..
  *   acao=editar   id, name, email, password (opcional), role_id, is_active
  *   acao=excluir  id
  *   acao=ativo    id, ativo=1|0 (botão da lista)
- *   proprietario=on (criar/editar um Administrador): passa o Proprietário para
- *     essa pessoa — manda um código ao Proprietário atual e responde { needsToken }
- *   acao=confirmar_proprietario  code → efetiva a troca
+ *   acao=pedir_codigo_proprietario  id → código ao e-mail do Proprietário atual
+ *     (passar a posse para esse Administrador; nada é salvo ainda)
+ *   acao=editar + proprietario=on + codigo_proprietario → confere o código e só
+ *     então salva o usuário e passa a posse
  * A tela de criar/editar pede JSON (fetch) para não perder o que foi digitado
  * num erro; sem isso, redireciona com aviso.
  */
@@ -34,10 +37,15 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
     notify: form.get('avisar_senha') === 'on',
   };
 
-  if (acao === 'confirmar_proprietario') {
-    const r = await confirmOwnerTransfer(actor, String(form.get('code') || ''));
-    if (r.ok) setFlash(cookies, 'ok', `Proprietário transferido para ${r.newEmail}.`);
-    return new Response(JSON.stringify(r), { status: r.ok ? 200 : 400, headers: { 'content-type': 'application/json; charset=utf-8' } });
+  const json = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json; charset=utf-8' } });
+  const emailOf = async (userId: string) =>
+    ((await supabaseAdmin()?.auth.admin.getUserById(userId))?.data.user?.email ?? '').toLowerCase();
+
+  // passar a posse: primeiro só o código (ao e-mail do Proprietário atual); salvar vem depois
+  if (acao === 'pedir_codigo_proprietario' && id) {
+    const t = await requestOwnerTransfer(actor, await emailOf(id));
+    return json(t, t.ok ? 200 : 400);
   }
 
   if ((acao === 'criar' || acao === 'editar') && form.has('nome') && (!nome || /\s/.test(nome))) {
@@ -45,6 +53,22 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
     return wantsJson
       ? new Response(JSON.stringify({ ok: false, error }), { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' } })
       : (setFlash(cookies, 'erro', error), redirect(id ? `/admin/usuarios/equipe/${id}` : '/admin/usuarios/equipe/novo'));
+  }
+
+  // editar passando a posse: o código vem antes de gravar qualquer coisa
+  const transfer = acao === 'editar' && !!id && form.get('proprietario') === 'on';
+  let transferTo = '';
+  if (transfer) {
+    const target = await emailOf(id);
+    if (target && target !== (await getOwnerEmail())) {
+      if (!(await isProprietor(actor.email))) return json({ ok: false, error: 'Só o Proprietário pode passar a posse.' }, 403);
+      const code = await consumeCode(actor.userId, 'owner', String(form.get('codigo_proprietario') || ''));
+      if (!code.ok) return json(code, 400);
+      if (code.newEmail !== target) return json({ ok: false, error: 'O código não é desta pessoa. Peça outro.' }, 400);
+      // não troca o e-mail no mesmo salvar em que passa a posse
+      input.email = target;
+      transferTo = target;
+    }
   }
 
   const result =
@@ -58,21 +82,14 @@ export const POST: APIRoute = async ({ request, locals, cookies, redirect }) => 
             ? await setMemberActive(actor, id, form.get('ativo') === '1')
             : ({ ok: false, error: 'Ação inválida.' } as const);
 
-  // Proprietário ligado nesta pessoa (e ela ainda não é): código ao Proprietário atual
-  let needsToken = false;
-  if (result.ok && (acao === 'criar' || acao === 'editar') && form.get('proprietario') === 'on') {
-    const target = input.email.trim().toLowerCase();
-    if (target && target !== (await getOwnerEmail())) {
-      const t = await requestOwnerTransfer(actor, target);
-      if (!t.ok) {
-        const error = `Usuário salvo, mas o Proprietário não mudou: ${t.error}`;
-        if (wantsJson) return new Response(JSON.stringify({ ok: false, error, id: result.id }), { status: 400, headers: { 'content-type': 'application/json; charset=utf-8' } });
-        setFlash(cookies, 'erro', error);
-        return redirect(`/admin/usuarios/equipe/${result.id ?? id}`);
-      }
-      needsToken = true;
-    }
+  // usuário salvo com o código certo: agora sim passa a posse
+  if (result.ok && transferTo) {
+    const { error } = (await supabaseAdmin()?.from('admin_roles').update({ owner_email: transferTo }).eq('is_owner', true)) ?? { error: null };
+    if (error) return json({ ok: false, error: `Usuário salvo, mas o Proprietário não mudou: ${error.message}` }, 500);
+    setFlash(cookies, 'ok', `Usuário salvo. ${transferTo} agora é o Proprietário.`);
+    return json({ ...result, ok: true });
   }
+  const needsToken = false;
 
   if (result.ok && !needsToken) setFlash(cookies, 'ok', result.message ?? 'Pronto.');
   if (wantsJson) {

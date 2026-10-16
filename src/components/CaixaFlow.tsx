@@ -446,6 +446,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         body: JSON.stringify({
           method: split ? 'misto' : method,
           payments,
+          received_cents: receivedCents,
           items: lines.map((l) => ({ product_id: l.product_id, quantity: l.quantity })),
         }),
       });

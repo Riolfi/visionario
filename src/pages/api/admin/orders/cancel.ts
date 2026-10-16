@@ -1,11 +1,11 @@
 import type { APIRoute } from 'astro';
-import { cancelCaixaSale, changeOrderStatus, getOrderByNumber } from '../../../../lib/repo/orders';
+import { cancelCaixaSale, changeOrderStatus, getOrderByNumber, recordCancellation } from '../../../../lib/repo/orders';
 import { sendOrderStatusEmail } from '../../../../lib/email';
 import { setFlash } from '../../../../lib/flash';
 import { can } from '../../../../lib/rbac';
 
 /**
- * POST /api/admin/orders/cancel — order_number
+ * POST /api/admin/orders/cancel — order_number, motivo (obrigatório; "Outro" pede detalhe)
  * Cancela a compra e devolve os itens ao estoque (regra pedidos.cancelar).
  * Compra online: avisa o cliente por e-mail. Estorno do pagamento é manual.
  */
@@ -24,6 +24,13 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     setFlash(cookies, 'erro', 'Esta compra já está cancelada.');
     return redirect(back);
   }
+  const motivo = String(form.get('motivo') || '').trim();
+  const detalhe = String(form.get('detalhe') || '').trim();
+  const reason = motivo === 'Outro' ? detalhe : detalhe ? `${motivo} — ${detalhe}` : motivo;
+  if (reason.length < 3) {
+    setFlash(cookies, 'erro', 'Informe o motivo do cancelamento.');
+    return redirect(back);
+  }
 
   try {
     if (order.source === 'caixa') {
@@ -37,6 +44,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     setFlash(cookies, 'erro', e instanceof Error ? e.message : 'Não foi possível cancelar a compra.');
     return redirect(back);
   }
+  await recordCancellation(number, locals.user?.id ?? null, reason);
   setFlash(cookies, 'ok', 'Compra cancelada. Os itens voltaram ao estoque.');
   return redirect(back);
 };

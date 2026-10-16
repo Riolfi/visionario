@@ -20,6 +20,29 @@ import { takeFlash } from '../../../lib/flash';
 const canStatus = can(Astro.locals.admin, 'pedidos.status');
 const canCancel = can(Astro.locals.admin, 'pedidos.cancelar') && order.status !== 'cancelled';
 const flash = takeFlash(Astro.cookies);
+import { getPersonSummary } from '../../../lib/repo/team';
+const isCaixa = order.source === 'caixa';
+// quem vendeu (Caixa) e quem cancelou — nome e cargo (0023)
+const [operator, canceller] = await Promise.all([getPersonSummary(order.operator_id), getPersonSummary(order.cancelled_by)]);
+const created = new Date(order.created_at);
+const fmtDate = (d: Date) => d.toLocaleDateString('pt-BR');
+const fmtTime = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+// venda sem cadastro no Caixa: "Não identificado" no lugar de "Consumidor"/vazio
+const anonymous = !order.user_id && (!order.customer_name || order.customer_name === 'Consumidor');
+const customerName = anonymous ? 'Não identificado' : order.customer_name || order.customer_email || 'Não identificado';
+// dinheiro: recebido e troco (pagamento simples guarda o recebido; combinado, a parte em dinheiro)
+const cashPart = order.payments?.find((p) => p.method === 'cash');
+const received = order.payment_method === 'cash' ? order.received_cents ?? null : null;
+const change = received != null ? Math.max(0, received - order.total_cents) : cashPart ? Math.max(0, (order.payments ?? []).reduce((t, p) => t + p.amount_cents, 0) - order.total_cents) : null;
+const CANCEL_REASONS = [
+  'Cliente desistiu da compra',
+  'Erro ao registrar a venda',
+  'Venda duplicada',
+  'Produto com defeito',
+  'Troca por outro produto',
+  'Pagamento não aprovado ou estornado',
+  'Outro',
+];
 ---
 
 <AdminLayout title={`Pedido ${orderLabel(order.order_number)}`}>
@@ -56,23 +79,34 @@ const flash = takeFlash(Astro.cookies);
         <tbody>
           {order.items.map((i) => (
             <tr class="border-t border-ink/10">
-              <td class="py-2">{i.product_name}</td>
-              <td class="py-2 text-ink-muted">× {i.quantity}</td>
-              <td class="py-2 text-right">{brl(i.unit_price_cents * i.quantity)}</td>
+              <td class="py-2">
+                {i.product_name}
+                <span class="block text-[12px] text-ink-muted">{i.quantity}x {brl(i.unit_price_cents)}</span>
+              </td>
+              <td class="whitespace-nowrap py-2 text-right">
+                <span class="text-[12px] text-ink-muted">Total: </span>{brl(i.unit_price_cents * i.quantity)}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       <dl class="mt-4 space-y-1 border-t border-ink/10 pt-3 text-sm">
         <div class="flex justify-between text-ink-soft"><dt>Subtotal</dt><dd>{brl(order.subtotal_cents)}</dd></div>
-        <div class="flex justify-between text-ink-soft"><dt>Frete</dt><dd>{brl(order.shipping_cents)}</dd></div>
+        {!isCaixa && <div class="flex justify-between text-ink-soft"><dt>Frete</dt><dd>{brl(order.shipping_cents)}</dd></div>}
         <div class="flex justify-between font-display text-lg"><dt>Total</dt><dd>{brl(order.total_cents)}</dd></div>
         {order.payment_method && (
           <div class="flex justify-between text-ink-soft"><dt>Pagamento</dt><dd>{PAYMENT_METHOD_LABELS[order.payment_method]}</dd></div>
         )}
+        {/* combinado: quanto entrou em cada forma (no dinheiro, o recebido) */}
         {order.payments?.map((p) => (
-          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>{PAYMENT_METHOD_LABELS[p.method]}</dt><dd>{brl(p.amount_cents)}</dd></div>
+          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>{PAYMENT_METHOD_LABELS[p.method]}{p.method === 'cash' && ' (recebido)'}</dt><dd>{brl(p.amount_cents)}</dd></div>
         ))}
+        {received != null && (
+          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>Valor recebido pelo caixa</dt><dd>{brl(received)}</dd></div>
+        )}
+        {change != null && (
+          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>Troco devolvido ao cliente</dt><dd>{brl(change)}</dd></div>
+        )}
       </dl>
       {order.mp_payment_id && (
         <p class="mt-3 font-sans text-[12px] text-ink-muted">Pagamento MP: {order.mp_payment_id} · método: {order.payment_method}</p>
@@ -83,7 +117,13 @@ const flash = takeFlash(Astro.cookies);
       {order.source === 'caixa' ? (
         <div class="rounded-card border border-ink/10 bg-white p-5">
           <h2 class="font-display text-lg">Venda presencial</h2>
-          <p class="mt-2 text-sm text-ink-soft">
+          <dl class="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Operador</dt><dd class="font-medium">{operator?.name ?? '—'}</dd></div>
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Cargo</dt><dd>{operator?.role ?? '—'}</dd></div>
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Data</dt><dd>{fmtDate(created)}</dd></div>
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Horário</dt><dd>{fmtTime(created)}</dd></div>
+          </dl>
+          <p class="mt-3 text-sm text-ink-soft">
             {order.status === 'cancelled'
               ? 'Venda do caixa cancelada; os itens voltaram ao estoque.'
               : 'Venda concluída e paga no caixa. Não há separação, envio ou código de rastreio para este pedido.'}
@@ -125,34 +165,74 @@ const flash = takeFlash(Astro.cookies);
       )}
 
       {canCancel && (
-        <form
-          method="POST"
-          action="/api/admin/orders/cancel"
-          class="rounded-card border border-red-200 bg-white p-5"
-          data-confirm={`Cancelar a compra ${orderLabel(order.order_number)}?|Os itens voltam ao estoque.${['paid', 'shipped', 'delivered'].includes(order.status) ? ' O pagamento não é devolvido sozinho: estorne pelo Mercado Pago ou devolva ao cliente.' : ''}|Cancelar compra`}
-        >
-          <input type="hidden" name="order_number" value={order.order_number} />
+        <div class="rounded-card border border-red-200 bg-white p-5">
           <h2 class="font-display text-lg">Cancelar compra</h2>
-          <p class="mt-1 text-sm text-ink-soft">Cancela a compra e devolve os itens ao estoque.</p>
-          <button class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Cancelar compra</button>
-        </form>
+          <p class="mt-1 text-sm text-ink-soft">Cancela a compra e devolve os itens ao estoque. O valor sai dos totais recebidos.</p>
+          <button type="button" id="cancel-open" class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Cancelar compra</button>
+        </div>
+      )}
+
+      {/* auditoria do cancelamento */}
+      {order.status === 'cancelled' && (order.cancel_reason || order.cancelled_at) && (
+        <div class="rounded-card border border-red-200 bg-white p-5 text-sm">
+          <h2 class="font-display text-lg">Cancelamento</h2>
+          <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+            <dt class="text-ink-muted">Por</dt><dd>{canceller ? `${canceller.name} (${canceller.email})` : '—'}</dd>
+            <dt class="text-ink-muted">Quando</dt><dd>{order.cancelled_at ? new Date(order.cancelled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }) : '—'}</dd>
+            <dt class="text-ink-muted">Motivo</dt><dd>{order.cancel_reason || '—'}</dd>
+          </dl>
+        </div>
       )}
 
       <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
         <h2 class="font-display text-lg">Cliente</h2>
-        <p class="mt-2 text-ink-soft">{order.customer_name}</p>
-        <p class="text-ink-soft">{order.customer_email}</p>
-        <p class="text-ink-soft">{formatPhone(order.customer_phone)}</p>
-        <p class="text-ink-soft">CPF {formatCpf(order.customer_cpf)}</p>
+        {/* cliente com conta: nome vira link para a ficha dele */}
+        <p class="mt-2 text-ink-soft">
+          {order.user_id ? <a href={`/admin/usuarios/clientes/${order.user_id}`} class="text-agua-dark underline">{customerName}</a> : customerName}
+        </p>
+        {order.customer_email && <p class="text-ink-soft">{order.customer_email}</p>}
+        {order.customer_phone && <p class="text-ink-soft">{formatPhone(order.customer_phone)}</p>}
+        {order.customer_cpf && <p class="text-ink-soft">CPF {formatCpf(order.customer_cpf)}</p>}
       </div>
       <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
         <h2 class="font-display text-lg">Entrega</h2>
-        <p class="mt-2 text-ink-soft">
-          {a.street}, {a.number}{a.complement ? ` — ${a.complement}` : ''}<br />
-          {a.district} — {a.city}/{a.state}<br />
-          CEP {a.cep}
-        </p>
+        {isCaixa || !a?.street ? (
+          <p class="mt-2 text-ink-soft">Retirada presencial / Balcão</p>
+        ) : (
+          <p class="mt-2 text-ink-soft">
+            {a.street}, {a.number}{a.complement ? ` — ${a.complement}` : ''}<br />
+            {a.district} — {a.city}/{a.state}<br />
+            CEP {a.cep}
+          </p>
+        )}
       </div>
+      {canCancel && (
+        <dialog id="cancel-dialog" class="m-auto w-[min(92vw,28rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
+          <form method="POST" action="/api/admin/orders/cancel" class="space-y-4 p-6">
+            <input type="hidden" name="order_number" value={order.order_number} />
+            <h2 class="font-display text-xl">Cancelar a compra {orderLabel(order.order_number)}?</h2>
+            <p class="text-sm text-ink-soft">
+              Os itens voltam ao estoque e o valor sai dos totais recebidos.
+              {['paid', 'shipped', 'delivered'].includes(order.status) && ' O dinheiro não é devolvido sozinho: estorne pelo Mercado Pago ou devolva ao cliente.'}
+            </p>
+            <label class="block">
+              <span class="label">Motivo <span class="text-red-600">*</span></span>
+              <select id="cancel-motivo" name="motivo" class="field" required>
+                <option value="" disabled selected>Selecione o motivo</option>
+                {CANCEL_REASONS.map((r) => <option value={r}>{r}</option>)}
+              </select>
+            </label>
+            <label class="block">
+              <span class="label">Detalhes <span class="text-[11px] font-normal text-ink-muted/60">(obrigatório em "Outro")</span></span>
+              <textarea id="cancel-detalhe" name="detalhe" rows="3" maxlength="400" class="field"></textarea>
+            </label>
+            <div class="flex justify-end gap-2">
+              <button type="button" id="cancel-close" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Voltar</button>
+              <button class="rounded-card bg-red-700 px-4 py-2 font-sans text-sm text-white hover:bg-red-800">Cancelar compra</button>
+            </div>
+          </form>
+        </dialog>
+      )}
       <p class="font-sans text-[12px] text-ink-muted">
         Criado em {new Date(order.created_at).toLocaleString('pt-BR')}
       </p>
@@ -163,4 +243,14 @@ const flash = takeFlash(Astro.cookies);
 <script>
   import { enableConfirmForms } from '../../../lib/confirm-forms';
   enableConfirmForms();
+
+  // cancelar: motivo obrigatório ("Outro" exige o texto)
+  const dlg = document.getElementById('cancel-dialog') as HTMLDialogElement | null;
+  const motivo = document.getElementById('cancel-motivo') as HTMLSelectElement | null;
+  const detalhe = document.getElementById('cancel-detalhe') as HTMLTextAreaElement | null;
+  document.getElementById('cancel-open')?.addEventListener('click', () => dlg?.showModal());
+  document.getElementById('cancel-close')?.addEventListener('click', () => dlg?.close());
+  motivo?.addEventListener('change', () => {
+    if (detalhe) detalhe.required = motivo.value === 'Outro';
+  });
 </script>

@@ -114,6 +114,13 @@ export interface Order {
   payment_method: PaymentMethod | null;
   /** formas de um pagamento combinado (payment_method = 'misto') */
   payments?: PaymentPart[] | null;
+  /** Caixa (0023): quem vendeu e quanto recebeu em dinheiro (só pagamento simples em dinheiro) */
+  operator_id?: string | null;
+  received_cents?: number | null;
+  /** auditoria do cancelamento (0023) */
+  cancel_reason?: string | null;
+  cancelled_by?: string | null;
+  cancelled_at?: string | null;
   mp_payment_id: string | null;
   tracking_code: string | null;
   /** origem do pedido: 'web' (loja online) ou 'caixa' (venda de balcão). */

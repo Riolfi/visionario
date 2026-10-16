@@ -331,3 +331,17 @@ export async function removeMember(actor: Actor & { userId: string }, userId: st
   if (e2) return { ok: true, message: 'Removido da equipe, mas a conta não pôde ser apagada.' };
   return { ok: true, message: 'Membro excluído.' };
 }
+
+/** Nome, e-mail e cargo de uma pessoa (operador do Caixa, quem cancelou). */
+export async function getPersonSummary(userId: string | null | undefined): Promise<{ name: string; email: string; role: string } | null> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb || !userId) return null;
+  const [{ data: u }, { data: p }, { data: a }] = await Promise.all([
+    sb.auth.admin.getUserById(userId),
+    sb.from('profiles').select('full_name').eq('id', userId).maybeSingle(),
+    sb.from('admin_users').select('role_id, admin_roles(name)').eq('user_id', userId).maybeSingle(),
+  ]);
+  if (!u.user) return null;
+  const role = (a?.admin_roles as unknown as { name: string } | null)?.name ?? (a ? 'Sem cargo' : 'Fora da equipe');
+  return { name: p?.full_name || u.user.email || '—', email: u.user.email ?? '', role };
+}

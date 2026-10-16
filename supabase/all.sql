@@ -1292,3 +1292,17 @@ create index if not exists owner_transfer_tokens_user_purpose on public.owner_tr
 -- Reexecutável. Rode no SQL Editor depois da 0021.
 -- =============================================================================
 alter table public.admin_users add column if not exists last_seen_at timestamptz;
+
+-- =============================================================================
+-- 0023_order_audit.sql
+-- =============================================================================
+-- =============================================================================
+-- Pedido: quem vendeu no Caixa, quanto recebeu em dinheiro, e auditoria do
+-- cancelamento (motivo, quem cancelou, quando).
+-- Reexecutável. Rode no SQL Editor depois da 0022.
+-- =============================================================================
+alter table public.orders add column if not exists operator_id    uuid references auth.users(id) on delete set null;
+alter table public.orders add column if not exists received_cents int;
+alter table public.orders add column if not exists cancel_reason  text;
+alter table public.orders add column if not exists cancelled_by   uuid references auth.users(id) on delete set null;
+alter table public.orders add column if not exists cancelled_at   timestamptz;

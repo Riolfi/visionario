@@ -92,7 +92,9 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
       return true;
     });
   }, [orders, query, applied]);
-  const total = visible.reduce((s, o) => s + o.total_cents, 0);
+  // total recebido: só pago/enviado/entregue (cancelada, pendente e não paga ficam fora)
+  const RECEIVED = ['paid', 'shipped', 'delivered'];
+  const total = visible.filter((o) => RECEIVED.includes(o.status)).reduce((s, o) => s + o.total_cents, 0);
 
   function openFilter() {
     setDraft(applied);
@@ -243,7 +245,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
           <div role="row" class={`${COLS} sticky bottom-0 z-10 border-t border-ink/10 bg-bone font-sans`}>
             <span role="cell" class="whitespace-nowrap px-3 py-3">Compras: <strong>{visible.length}</strong></span>
             <span role="cell" /><span role="cell" /><span role="cell" />
-            <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold">{brl(total)}</span>
+            <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold" title="Soma das compras pagas, enviadas ou entregues (canceladas e pendentes ficam fora)">{brl(total)}</span>
             <span role="cell" />
           </div>
         </div>

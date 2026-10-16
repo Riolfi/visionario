@@ -35,6 +35,11 @@ function rowToOrder(row: any, items: any[]): Order {
     total_cents: row.total_cents,
     payment_method: row.payment_method,
     payments: row.payments ?? null,
+    operator_id: row.operator_id ?? null,
+    received_cents: row.received_cents ?? null,
+    cancel_reason: row.cancel_reason ?? null,
+    cancelled_by: row.cancelled_by ?? null,
+    cancelled_at: row.cancelled_at ?? null,
     mp_payment_id: row.mp_payment_id,
     tracking_code: row.tracking_code ?? null,
     source: row.source === 'caixa' ? 'caixa' : 'web',
@@ -164,6 +169,9 @@ export interface CaixaSaleInput {
   method: PaymentMethod;
   /** pagamento combinado (method = 'misto') */
   payments?: PaymentPart[];
+  /** quem está no caixa e quanto recebeu em dinheiro (pagamento simples) */
+  operatorId?: string;
+  receivedCents?: number | null;
 }
 
 /**
@@ -191,6 +199,12 @@ export async function createCaixaSale(input: CaixaSaleInput): Promise<Order> {
   if (input.payments?.length) {
     await sb.from('orders').update({ payments: input.payments }).eq('order_number', orderNumber);
   }
+  // operador e valor recebido (0023): sem a migration, só não grava
+  await sb
+    .from('orders')
+    .update({ operator_id: input.operatorId ?? null, received_cents: input.receivedCents ?? null })
+    .eq('order_number', orderNumber)
+    .then(() => {}, () => {});
 
   const order = await getOrderByNumber(orderNumber);
   if (!order) throw new Error('Venda registrada, mas não foi possível recarregá-la. Confira em Pedidos.');
@@ -211,6 +225,7 @@ export async function createCaixaPixOrder(input: {
   items: { product_id: string; quantity: number }[];
   /** pagamento combinado: o Pix é só uma das partes */
   payments?: PaymentPart[];
+  operatorId?: string;
 }): Promise<Order> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) throw new Error('O Caixa exige o Supabase configurado.');
@@ -246,8 +261,21 @@ export async function createCaixaPixOrder(input: {
   }));
   const { error: itemsError } = await sb.from('order_items').insert(itemsPayload);
   if (itemsError) throw itemsError;
+  // operador (0023): sem a migration, só não grava
+  if (input.operatorId) await sb.from('orders').update({ operator_id: input.operatorId }).eq('id', orderRow.id).then(() => {}, () => {});
 
   return rowToOrder(orderRow, itemsPayload);
+}
+
+/** Auditoria do cancelamento (0023): quem, quando e por quê. Sem a migration, só não grava. */
+export async function recordCancellation(orderNumber: string, by: string | null, reason: string): Promise<void> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb) return;
+  await sb
+    .from('orders')
+    .update({ cancel_reason: reason.slice(0, 500), cancelled_by: by, cancelled_at: new Date().toISOString() })
+    .eq('order_number', orderNumber)
+    .then(() => {}, () => {});
 }
 
 export type CancelCaixaOutcome = 'cancelled' | 'already_cancelled' | 'not_found' | 'not_caixa';

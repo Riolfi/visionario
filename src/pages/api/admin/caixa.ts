@@ -3,6 +3,7 @@ import {
   createCaixaSale,
   cancelCaixaSale,
   createCaixaPixOrder,
+  recordCancellation,
   getOrderByNumber,
   setOrderStatus,
 } from '../../../lib/repo/orders';
@@ -117,9 +118,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
         const err = splitError(payments, await saleTotal(items));
         if (err) return json({ error: err }, 400);
         if (!payments.some((p) => p.method === 'pix')) return json({ error: 'Pagamento combinado sem Pix.' }, 400);
-        return advancePixSplit(await createCaixaPixOrder({ items, payments }), []);
+        return advancePixSplit(await createCaixaPixOrder({ items, payments, operatorId: locals.user?.id }), []);
       }
-      const order = await createCaixaPixOrder({ items });
+      const order = await createCaixaPixOrder({ items, operatorId: locals.user?.id });
       const result = await processPayment(order, { payment_method_id: 'pix' });
 
       if (result.status === 'approved' || result.status === 'simulado') {
@@ -178,6 +179,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (!orderNumber) return json({ error: 'Pedido não informado.' }, 400);
     try {
       const outcome = await cancelCaixaSale(orderNumber);
+      if (outcome === 'cancelled') await recordCancellation(orderNumber, locals.user?.id ?? null, 'Cancelada no Caixa logo após a venda');
       if (outcome === 'not_found') return json({ error: 'Venda não encontrada.' }, 404);
       if (outcome === 'not_caixa') return json({ error: 'Esse pedido não é do Caixa.' }, 400);
       return json({ ok: true, outcome });
@@ -207,7 +209,10 @@ export const POST: APIRoute = async ({ request, locals }) => {
       const err = splitError(payments, await saleTotal(items));
       if (err) return json({ error: err }, 400);
     }
-    const order = await createCaixaSale({ items, method, payments });
+    // dinheiro (pagamento simples): guarda o valor recebido para mostrar o troco no pedido
+    const received = Number(body.received_cents);
+    const receivedCents = method === 'cash' && Number.isInteger(received) && received > 0 ? received : null;
+    const order = await createCaixaSale({ items, method, payments, operatorId: locals.user?.id, receivedCents });
     return json({
       ok: true,
       order_number: order.order_number,

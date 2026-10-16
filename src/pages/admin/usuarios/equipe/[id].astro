@@ -222,8 +222,11 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
       const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string; needsToken?: boolean };
       if (r.ok && r.needsToken && r.id) return openToken(r.id);
       if (r.ok && r.id) return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
+      // o Proprietário não mudou: o toggle volta para como estava
+      ownerToggle.checked = ownerToggle.defaultChecked;
       showTop(r.error || 'Não foi possível salvar.');
     } catch {
+      ownerToggle.checked = ownerToggle.defaultChecked;
       showTop('Sem conexão com o servidor.');
     } finally {
       saveBtn.disabled = false;

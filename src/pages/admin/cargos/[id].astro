@@ -23,6 +23,8 @@ const screensOf = (rules: string[]) =>
 // quem não é Administrador só usa permissões com acessos que ele tem (o servidor confere)
 const outOfReach = (p: Permission) => !access.isOwner && p.rules.some((r) => !access.rules.includes(r));
 const deleteBlock = isAdminRole ? 'admin' : members.length ? 'members' : '';
+// "A", "A e B", "A, B e C"
+const listNames = (n: string[]) => (n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} e ${n[n.length - 1]}`);
 ---
 
 <AdminLayout title={isNew ? 'Novo cargo' : 'Cargo'}>
@@ -86,7 +88,7 @@ const deleteBlock = isAdminRole ? 'admin' : members.length ? 'members' : '';
         '! O cargo Administrador não pode ser excluído.'
       ) : (
         <>
-          ! {members.length === 1 ? 'O usuário' : 'Os usuários'} <strong>{members.join(', ')}</strong> {members.length === 1 ? 'usa' : 'usam'} este cargo. Remova em <a href="/admin/usuarios?aba=equipe" class="underline">Usuários</a> antes de excluir.
+          ! {members.length === 1 ? 'O usuário' : 'Os usuários'} <strong>{listNames(members)}</strong> {members.length === 1 ? 'é' : 'são'} <strong>{role?.name}</strong>. Remova em <a href="/admin/usuarios?aba=equipe" class="underline">Usuários</a> antes de excluir.
         </>
       )}
     </p>

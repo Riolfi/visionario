@@ -26,6 +26,8 @@ if (!isNew && !member) return Astro.redirect('/admin/usuarios?aba=equipe');
 
 const me = Astro.locals.user!.id;
 const isMe = member?.id === me;
+// a própria conta se edita em Meu perfil (mesma tela, com os campos que dá para mudar)
+if (isMe) return Astro.redirect('/admin/perfil');
 const isOwnerAccount = !!member && !!ownerEmail && member.email.toLowerCase() === ownerEmail;
 // só o Proprietário dá/tira o cargo Administrador (o servidor confere o resto)
 const assignable = roles.filter((r) => proprietor || !r.is_owner);
@@ -88,23 +90,25 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
       </label>
     </fieldset>
 
-    {/* fora do fieldset: o Proprietário atual liga mesmo quando a tela é só leitura para os outros campos */}
+    {/* Proprietário: só o Proprietário atual vê (e só nos Administradores); fora do fieldset */}
+    {proprietor && (
     <div id="owner-field" class:list={['rounded-card border border-ink/10 bg-white px-4 py-3', member?.role_id !== adminRoleId && 'hidden']}>
-      <label class:list={['flex items-center justify-between gap-4', canTransfer ? 'cursor-pointer' : 'cursor-not-allowed opacity-60']}>
-        <span>
-          <span class="block text-sm font-medium">Proprietário</span>
-          <span class="block text-[12px] text-ink-muted">
-            {isOwnerAccount
-              ? 'Esta pessoa é o Proprietário (responsável legal da conta). Para trocar, ligue em outro Administrador.'
-              : canTransfer
-                ? 'Ligar passa a posse da conta para esta pessoa. Enviamos um código ao seu e-mail para confirmar.'
-                : 'Só o Proprietário atual pode passar a posse da conta.'}
+        <label class:list={['flex items-center justify-between gap-4', canTransfer ? 'cursor-pointer' : 'cursor-not-allowed opacity-60']}>
+          <span>
+            <span class="block text-sm font-medium">Proprietário</span>
+            <span class="block text-[12px] text-ink-muted">
+              {isOwnerAccount
+                ? 'Esta pessoa é o Proprietário (responsável legal da conta). Para trocar, ligue em outro Administrador.'
+                : canTransfer
+                  ? 'Ligar passa a posse da conta para esta pessoa. Enviamos um código ao seu e-mail para confirmar.'
+                  : 'Só o Proprietário atual pode passar a posse da conta.'}
+            </span>
           </span>
-        </span>
-        <input type="checkbox" name="proprietario" checked={isOwnerAccount} disabled={!canTransfer} class="peer sr-only" />
-        <span class="relative h-6 w-11 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-agua" aria-hidden="true"></span>
-      </label>
-    </div>
+          <input type="checkbox" name="proprietario" checked={isOwnerAccount} disabled={!canTransfer} class="peer sr-only" />
+          <span class="relative h-6 w-11 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-5 peer-focus-visible:ring-2 peer-focus-visible:ring-agua" aria-hidden="true"></span>
+        </label>
+      </div>
+    )}
 
     <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! {deleteBlock}</p>
     {!readOnly ? (
@@ -165,12 +169,12 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
 
   // Proprietário só aparece com o cargo Administrador escolhido
   const roleSelect = form.querySelector('select[name=role_id]') as HTMLSelectElement;
-  const ownerField = document.getElementById('owner-field')!;
-  const ownerToggle = form.querySelector('input[name=proprietario]') as HTMLInputElement;
+  const ownerField = document.getElementById('owner-field'); // só existe para o Proprietário
+  const ownerToggle = form.querySelector('input[name=proprietario]') as HTMLInputElement | null;
   roleSelect.addEventListener('change', () => {
     const isAdmin = !!adminRoleId && roleSelect.value === adminRoleId;
-    ownerField.classList.toggle('hidden', !isAdmin);
-    if (!isAdmin && !ownerToggle.disabled) ownerToggle.checked = false;
+    ownerField?.classList.toggle('hidden', !isAdmin);
+    if (ownerToggle && !isAdmin && !ownerToggle.disabled) ownerToggle.checked = false;
   });
 
   // ---- código da troca do Proprietário ----
@@ -223,10 +227,10 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
       if (r.ok && r.needsToken && r.id) return openToken(r.id);
       if (r.ok && r.id) return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
       // o Proprietário não mudou: o toggle volta para como estava
-      ownerToggle.checked = ownerToggle.defaultChecked;
+      if (ownerToggle) ownerToggle.checked = ownerToggle.defaultChecked;
       showTop(r.error || 'Não foi possível salvar.');
     } catch {
-      ownerToggle.checked = ownerToggle.defaultChecked;
+      if (ownerToggle) ownerToggle.checked = ownerToggle.defaultChecked;
       showTop('Sem conexão com o servidor.');
     } finally {
       saveBtn.disabled = false;

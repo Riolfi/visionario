@@ -2,126 +2,210 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { RULES } from '../../lib/rbac';
 import { supabaseAdmin } from '../../lib/supabase';
+import { isProprietor } from '../../lib/repo/owner';
+import { takeFlash } from '../../lib/flash';
 
 export const prerender = false;
 
+/*
+ * Meu perfil = a mesma tela de editar usuário, com os dados de quem está
+ * logado. O que a própria pessoa não pode mudar aparece travado: cargo
+ * (ninguém muda o próprio), Ativo (ninguém se desativa) e Proprietário.
+ */
 const user = Astro.locals.user!;
 const access = Astro.locals.admin!;
 const sb = supabaseAdmin();
-const { data: profile } = sb
-  ? await sb.from('profiles').select('full_name, phone').eq('id', user.id).maybeSingle()
-  : { data: null };
-
-const OK: Record<string, string> = {
-  dados: 'Dados salvos.',
-  email: 'E-mail alterado. Use o novo e-mail no próximo login.',
-  'codigo-email': 'Enviamos um código de 6 dígitos para o seu e-mail atual. Digite-o abaixo para concluir a troca.',
-  senha: 'Senha alterada.',
-};
-const ERRO: Record<string, string> = {
-  nome: 'Informe o nome (mínimo 2 letras).',
-  email: 'E-mail inválido.',
-  'mesmo-email': 'Esse já é o seu e-mail.',
-  proprietario: 'Você é o Proprietário da conta: passe o Proprietário para outro Administrador (em Usuários) antes de mudar o seu e-mail.',
-  'sem-envio': 'O envio de e-mail não está configurado na loja, então o código não pode ser enviado.',
-  migration: 'Falta rodar a migration 0021_email_codes.sql no Supabase.',
-  envio: 'Não foi possível enviar o código. Tente de novo.',
-  codigo: 'Código incorreto.',
-  'codigo-expirou': 'O código expirou. Peça outro.',
-  'codigo-novo': 'Peça um novo código.',
-  'email-em-uso': 'Esse e-mail já é usado por outra conta.',
-  'senha-atual': 'Senha atual incorreta.',
-  'senha-curta': 'A nova senha precisa ter pelo menos 8 caracteres.',
-  'senha-diferente': 'A confirmação não bate com a nova senha.',
-  falha: 'Não foi possível salvar. Tente de novo.',
-};
-const ok = OK[Astro.url.searchParams.get('ok') ?? ''];
-// depois de pedir a troca de e-mail (ou errar o código), mostra o campo do código
-const askCode = ['codigo-email'].includes(Astro.url.searchParams.get('ok') ?? '') || ['codigo', 'codigo-expirou'].includes(Astro.url.searchParams.get('erro') ?? '');
-const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
+const [{ data: profile }, proprietor] = await Promise.all([
+  sb ? sb.from('profiles').select('full_name, phone').eq('id', user.id).maybeSingle() : Promise.resolve({ data: null }),
+  isProprietor(user.email),
+]);
+const flash = takeFlash(Astro.cookies);
+const ok = Astro.url.searchParams.get('ok');
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.includes(r.key));
 ---
 
 <AdminLayout title="Meu perfil">
-  <div class="max-w-2xl space-y-6">
-    {ok && <p role="status" class="rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">{ok}</p>}
-    {erro && <p role="alert" class="rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
+  {flash && (
+    <p role="status" class:list={['max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
+  )}
+  {ok === 'salvo' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ Perfil salvo com sucesso!</p>}
+  {ok === 'email' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ E-mail alterado. Use o novo e-mail no próximo login.</p>}
+  <div id="top-notice" role="alert" class="notice-in hidden max-w-2xl rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700"></div>
 
-    <section class="rounded-card border border-ink/10 bg-white p-5">
-      <h2 class="font-display text-lg">Conta</h2>
-      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-sans text-sm">
-        <dt class="text-ink-muted">E-mail</dt><dd class="break-all">{user.email}</dd>
-        <dt class="text-ink-muted">Cargo</dt><dd>{access.roleName}</dd>
-        <dt class="text-ink-muted">Pode</dt>
-        <dd>
-          {allowed === null
-            ? 'Tudo, inclusive Permissões e Cargos'
-            : allowed.length
-              ? <ul class="list-inside list-disc">{allowed.map((r) => <li>{r.label}</li>)}</ul>
-              : 'Nada ainda — peça a um Administrador para definir o seu cargo'}
-        </dd>
-        <dt class="text-ink-muted">Criada em</dt><dd>{fmt(user.created_at)}</dd>
-        <dt class="text-ink-muted">Último login</dt><dd>{fmt(user.last_sign_in_at)}</dd>
-      </dl>
-    </section>
+  <form id="profile-form" method="POST" action="/api/admin/profile" class="mt-4 max-w-2xl space-y-5">
+    <input type="hidden" name="acao" value="perfil" />
+    <div class="grid gap-4 sm:grid-cols-2">
+      <label class="block"><span class="label">Nome</span><input class="field" name="full_name" value={profile?.full_name ?? ''} required minlength="2" autocomplete="name" /></label>
+      <label class="block"><span class="label">Telefone <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="phone" value={profile?.phone ?? ''} inputmode="tel" autocomplete="tel" /></label>
+      <label class="block">
+        <span class="label">E-mail</span>
+        <input class="field" type="email" name="email" value={user.email ?? ''} required autocomplete="email" data-initial={user.email ?? ''} />
+      </label>
+      <label class="block">
+        <span class="label">Cargo</span>
+        <select class="field" disabled title="Ninguém altera o próprio cargo"><option>{access.roleName}</option></select>
+      </label>
+      <label class="block"><span class="label">Nova senha <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" type="password" name="nova" minlength="8" autocomplete="new-password" /></label>
+      <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" minlength="8" autocomplete="new-password" /></label>
+      <label id="current-pass" class="block hidden sm:col-span-2">
+        <span class="label">Senha atual <span class="text-[11px] font-normal text-ink-muted/60">(para trocar e-mail ou senha)</span></span>
+        <input class="field" type="password" name="senha_atual" autocomplete="current-password" />
+      </label>
+    </div>
+    <p class="text-[12px] text-ink-muted">Trocar o e-mail pede a senha atual e um código enviado ao e-mail de agora.</p>
 
-    <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-ink/10 bg-white p-5">
-      <h2 class="font-display text-lg">Dados pessoais</h2>
-      <input type="hidden" name="acao" value="dados" />
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="block"><span class="label">Nome</span><input class="field" name="full_name" value={profile?.full_name ?? ''} required minlength="2" autocomplete="name" /></label>
-        <label class="block"><span class="label">Telefone</span><input class="field" name="phone" value={profile?.phone ?? ''} inputmode="tel" autocomplete="tel" /></label>
-      </div>
-      <button class="btn-primary">Salvar dados</button>
-    </form>
+    <label class="flex cursor-not-allowed items-center gap-2 text-sm opacity-60" title="Você não pode desativar a sua própria conta">
+      <input type="checkbox" checked disabled />
+      Ativo (entra no painel com o acesso do cargo)
+    </label>
 
-    <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-ink/10 bg-white p-5">
-      <h2 class="font-display text-lg">Trocar e-mail</h2>
-      <input type="hidden" name="acao" value="email" />
-      <div class="grid gap-4 sm:grid-cols-2">
-        <label class="block"><span class="label">Novo e-mail</span><input class="field" type="email" name="email" required autocomplete="email" /></label>
-        <label class="block"><span class="label">Senha atual</span><input class="field" type="password" name="senha_atual" required autocomplete="current-password" /></label>
-      </div>
-      <p class="text-[12px] text-ink-muted">Para confirmar, enviamos um código ao seu e-mail atual.</p>
-      <button class="btn-primary">Trocar e-mail</button>
-    </form>
-
-    {askCode && (
-      <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-agua/40 bg-white p-5">
-        <h2 class="font-display text-lg">Confirmar troca de e-mail</h2>
-        <input type="hidden" name="acao" value="email-codigo" />
-        <label class="block max-w-xs">
-          <span class="label">Código de 6 dígitos</span>
-          <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus />
+    {/* só o Proprietário vê: ligado e travado (para passar a posse, liga em outro Administrador) */}
+    {proprietor && (
+      <div class="rounded-card border border-ink/10 bg-white px-4 py-3">
+        <label class="flex cursor-not-allowed items-center justify-between gap-4 opacity-80">
+          <span>
+            <span class="block text-sm font-medium">Proprietário</span>
+            <span class="block text-[12px] text-ink-muted">Você é o Proprietário (responsável legal da conta). Para passar a posse, ligue em outro Administrador, na tela dele em Usuários.</span>
+          </span>
+          <input type="checkbox" checked disabled class="peer sr-only" />
+          <span class="relative h-6 w-11 shrink-0 rounded-full bg-ink/20 transition-colors after:absolute after:left-0.5 after:top-0.5 after:h-5 after:w-5 after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:bg-agua-dark peer-checked:after:translate-x-5" aria-hidden="true"></span>
         </label>
-        <p class="text-[12px] text-ink-muted">O código vale por 15 minutos. Não recebeu? Peça de novo no formulário acima.</p>
-        <button class="btn-primary">Confirmar</button>
-      </form>
+      </div>
     )}
 
-    <form method="POST" action="/api/admin/profile" class="space-y-4 rounded-card border border-ink/10 bg-white p-5">
-      <h2 class="font-display text-lg">Trocar senha</h2>
-      <input type="hidden" name="acao" value="senha" />
-      <div class="grid gap-4 sm:grid-cols-3">
-        <label class="block"><span class="label">Senha atual</span><input class="field" type="password" name="senha_atual" required autocomplete="current-password" /></label>
-        <label class="block"><span class="label">Nova senha</span><input class="field" type="password" name="nova" required minlength="8" autocomplete="new-password" /></label>
-        <label class="block"><span class="label">Confirmar nova senha</span><input class="field" type="password" name="confirmar" required minlength="8" autocomplete="new-password" /></label>
-      </div>
-      <p class="text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
-      <button class="btn-primary">Trocar senha</button>
-    </form>
+    <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! Você não pode excluir a sua própria conta.</p>
+    <div class="grid grid-cols-3 gap-3 pt-2">
+      <button type="submit" id="save-btn" class="btn-primary w-full">Salvar</button>
+      <button type="button" id="cancel-btn" class="btn-outline w-full">Cancelar</button>
+      <button type="button" id="delete-btn" class="btn-outline w-full cursor-not-allowed opacity-40" aria-disabled="true">Excluir</button>
+    </div>
+  </form>
 
-    <form method="POST" action="/api/admin/profile" class="rounded-card border border-ink/10 bg-white p-5" data-confirm="Sair de todos os aparelhos?|Você vai precisar entrar de novo em todos eles, inclusive neste.|Sair de todos">
-      <h2 class="font-display text-lg">Sessões</h2>
-      <p class="mt-1 text-sm text-ink-soft">Perdeu um aparelho ou entrou num computador que não é seu? Encerre todas as sessões.</p>
+  <section class="mt-8 max-w-2xl rounded-card border border-ink/10 bg-white p-5">
+    <h2 class="font-display text-lg">Conta</h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-sans text-sm">
+      <dt class="text-ink-muted">Pode</dt>
+      <dd>
+        {allowed === null
+          ? 'Tudo, inclusive Permissões e Cargos'
+          : allowed.length
+            ? allowed.map((r) => r.label).join(' · ')
+            : 'Nada ainda — peça a um Administrador para definir o seu cargo'}
+      </dd>
+      <dt class="text-ink-muted">Criada em</dt><dd>{fmt(user.created_at)}</dd>
+      <dt class="text-ink-muted">Último login</dt><dd>{fmt(user.last_sign_in_at)}</dd>
+    </dl>
+    <form method="POST" action="/api/admin/profile" class="mt-4" data-confirm="Sair de todos os aparelhos?|Você vai precisar entrar de novo em todos eles, inclusive neste.|Sair de todos">
       <input type="hidden" name="acao" value="sair-todos" />
-      <button class="btn-outline mt-4">Sair de todos os aparelhos</button>
+      <button class="btn-outline">Sair de todos os aparelhos</button>
     </form>
-  </div>
+  </section>
+
+  {/* código da troca de e-mail (enviado ao e-mail atual) */}
+  <dialog id="code-dialog" class="w-[min(92vw,26rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
+    <form id="code-form" class="p-6">
+      <h2 class="font-display text-xl">Confirme a troca de e-mail</h2>
+      <p class="mt-2 font-sans text-sm text-ink-soft">Enviamos um código de 6 dígitos para o seu e-mail atual. Ele vale por 15 minutos.</p>
+      <input id="code-input" class="field mt-4 text-center text-xl tracking-[0.4em]" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de 6 dígitos" />
+      <p id="code-error" class="mt-2 hidden font-sans text-[13px] text-red-700"></p>
+      <div class="mt-6 flex justify-end gap-2">
+        <button type="button" id="code-cancel" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Cancelar</button>
+        <button type="submit" class="rounded-card bg-ink px-4 py-2 font-sans text-sm text-bone hover:bg-ink-soft">Concluir</button>
+      </div>
+    </form>
+  </dialog>
 </AdminLayout>
 
 <script>
+  import { confirmDialog } from '../../lib/confirm-dialog';
   import { enableConfirmForms } from '../../lib/confirm-forms';
   enableConfirmForms();
+
+  const form = document.getElementById('profile-form') as HTMLFormElement;
+  const top = document.getElementById('top-notice')!;
+  const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
+  const emailInput = form.querySelector('input[name=email]') as HTMLInputElement;
+  const nova = form.querySelector('input[name=nova]') as HTMLInputElement;
+  const currentPass = document.getElementById('current-pass')!;
+  const currentInput = currentPass.querySelector('input')!;
+
+  // senha atual só aparece (e é exigida) ao trocar e-mail ou senha
+  const needsCurrent = () => emailInput.value.trim().toLowerCase() !== (emailInput.dataset.initial ?? '').toLowerCase() || !!nova.value;
+  const syncCurrent = () => {
+    const need = needsCurrent();
+    currentPass.classList.toggle('hidden', !need);
+    currentInput.required = need;
+  };
+  emailInput.addEventListener('input', syncCurrent);
+  nova.addEventListener('input', syncCurrent);
+
+  function showTop(text: string) {
+    top.textContent = `! ${text}`;
+    top.classList.remove('hidden');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function post(body: FormData) {
+    const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
+    return (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string; needsCode?: boolean };
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!form.reportValidity()) return;
+    saveBtn.disabled = true;
+    top.classList.add('hidden');
+    try {
+      const r = await post(new FormData(form));
+      if (r.ok && r.needsCode) return openCode();
+      if (r.ok) return void (window.location.href = '/admin/perfil?ok=salvo');
+      showTop(r.error || 'Não foi possível salvar.');
+    } catch {
+      showTop('Sem conexão com o servidor.');
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  // ---- código da troca de e-mail ----
+  const dialog = document.getElementById('code-dialog') as HTMLDialogElement;
+  const codeInput = document.getElementById('code-input') as HTMLInputElement;
+  const codeError = document.getElementById('code-error')!;
+  function openCode() {
+    codeInput.value = '';
+    codeError.classList.add('hidden');
+    dialog.showModal();
+    codeInput.focus();
+  }
+  document.getElementById('code-cancel')!.addEventListener('click', () => {
+    dialog.close();
+    // o resto foi salvo; o e-mail continua o mesmo
+    window.location.href = '/admin/perfil?ok=salvo';
+  });
+  document.getElementById('code-form')!.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const body = new FormData();
+    body.set('acao', 'email-codigo');
+    body.set('code', codeInput.value);
+    try {
+      const r = await post(body);
+      if (r.ok) return void (window.location.href = '/admin/perfil?ok=email');
+      codeError.textContent = r.error || 'Código incorreto.';
+    } catch {
+      codeError.textContent = 'Sem conexão com o servidor.';
+    }
+    codeError.classList.remove('hidden');
+  });
+
+  document.getElementById('cancel-btn')!.addEventListener('click', async () => {
+    const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
+    if (leave) window.location.href = '/admin';
+  });
+  document.getElementById('delete-btn')!.addEventListener('click', () => {
+    const n = document.getElementById('delete-notice')!;
+    n.classList.remove('hidden', 'notice-in');
+    void n.offsetWidth; // repete a animação a cada clique
+    n.classList.add('notice-in');
+  });
 </script>

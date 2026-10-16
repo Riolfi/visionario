@@ -2,7 +2,7 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import ListFilter from '../../../components/ListFilter.tsx';
 import { can } from '../../../lib/rbac';
-import { listTeam } from '../../../lib/repo/team';
+import { isOnline, listTeam } from '../../../lib/repo/team';
 import { listRoles } from '../../../lib/repo/roles';
 import { getOwnerEmail } from '../../../lib/repo/owner';
 import { CUSTOMER_STATUS_LABELS, listCustomers } from '../../../lib/repo/customers';
@@ -26,6 +26,9 @@ const team = aba === 'equipe' ? await listTeam().catch((e) => ((loadError = e.me
 const roles = aba === 'equipe' ? await listRoles().catch(() => []) : [];
 const customers = aba === 'clientes' ? await listCustomers().catch((e) => ((loadError = e.message), [])) : [];
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
+// só o primeiro nome na lista (sem nome: a parte do e-mail antes do @)
+const firstName = (m: { name: string; email: string }) => m.name.trim().split(/\s+/)[0] || m.email.split('@')[0];
+const FLAG = 'whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] uppercase';
 const rows = aba === 'equipe' ? team.length : customers.length;
 // botão Ativo: só Administradores, nunca na própria conta nem no Proprietário (que não fica inativo)
 const ownerEmail = aba === 'equipe' ? await getOwnerEmail() : null;
@@ -73,7 +76,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
   </div>
   <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
     <h2 class="mb-3 font-display text-lg">Pesquisar usuário</h2>
-    <label class="label" for="user-search">Nome</label>
+    <label class="label" for="user-search">Nome ou Email</label>
     <span class="relative block">
       <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
       <input id="user-search" class="field pl-11" type="search" placeholder="Pesquise pelo nome ou e-mail…" autocomplete="off" />
@@ -94,31 +97,30 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
 
   {aba === 'equipe' && (
     <div class="rounded-card border border-ink/10 bg-white">
-      <table class="w-full table-fixed text-left text-sm">
+      {/* largura pelo conteúdo: colunas curtas com w-px + nowrap, o e-mail fica com o resto */}
+      <table class="w-full text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class="px-3 py-3">Nome</th>
-            <th class="hidden w-36 px-3 py-3 sm:table-cell">Cargo</th>
-            <th class="w-16 px-3 py-3 text-center">Ativo</th>
-            <th class="w-20 px-3 py-3 sm:w-24"><span class="sr-only">Ações</span></th>
+            <th class="w-px whitespace-nowrap px-3 py-3">Nome</th>
+            <th class="hidden px-3 py-3 md:table-cell">E-mail</th>
+            <th class="hidden w-px whitespace-nowrap px-3 py-3 sm:table-cell">Cargo</th>
+            <th class="w-px whitespace-nowrap px-3 py-3 text-center">Ativo</th>
+            <th class="w-px px-3 py-3"><span class="sr-only">Situação</span></th>
+            <th class="w-px px-3 py-3"><span class="sr-only">Ações</span></th>
           </tr>
         </thead>
         <tbody>
           {team.map((m) => (
             <tr class="user-row border-t border-ink/10 hover:bg-bone-50" data-name={`${m.name} ${m.email}`} data-role={m.role_id ?? 'none'} data-status={m.is_active ? 'ativo' : 'inativo'}>
-              <td class="px-3 py-3">
-                <span class="block truncate font-medium">
-                  {m.name || m.email}
-                  {m.id === me && <span class="ml-1 hidden rounded-full bg-agua-wash px-2 py-0.5 align-middle text-[10px] uppercase text-agua-dark sm:inline">Sua conta</span>}
-                </span>
-                <span class="block truncate text-[12px] text-ink-muted">{m.email} · último login {fmt(m.last_sign_in_at)}</span>
-                {/* celular: cargo (a coluna some) com "Sua conta" ao lado */}
-                <span class="block truncate text-[12px] text-ink-muted sm:hidden">
-                  {m.role_name}
-                  {m.id === me && <span class="ml-1 rounded-full bg-agua-wash px-2 py-0.5 align-middle text-[10px] uppercase text-agua-dark">Sua conta</span>}
-                </span>
+              <td class="whitespace-nowrap px-3 py-3">
+                <span class="block font-medium">{firstName(m)}</span>
+                {/* celular: cargo embaixo (a coluna some) */}
+                <span class="block text-[12px] text-ink-muted sm:hidden">{m.role_name}</span>
               </td>
-              <td class="hidden px-3 py-3 sm:table-cell">
+              <td class="hidden max-w-0 px-3 py-3 md:table-cell">
+                <span class="block truncate text-ink-soft" title={m.email}>{m.email}</span>
+              </td>
+              <td class="hidden whitespace-nowrap px-3 py-3 sm:table-cell">
                 <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', m.is_owner ? 'bg-blush-light text-blush' : m.role_id ? 'bg-bone-200 text-ink-soft' : 'bg-red-50 text-red-700']}>{m.role_name}</span>
               </td>
               <td class="px-3 py-3 text-center">
@@ -138,7 +140,17 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                   </span>
                 )}
               </td>
-              <td class="px-3 py-3 text-right">
+              <td class="px-3 py-3">
+                {/* situação: Sua conta · Usuário pendente · Online/Offline */}
+                <span class="flex justify-end gap-1 whitespace-nowrap">
+                  {m.id === me && <span class:list={[FLAG, 'bg-agua-wash text-agua-dark']}>Sua conta</span>}
+                  {m.pending && <span class:list={[FLAG, 'bg-amber-50 text-amber-800']} title="Nunca entrou ou ainda está com a senha temporária">Usuário pendente</span>}
+                  {isOnline(m) || m.id === me
+                    ? <span class:list={[FLAG, 'bg-green-50 text-green-800']}>Online</span>
+                    : <span class:list={[FLAG, 'bg-bone-200 text-ink-muted']}>Offline</span>}
+                </span>
+              </td>
+              <td class="whitespace-nowrap px-3 py-3 text-right">
                 {/* a própria conta edita em Meu perfil; sem permissão, botão desativado */}
                 {m.id === me ? (
                   <a href="/admin/perfil" class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>

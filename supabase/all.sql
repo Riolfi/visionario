@@ -1282,3 +1282,13 @@ alter table public.admin_users add column if not exists is_active boolean not nu
 -- =============================================================================
 alter table public.owner_transfer_tokens add column if not exists purpose text not null default 'owner';
 create index if not exists owner_transfer_tokens_user_purpose on public.owner_transfer_tokens (requested_by, purpose);
+
+-- =============================================================================
+-- 0022_last_seen.sql
+-- =============================================================================
+-- =============================================================================
+-- Último acesso ao painel (para "Online/Offline" na lista de Usuários).
+-- Gravado pelo servidor no máximo a cada 2 minutos por pessoa.
+-- Reexecutável. Rode no SQL Editor depois da 0021.
+-- =============================================================================
+alter table public.admin_users add column if not exists last_seen_at timestamptz;

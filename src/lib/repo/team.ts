@@ -26,7 +26,15 @@ export interface TeamMember {
   /** inativo: continua na equipe, sem acesso a nenhuma tela (0020) */
   is_active: boolean;
   last_sign_in_at: string | null;
+  /** último uso do painel (0022): "Online" se for dos últimos 5 minutos */
+  last_seen_at: string | null;
+  /** nunca entrou ou ainda está com a senha temporária */
+  pending: boolean;
 }
+
+/** Usou o painel nos últimos 5 minutos. */
+export const isOnline = (m: { last_seen_at: string | null }) =>
+  !!m.last_seen_at && Date.now() - new Date(m.last_seen_at).getTime() < 5 * 60 * 1000;
 
 type Result = { ok: true; message?: string; id?: string } | { ok: false; error: string };
 type Actor = AdminAccess & { email?: string | null };
@@ -60,6 +68,8 @@ export async function listTeam(): Promise<TeamMember[]> {
         is_owner: role?.is_owner ?? legacyOwner,
         is_active: r.is_active !== false,
         last_sign_in_at: byId.get(r.user_id)?.last_sign_in_at ?? null,
+        last_seen_at: r.last_seen_at ?? null,
+        pending: !byId.get(r.user_id)?.last_sign_in_at || !!byId.get(r.user_id)?.app_metadata?.must_change_password,
       };
     })
     .sort((a, b) => Number(b.is_owner) - Number(a.is_owner) || a.email.localeCompare(b.email));

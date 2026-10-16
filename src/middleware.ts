@@ -3,7 +3,7 @@ import { getServerClient } from './lib/supabase-server';
 import { env, hasSupabasePublic } from './lib/env';
 import { getSiteContent } from './lib/repo/site';
 import { DEFAULT_SITE_CONTENT } from './lib/site-defaults';
-import { checkStoreIdentity } from './lib/supabase';
+import { checkStoreIdentity, supabaseAdmin } from './lib/supabase';
 import { canAccess, getAdminAccess, homeFor, type AdminAccess } from './lib/repo/admin';
 import { getCustomerStatus } from './lib/repo/customers';
 import { sessionExpired } from './lib/session-limits';
@@ -90,6 +90,16 @@ export const onRequest = defineMiddleware(async (context, next) => {
       }
       access = user ? await getAdminAccess(user.id) : null;
       context.locals.admin = access;
+
+      // "Online" na lista de Usuários: grava o último acesso ao painel no máximo a cada 2 min
+      if (user && access && isAdminArea) {
+        const last = Number(context.cookies.get('vz-seen')?.value || 0);
+        if (Date.now() - last > 2 * 60 * 1000) {
+          context.cookies.set('vz-seen', String(Date.now()), { path: '/', httpOnly: true, sameSite: 'lax', maxAge: 600 });
+          // sem a migration 0022 só falha calado
+          await supabaseAdmin()?.from('admin_users').update({ last_seen_at: new Date().toISOString() }).eq('user_id', user.id).then(() => {}, () => {});
+        }
+      }
 
       // cliente com a conta desativada/bloqueada: encerra a sessão e barra
       if (user && !access && !pathname.startsWith('/auth/') && (await getCustomerStatus(user.id)) !== 'ativo') {

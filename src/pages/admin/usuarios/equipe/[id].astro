@@ -1,7 +1,7 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import { can } from '../../../../lib/rbac';
-import { listTeam } from '../../../../lib/repo/team';
+import { isOnline, listTeam } from '../../../../lib/repo/team';
 import { listRoles } from '../../../../lib/repo/roles';
 import { getOwnerEmail, isProprietor } from '../../../../lib/repo/owner';
 import { takeFlash } from '../../../../lib/flash';
@@ -80,6 +80,14 @@ const canTransfer = proprietor && !readOnly && !isOwnerAccount;
     <input type="hidden" name="acao" value={isNew ? 'criar' : 'editar'} />
     <input type="hidden" name="id" value={member?.id ?? ''} />
     <fieldset disabled={readOnly} class="space-y-5">
+      {/* último acesso, pequeno, em cima do nome */}
+      {member && (
+        <p class="-mb-3 font-sans text-[11px] text-ink-muted">
+          {isOnline(member)
+            ? <span class="text-green-700">● Online</span>
+            : `Último login: ${member.last_sign_in_at ? new Date(member.last_sign_in_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'nunca entrou'}`}
+        </p>
+      )}
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="block"><span class="label">Nome</span><input class="field" name="name" value={member?.name ?? ''} required={isNew} /></label>
         {/* e-mail: quem não é Administrador só define ao criar */}

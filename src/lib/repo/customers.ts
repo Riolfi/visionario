@@ -47,6 +47,7 @@ export interface CustomerRow {
   email: string;
   name: string;
   phone: string;
+  cpf: string;
   created_at: string;
   last_sign_in_at: string | null;
   status: CustomerStatus;
@@ -62,7 +63,7 @@ export async function listCustomers(): Promise<CustomerRow[]> {
   const [users, admins, profiles, accounts, orders] = await Promise.all([
     listAuthUsers(),
     sb.from('admin_users').select('user_id'),
-    sb.from('profiles').select('id, full_name, phone'),
+    sb.from('profiles').select('id, full_name, phone, cpf'),
     sb.from('customer_accounts').select('user_id, status'),
     sb.from('orders').select('user_id, status, total_cents').not('user_id', 'is', null),
   ]);
@@ -79,6 +80,7 @@ export async function listCustomers(): Promise<CustomerRow[]> {
         email: u.email ?? '',
         name: prof.get(u.id)?.full_name || String(u.user_metadata?.full_name ?? ''),
         phone: prof.get(u.id)?.phone ?? '',
+        cpf: prof.get(u.id)?.cpf ?? '',
         created_at: u.created_at,
         last_sign_in_at: u.last_sign_in_at ?? null,
         status: isCustomerStatus(st) ? st : 'ativo',

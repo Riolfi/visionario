@@ -116,3 +116,28 @@ export function maskMoney(raw: string): string {
 }
 /** Valor mascarado → centavos ("" → 0). */
 export const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '') || '0');
+
+/**
+ * Cores da etiqueta de situação do pedido (classes Tailwind):
+ * aguardando = amarelo · pago/em separação = azul · enviado = roxo ·
+ * entregue/concluída = verde cheio · cancelado/não pago = vermelho.
+ */
+export function orderStatusBadge(status: string, source: 'web' | 'caixa' = 'web'): string {
+  if (status === 'paid') return source === 'caixa' ? 'bg-green-600 text-white' : 'bg-sky-100 text-sky-800';
+  return (
+    {
+      pending: 'bg-amber-100 text-amber-800',
+      shipped: 'bg-purple-100 text-purple-800',
+      delivered: 'bg-green-600 text-white',
+      failed: 'bg-red-100 text-red-800',
+      cancelled: 'bg-red-100 text-red-800',
+    } as Record<string, string>
+  )[status] ?? 'bg-bone-200 text-ink-soft';
+}
+
+/** Link do WhatsApp (wa.me/55 + DDD + número); vazio se o número não tiver DDD. */
+export function whatsappUrl(phone: string): string {
+  let d = onlyDigits(phone);
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  return d.length >= 10 ? `https://wa.me/55${d}` : '';
+}

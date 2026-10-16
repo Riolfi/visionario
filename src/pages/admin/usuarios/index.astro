@@ -4,6 +4,7 @@ import ListFilter from '../../../components/ListFilter.tsx';
 import { can } from '../../../lib/rbac';
 import { listTeam } from '../../../lib/repo/team';
 import { listRoles } from '../../../lib/repo/roles';
+import { getOwnerEmail } from '../../../lib/repo/owner';
 import { CUSTOMER_STATUS_LABELS, listCustomers } from '../../../lib/repo/customers';
 import { takeFlash } from '../../../lib/flash';
 
@@ -25,6 +26,9 @@ const roles = aba === 'equipe' ? await listRoles().catch(() => []) : [];
 const customers = aba === 'clientes' ? await listCustomers().catch((e) => ((loadError = e.message), [])) : [];
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleDateString('pt-BR') : '—');
 const rows = aba === 'equipe' ? team.length : customers.length;
+// botão Ativo: só Administradores, nunca na própria conta nem no Proprietário (que não fica inativo)
+const ownerEmail = aba === 'equipe' ? await getOwnerEmail() : null;
+const canToggle = (m: (typeof team)[number]) => access.isOwner && m.id !== me && m.email.toLowerCase() !== ownerEmail;
 const noun = aba === 'equipe' ? ['membro', 'membros'] : ['cliente', 'clientes'];
 // filtros como em Compras: Cargo (só Equipe) e Status (as duas abas)
 const STATUS: [string, string][] = [['ativo', 'Ativo'], ['inativo', 'Inativo']];
@@ -95,27 +99,31 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
               <td class="px-3 py-3">
                 <span class="block truncate font-medium">
                   {m.name || m.email}
-                  {m.id === me && <span class="ml-1 rounded-full bg-agua-wash px-2 py-0.5 align-middle text-[10px] uppercase text-agua-dark">Sua conta</span>}
+                  {m.id === me && <span class="ml-1 hidden rounded-full bg-agua-wash px-2 py-0.5 align-middle text-[10px] uppercase text-agua-dark sm:inline">Sua conta</span>}
                 </span>
                 <span class="block truncate text-[12px] text-ink-muted">{m.email} · último login {fmt(m.last_sign_in_at)}</span>
-                <span class="block truncate text-[12px] text-ink-muted sm:hidden">{m.role_name}</span>
+                {/* celular: cargo (a coluna some) com "Sua conta" ao lado */}
+                <span class="block truncate text-[12px] text-ink-muted sm:hidden">
+                  {m.role_name}
+                  {m.id === me && <span class="ml-1 rounded-full bg-agua-wash px-2 py-0.5 align-middle text-[10px] uppercase text-agua-dark">Sua conta</span>}
+                </span>
               </td>
               <td class="hidden px-3 py-3 sm:table-cell">
                 <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', m.is_owner ? 'bg-blush-light text-blush' : m.role_id ? 'bg-bone-200 text-ink-soft' : 'bg-red-50 text-red-700']}>{m.role_name}</span>
               </td>
               <td class="px-3 py-3 text-center">
-                {/* ✓ ativo / ✕ inativo; quem gerencia a equipe clica para trocar (não na própria conta) */}
-                {canManageTeam && m.id !== me ? (
+                {/* ✓ ativo / ✕ inativo; só Administradores clicam para trocar (não na própria conta nem no Proprietário) */}
+                {canToggle(m) ? (
                   <form method="POST" action="/api/admin/users" class="inline" data-confirm={`Deseja ${m.is_active ? 'desativar' : 'ativar'} usuário?|${m.name || m.email} ${m.is_active ? 'fica sem acesso ao painel' : 'volta a entrar no painel com o acesso do cargo'}.|Sim|Não|primary`}>
                     <input type="hidden" name="acao" value="ativo" />
                     <input type="hidden" name="id" value={m.id} />
                     <input type="hidden" name="ativo" value={m.is_active ? '0' : '1'} />
-                    <button class:list={['grid h-8 w-8 place-items-center rounded-full border', m.is_active ? 'border-agua/40 bg-agua-wash text-agua-dark' : 'border-red-200 bg-red-50 text-red-700']} aria-label={m.is_active ? 'Ativo — clique para desativar' : 'Inativo — clique para ativar'} title={m.is_active ? 'Ativo' : 'Inativo'}>
+                    <button class:list={['grid h-8 w-8 place-items-center rounded-full border', m.is_active ? 'border-green-600 bg-green-600 text-white' : 'border-red-200 bg-red-50 text-red-700']} aria-label={m.is_active ? 'Ativo — clique para desativar' : 'Inativo — clique para ativar'} title={m.is_active ? 'Ativo' : 'Inativo'}>
                       {m.is_active ? '✓' : '✕'}
                     </button>
                   </form>
                 ) : (
-                  <span class:list={['inline-grid h-8 w-8 place-items-center rounded-full', m.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-red-50 text-red-700']} aria-label={m.is_active ? 'Ativo' : 'Inativo'} title={m.is_active ? 'Ativo' : 'Inativo'}>
+                  <span class:list={['inline-grid h-8 w-8 place-items-center rounded-full', m.is_active ? 'bg-green-600 text-white' : 'bg-red-50 text-red-700']} aria-label={m.is_active ? 'Ativo' : 'Inativo'} title={m.is_active ? 'Ativo' : 'Inativo'}>
                     {m.is_active ? '✓' : '✕'}
                   </span>
                 )}

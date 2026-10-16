@@ -216,15 +216,17 @@ export async function updateMember(
   return { ok: true, message: 'Usuário salvo com sucesso!', id: userId };
 }
 
-/** Liga/desliga o acesso de um membro (botão da lista), com as mesmas travas da edição. */
+/**
+ * Liga/desliga o acesso de um membro (botão da lista). Só Administradores;
+ * ninguém mexe na própria conta e o Proprietário nunca fica inativo.
+ */
 export async function setMemberActive(actor: Actor & { userId: string }, userId: string, active: boolean): Promise<Result> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return { ok: false, error: 'Supabase não configurado.' };
   if (userId === actor.userId) return { ok: false, error: 'Você não pode ativar ou desativar a sua própria conta.' };
   const { data: row } = await sb.from('admin_users').select('*').eq('user_id', userId).maybeSingle();
   if (!row) return { ok: false, error: 'Membro não encontrado.' };
-  const manage = await checkManageable(actor, row.role_id);
-  if (manage) return { ok: false, error: manage };
+  if (!actor.isOwner) return { ok: false, error: 'Só Administradores ativam ou desativam usuários.' };
   if (!active) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
     if (await isOwnerEmail(u.user?.email ?? '')) return { ok: false, error: 'O Proprietário não pode ficar inativo.' };

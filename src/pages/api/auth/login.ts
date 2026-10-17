@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { safeNextPath, withLoginFlag } from '../../../lib/auth';
 import { claimGuestOrders } from '../../../lib/repo/orders';
-import { isAdmin } from '../../../lib/repo/admin';
+import { getAdminAccess, isAdmin } from '../../../lib/repo/admin';
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const sb = locals.supabase;
@@ -17,6 +17,11 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     // conta desativada/bloqueada pela loja (ban no Supabase Auth)
     const erro = error.code === 'user_banned' ? 'conta' : '1';
     return redirect(`/entrar?erro=${erro}&next=${encodeURIComponent(next)}`);
+  }
+  // membro da equipe desativado: não entra
+  if (data.user?.id && (await getAdminAccess(data.user.id))?.inactive) {
+    await sb.auth.signOut();
+    return redirect(`/entrar?erro=inativo&next=${encodeURIComponent(next)}`);
   }
   // vincula pedidos feitos como convidado antes de a conta existir
   if (data.user?.id && data.user.email) {

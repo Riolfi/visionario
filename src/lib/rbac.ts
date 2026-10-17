@@ -56,6 +56,8 @@ export interface AdminAccess {
   roleId: string | null;
   roleName: string;
   rules: RuleKey[];
+  /** membro da equipe desativado (0020): o login é recusado */
+  inactive?: boolean;
 }
 
 export const can = (a: AdminAccess | null | undefined, rule: RuleKey) => !!a && (a.isOwner || a.rules.includes(rule));

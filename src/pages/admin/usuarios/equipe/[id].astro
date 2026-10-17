@@ -379,9 +379,16 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
     }
   });
 
+  // Cancelar volta para Usuários; só pergunta se algo foi alterado
+  const snapshot = () => JSON.stringify([...new FormData(form)].map(([k, v]) => [k, String(v)]));
+  const initialForm = snapshot();
   document.getElementById('cancel-btn')?.addEventListener('click', async () => {
-    const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
-    if (leave) window.location.href = '/admin/usuarios?aba=equipe';
+    const dirty = snapshot() !== initialForm || !!(document.getElementById('email-confirm') as HTMLInputElement | null)?.value;
+    if (dirty) {
+      const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
+      if (!leave) return;
+    }
+    window.location.href = '/admin/usuarios?aba=equipe';
   });
 
   document.getElementById('delete-btn')?.addEventListener('click', async () => {

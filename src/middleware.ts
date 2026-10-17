@@ -92,6 +92,20 @@ export const onRequest = defineMiddleware(async (context, next) => {
       access = user ? await getAdminAccess(user.id) : null;
       context.locals.admin = access;
 
+      // membro desativado com sessão aberta: encerra e volta ao login com o aviso
+      if (user && access?.inactive && pathname !== '/entrar') {
+        await supabase.auth.signOut();
+        context.locals.user = null;
+        context.locals.admin = null;
+        if (pathname.startsWith('/api/')) {
+          return new Response(JSON.stringify({ error: 'Esse login não está ativo, fale com um administrador.' }), {
+            status: 403,
+            headers: { 'content-type': 'application/json' },
+          });
+        }
+        return context.redirect('/entrar?erro=inativo');
+      }
+
       // "Online" na lista de Usuários: grava o último acesso ao painel no máximo a cada 2 min
       if (user && access && isAdminArea) {
         const last = Number(context.cookies.get('vz-seen')?.value || 0);

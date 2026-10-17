@@ -35,7 +35,7 @@ export async function getAdminAccess(userId: string): Promise<AdminAccess | null
   if (!row) return null;
 
   // membro inativo (0020): continua na equipe, sem acesso a nenhuma tela
-  if (row.is_active === false) return { isOwner: false, roleId: row.role_id ?? null, roleName: 'Inativo', rules: [] };
+  if (row.is_active === false) return { isOwner: false, roleId: row.role_id ?? null, roleName: 'Inativo', rules: [], inactive: true };
 
   if (row.role_id) {
     const { data: role, error: roleErr } = await sb

@@ -31,7 +31,7 @@ export default function OffersCarousel({ slides }: { slides: Offer[] }) {
 
   return (
     <section
-      class="relative w-full overflow-hidden bg-ink text-bone"
+      class="fixo-claro relative w-full overflow-hidden bg-ink text-bone"
       aria-roledescription="carrossel"
       aria-label="Ofertas em destaque"
       onMouseEnter={() => setPaused(true)}

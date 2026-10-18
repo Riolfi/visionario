@@ -610,11 +610,11 @@ section.tb-cat-sec {
 @media (prefers-reduced-motion: reduce) { .filter-sheet[open] { animation: none; } }
 
 /* ==========================================================================
-   Área administrativa — modo escuro (html.admin-dark, botão sol/lua no
-   cabeçalho). Troca só as variáveis de fundo/texto; o que usa cor fixa do
+   Modo escuro da loja e da área administrativa (html.tema-escuro, botão
+   sol/lua no cabeçalho). Troca só as variáveis de fundo/texto; o que usa cor fixa do
    Tailwind (cards brancos, avisos coloridos, pop-up de filtro) é ajustado aqui.
    ========================================================================== */
-html.admin-dark {
+html.tema-escuro {
   color-scheme: dark;
   --bone: 24 19 34;
   --bone-50: 17 13 25;
@@ -626,32 +626,35 @@ html.admin-dark {
   --ink-muted: 156 144 181;
   --agua-wash: 52 40 82;
 }
-html.admin-dark body {
+html.tema-escuro body {
   background-image: none;
 }
-html.admin-dark .bg-white,
-html.admin-dark .bg-white\/70 {
+html.tema-escuro .bg-white,
+html.tema-escuro .bg-white\/70 {
   background-color: rgb(32 26 45);
 }
-html.admin-dark .bg-\[\#f2f1f6\] {
+html.tema-escuro .bg-\[\#f2f1f6\] {
   background-color: rgb(var(--bone));
 }
-html.admin-dark .bg-red-50 { background-color: rgb(127 29 29 / 0.35); }
-html.admin-dark .bg-green-50 { background-color: rgb(20 83 45 / 0.4); }
-html.admin-dark .bg-amber-50 { background-color: rgb(120 53 15 / 0.4); }
-html.admin-dark .text-red-700,
-html.admin-dark .text-red-800 { color: rgb(252 165 165); }
-html.admin-dark .text-green-700,
-html.admin-dark .text-green-800 { color: rgb(134 239 172); }
-html.admin-dark .text-amber-700,
-html.admin-dark .text-amber-800 { color: rgb(252 211 77); }
-html.admin-dark .border-red-200,
-html.admin-dark .border-red-300 { border-color: rgb(248 113 113 / 0.45); }
-html.admin-dark .border-green-200 { border-color: rgb(74 222 128 / 0.4); }
-html.admin-dark .text-agua-dark { color: rgb(var(--agua-light)); }
-html.admin-dark .btn-primary { color: #fff; box-shadow: 4px 4px 0 rgb(0 0 0 / 0.55); }
-html.admin-dark .btn-outline { box-shadow: 4px 4px 0 rgb(108 43 217); }
-html.admin-dark img { opacity: 0.95; }
+html.tema-escuro .bg-red-50 { background-color: rgb(127 29 29 / 0.35); }
+html.tema-escuro .bg-green-50 { background-color: rgb(20 83 45 / 0.4); }
+html.tema-escuro .bg-amber-50 { background-color: rgb(120 53 15 / 0.4); }
+html.tema-escuro .text-red-700,
+html.tema-escuro .text-red-800 { color: rgb(252 165 165); }
+html.tema-escuro .text-green-700,
+html.tema-escuro .text-green-800 { color: rgb(134 239 172); }
+html.tema-escuro .text-amber-700,
+html.tema-escuro .text-amber-800 { color: rgb(252 211 77); }
+html.tema-escuro .border-red-200,
+html.tema-escuro .border-red-300 { border-color: rgb(248 113 113 / 0.45); }
+html.tema-escuro .border-green-200 { border-color: rgb(74 222 128 / 0.4); }
+html.tema-escuro .text-agua-dark { color: rgb(var(--agua-light)); }
+html.tema-escuro .btn-primary { color: #fff; box-shadow: 4px 4px 0 rgb(0 0 0 / 0.55); }
+html.tema-escuro .btn-outline { box-shadow: 4px 4px 0 rgb(108 43 217); }
+html.tema-escuro img { opacity: 0.95; }
+/* ondas com cor fixa: seguem o fundo escuro */
+html.tema-escuro .wave-divider.text-agua-wash path { fill: rgb(var(--agua-wash)); }
+html.tema-escuro footer .wave-divider path { fill: rgb(var(--bone)); }
 
 /* ==========================================================================
    Área administrativa — carregando: aparece quando a tela começa a sair
@@ -710,11 +713,11 @@ html.admin-dark img { opacity: 0.95; }
   #page-loader .spin { animation-duration: 1.6s; }
 }
 /* ícone do botão sol/lua conforme o modo */
-.admin-dark-show { display: none; }
-html.admin-dark .admin-dark-show { display: inline; }
-html.admin-dark .admin-dark-hide { display: none; }
+.tema-escuro-show { display: none; }
+html.tema-escuro .tema-escuro-show { display: inline; }
+html.tema-escuro .tema-escuro-hide { display: none; }
 /* logo escuro em fundo escuro: inverte (preto vira branco) */
-html.admin-dark .admin-logo { filter: invert(1) hue-rotate(180deg); }
+html.tema-escuro .logo-tema { filter: invert(1) hue-rotate(180deg); }
 
 /* olho de mostrar/ocultar senha: troca de ícone com giro curto */
 [data-pw-toggle] svg { transition: transform 0.2s ease, opacity 0.2s ease; }

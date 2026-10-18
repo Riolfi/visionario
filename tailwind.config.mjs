@@ -28,7 +28,7 @@ const aguaVars = {
 
 /**
  * Fundo (bone) e texto (ink) também viram variável: o modo escuro da área
- * administrativa troca só os valores (html.admin-dark em global.css). Os
+ * administrativa troca só os valores (html.tema-escuro em global.css). Os
  * valores claros saem do theme.json via ThemeVars.
  */
 const v = (name) => `rgb(var(--${name}) / <alpha-value>)`;

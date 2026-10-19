@@ -259,7 +259,7 @@ export async function sendTeamPasswordEmail(opts: {
 
 /** Convite à equipe sem senha (conta criada por quem não é Administrador): a pessoa cria a senha pelo "Esqueci minha senha". */
 export async function sendTeamInviteEmail(opts: { to: string; name: string }): Promise<MailResult> {
-  const url = `${env.siteUrl}/esqueci-senha?email=${encodeURIComponent(opts.to)}`;
+  const url = `${env.siteUrl}/esqueci-senha?criar=1&email=${encodeURIComponent(opts.to)}`;
   const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
     <p>Criamos a sua conta na equipe da ${escapeHtml(env.brandName)} com o e-mail <strong>${escapeHtml(opts.to)}</strong>.</p>
     <p>Para entrar, crie a sua senha: <a href="${url}">criar minha senha</a>. Um Administrador vai definir o seu cargo.</p>`;

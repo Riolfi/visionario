@@ -16,8 +16,11 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   const form = await request.formData();
   const acao = String(form.get('acao') || '');
   const email = String(form.get('email') || '').trim().toLowerCase();
-  const back = (q: string) => redirect(`/esqueci-senha?${q}&email=${encodeURIComponent(email)}`);
-  if (!isEmail(email)) return redirect('/esqueci-senha?erro=email');
+  // criar=1: veio do convite da equipe (conta sem senha) — só muda os textos
+  const criar = form.get('criar') === '1';
+  const extra = criar ? '&criar=1' : '';
+  const back = (q: string) => redirect(`/esqueci-senha?${q}${extra}&email=${encodeURIComponent(email)}`);
+  if (!isEmail(email)) return redirect(`/esqueci-senha?erro=email${extra}`);
   const user = (await listAuthUsers()).find((u) => u.email?.toLowerCase() === email);
 
   if (acao === 'pedir') {
@@ -27,8 +30,10 @@ export const POST: APIRoute = async ({ request, redirect }) => {
         purpose: 'reset',
         newEmail: email,
         sendTo: email,
-        subject: 'Código para criar uma nova senha',
-        intro: 'Foi pedida uma nova senha para a sua conta. Use o código abaixo na página "Esqueci minha senha".',
+        subject: criar ? 'Código para criar a sua senha' : 'Código para criar uma nova senha',
+        intro: criar
+          ? 'Use o código abaixo na página "Criar senha" para criar a senha da sua conta.'
+          : 'Foi pedida uma nova senha para a sua conta. Use o código abaixo na página "Esqueci minha senha".',
       });
       // falha de configuração aparece (não revela conta: só acontece com conta existente,
       // mas é erro do servidor, não "conta inexistente")

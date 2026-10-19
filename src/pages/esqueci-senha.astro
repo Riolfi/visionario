@@ -6,6 +6,9 @@ export const prerender = false;
 
 const etapa = Astro.url.searchParams.get('etapa');
 const email = Astro.url.searchParams.get('email') ?? '';
+// criar=1: convite da equipe (conta criada sem senha) — mesma tela, textos de "Criar senha"
+const criar = Astro.url.searchParams.get('criar') === '1';
+const titulo = criar ? 'Criar senha' : 'Esqueci minha senha';
 const ERRO: Record<string, string> = {
   email: 'Informe um e-mail válido.',
   envio: 'Não foi possível enviar o código agora. Tente de novo em alguns minutos.',
@@ -18,10 +21,10 @@ const ERRO: Record<string, string> = {
 const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
 ---
 
-<BaseLayout title="Esqueci minha senha" description="Crie uma nova senha para a sua conta." noindex>
+<BaseLayout title={titulo} description="Crie uma nova senha para a sua conta." noindex>
   <section class="container-x flex justify-center py-16 md:py-24">
     <div class="w-full max-w-sm">
-      <h1 class="font-display text-3xl">Esqueci minha senha</h1>
+      <h1 class="font-display text-3xl">{titulo}</h1>
       {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
 
       {etapa === 'codigo' ? (
@@ -32,27 +35,30 @@ const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
           <form method="POST" action="/api/auth/esqueci-senha" class="mt-6 space-y-4">
             <input type="hidden" name="acao" value="trocar" />
             <input type="hidden" name="email" value={email} />
+            {criar && <input type="hidden" name="criar" value="1" />}
             {/* conta da senha, escondida: o navegador sabe qual login salvar e não abre a lista "qual conta atualizar" */}
             <input type="email" value={email} autocomplete="username" readonly tabindex="-1" aria-hidden="true" class="sr-only" />
             <label class="block">
               <span class="label">Código</span>
               <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus />
             </label>
-            <label class="block"><span class="label">Nova senha</span><PasswordInput  name="nova" required minlength="8" autocomplete="new-password" /></label>
-            <label class="block"><span class="label">Confirmar nova senha</span><PasswordInput  name="confirmar" required minlength="8" autocomplete="new-password" /></label>
-            <button class="btn-primary w-full">Salvar nova senha</button>
+            <label class="block"><span class="label">{criar ? 'Senha' : 'Nova senha'}</span><PasswordInput  name="nova" required minlength="8" autocomplete="new-password" /></label>
+            <label class="block"><span class="label">{criar ? 'Confirmar senha' : 'Confirmar nova senha'}</span><PasswordInput  name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+            <button class="btn-primary w-full">{criar ? 'Criar senha' : 'Salvar nova senha'}</button>
           </form>
           <form method="POST" action="/api/auth/esqueci-senha" class="mt-3 text-center">
             <input type="hidden" name="acao" value="pedir" />
             <input type="hidden" name="email" value={email} />
+            {criar && <input type="hidden" name="criar" value="1" />}
             <button class="text-sm text-ink-muted underline">Não recebeu? Enviar outro código</button>
           </form>
         </>
       ) : (
         <>
-          <p class="mt-2 text-sm text-ink-soft">Informe o e-mail da sua conta. Vamos mandar um código para você criar uma senha nova.</p>
+          <p class="mt-2 text-sm text-ink-soft">{criar ? 'Confirme o e-mail da sua conta. Vamos mandar um código para você criar a sua senha.' : 'Informe o e-mail da sua conta. Vamos mandar um código para você criar uma senha nova.'}</p>
           <form method="POST" action="/api/auth/esqueci-senha" class="mt-6 space-y-4">
             <input type="hidden" name="acao" value="pedir" />
+            {criar && <input type="hidden" name="criar" value="1" />}
             <label class="block"><span class="label">E-mail</span><input class="field" type="email" name="email" value={email} required autocomplete="email" autofocus /></label>
             <button class="btn-primary w-full">Enviar código</button>
           </form>

@@ -45,7 +45,11 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
 
   // ---- tela Meu perfil (igual à de editar usuário): tudo de uma vez ----
   if (acao === 'perfil') {
-    const full_name = String(form.get('full_name') || '').trim().slice(0, 120);
+    // Nome (uma palavra) + Sobrenome viram o nome completo
+    const nome = String(form.get('nome') ?? '').trim();
+    const sobrenome = String(form.get('sobrenome') ?? '').trim().replace(/\s+/g, ' ');
+    if (form.has('nome') && (!nome || /\s/.test(nome))) return json({ ok: false, error: 'Nome: escreva uma palavra só (o resto vai em Sobrenome).' }, 400);
+    const full_name = (form.has('nome') ? [nome, sobrenome].filter(Boolean).join(' ') : String(form.get('full_name') || '').trim()).slice(0, 120);
     const phone = String(form.get('phone') || '').replace(/[^\d+()\s-]/g, '').trim().slice(0, 30);
     const email = String(form.get('email') || '').trim().toLowerCase();
     const nova = String(form.get('nova') || '');

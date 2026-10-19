@@ -2,7 +2,8 @@
  * Ajudas dos formulários (vanilla, para telas Astro):
  *  - olho para mostrar/ocultar senha ([data-pw-toggle] logo após o input);
  *  - e-mail validado ao sair do campo + "Confirmar e-mail" igual, com aviso
- *    embaixo e o botão de salvar desabilitado enquanto estiver errado.
+ *    embaixo e o botão de salvar desabilitado enquanto estiver errado;
+ *  - campo de uma palavra só (Nome): espaço nem chega a ser digitado.
  */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -63,4 +64,11 @@ export function enableEmailConfirm(opts: {
   confirm.addEventListener('paste', (e) => e.preventDefault());
   check();
   return check;
+}
+
+/** Campo de uma palavra só: tira espaços ao digitar ou colar. */
+export function enableSingleWord(input: HTMLInputElement | null) {
+  input?.addEventListener('input', () => {
+    if (/\s/.test(input.value)) input.value = input.value.replace(/\s+/g, '');
+  });
 }

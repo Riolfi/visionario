@@ -141,7 +141,7 @@ export async function createMember(
   // na loja com o e-mail de um futuro funcionário (não há prova de posse do
   // e-mail), e a sessão dela viraria admin. Equipe = sempre conta nova.
   if ((await listAuthUsers()).some((u) => u.email?.toLowerCase() === email)) {
-    return { ok: false, error: 'Esse e-mail já tem uma conta na loja. Use outro e-mail para a conta da equipe.' };
+    return { ok: false, error: 'Esse e-mail já está em uso. Use outro e-mail para o novo usuário.' };
   }
   if (basic) input.password = `${crypto.randomUUID()}Aa1!`; // ninguém conhece; a pessoa cria a dela
   if (input.password.length < 8) return { ok: false, error: 'A senha inicial precisa ter pelo menos 8 caracteres.' };

@@ -167,7 +167,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
               <td class:list={[TD, 'whitespace-nowrap text-right']}>
                 {/* a própria conta edita em Meu perfil; sem permissão, botão desativado */}
                 {m.id === me ? (
-                  <a href="/admin/perfil" class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
+                  <a href="/admin/perfil?de=usuarios" class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
                 ) : canEditMember(m) ? (
                   <a href={`/admin/usuarios/equipe/${m.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Editar</a>
                 ) : (

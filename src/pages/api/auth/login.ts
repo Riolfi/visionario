@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { safeNextPath, withLoginFlag } from '../../../lib/auth';
 import { claimGuestOrders } from '../../../lib/repo/orders';
-import { getAdminAccess, isAdmin } from '../../../lib/repo/admin';
+import { getAdminAccess, isAdmin, isInactiveTeamEmail } from '../../../lib/repo/admin';
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const sb = locals.supabase;
@@ -12,13 +12,16 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const password = String(form.get('password') || '');
   const next = safeNextPath(String(form.get('next') || ''), '/');
 
+  // membro da equipe desativado: recusa antes mesmo de conferir a senha
+  if (await isInactiveTeamEmail(email)) return redirect(`/entrar?erro=inativo&next=${encodeURIComponent(next)}`);
+
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
     // conta desativada/bloqueada pela loja (ban no Supabase Auth)
     const erro = error.code === 'user_banned' ? 'conta' : '1';
     return redirect(`/entrar?erro=${erro}&next=${encodeURIComponent(next)}`);
   }
-  // membro da equipe desativado: não entra
+  // segunda checagem (ex.: e-mail digitado diferente do cadastrado): não entra
   if (data.user?.id && (await getAdminAccess(data.user.id))?.inactive) {
     await sb.auth.signOut();
     return redirect(`/entrar?erro=inativo&next=${encodeURIComponent(next)}`);

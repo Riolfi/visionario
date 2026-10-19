@@ -24,24 +24,35 @@ const flash = takeFlash(Astro.cookies);
 const ok = Astro.url.searchParams.get('ok');
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.includes(r.key));
+// veio da lista de Usuários (Editar na própria linha): mostra voltar, Cancelar e Excluir;
+// pelo botão "Meu perfil" fica só o Salvar
+const fromList = Astro.url.searchParams.get('de') === 'usuarios' && can(access, 'equipe.ver');
+// nome completo guardado junto: a primeira palavra é o Nome, o resto o Sobrenome
+const [firstName = '', ...rest] = (profile?.full_name ?? '').trim().split(/\s+/);
+const lastName = rest.join(' ');
 ---
 
 <AdminLayout title="Meu perfil">
-  {/* atalho para a lista só para quem pode ver Usuários */}
-  {can(access, 'equipe.ver') && (
+  {/* atalho para a lista só quando veio dela */}
+  {fromList && (
     <a href="/admin/usuarios?aba=equipe" class="mb-4 inline-block font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink">← Usuários</a>
   )}
   {flash && (
     <p role="status" class:list={['max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
   )}
-  {ok === 'salvo' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ Perfil salvo com sucesso!</p>}
+  <p id="ok-notice" role="status" class:list={['notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800', ok !== 'salvo' && 'hidden']}>✓ Perfil salvo com sucesso!</p>
   {ok === 'email' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ E-mail alterado. Use o novo e-mail no próximo login.</p>}
   <div id="top-notice" role="alert" class="notice-in hidden max-w-2xl rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700"></div>
 
   <form id="profile-form" method="POST" action="/api/admin/profile" class="mt-4 max-w-2xl space-y-5">
     <input type="hidden" name="acao" value="perfil" />
     <div class="grid gap-4 sm:grid-cols-2">
-      <label class="block"><span class="label">Nome</span><input class="field" name="full_name" value={profile?.full_name ?? ''} required minlength="2" autocomplete="name" /></label>
+      <label class="block">
+        <span class="label">Nome</span>
+        {/* uma palavra só (o resto vai em Sobrenome) */}
+        <input class="field" name="nome" value={firstName} required pattern="[^ ]+" title="Uma palavra só; o resto vai em Sobrenome" autocomplete="given-name" />
+      </label>
+      <label class="block"><span class="label">Sobrenome <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="sobrenome" value={lastName} autocomplete="family-name" /></label>
       <label class="block"><span class="label">Telefone <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span></span><input class="field" name="phone" value={profile?.phone ?? ''} inputmode="tel" autocomplete="tel" /></label>
       <div>
         <label class="block">
@@ -90,8 +101,8 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
     <p id="delete-notice" role="alert" class="notice-in hidden rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! Você não pode excluir a sua própria conta.</p>
     <div class="grid grid-cols-3 gap-3 pt-2">
       <button type="submit" id="save-btn" class="btn-primary w-full">Salvar</button>
-      <button type="button" id="cancel-btn" class="btn-outline w-full">Cancelar</button>
-      <button type="button" id="delete-btn" class="btn-outline w-full cursor-not-allowed opacity-40" aria-disabled="true">Excluir</button>
+      {fromList && <button type="button" id="cancel-btn" class="btn-outline w-full">Cancelar</button>}
+      {fromList && <button type="button" id="delete-btn" class="btn-outline w-full cursor-not-allowed opacity-40" aria-disabled="true">Excluir</button>}
     </div>
   </form>
 
@@ -133,12 +144,14 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
 <script>
   import { confirmDialog } from '../../lib/confirm-dialog';
   import { enableConfirmForms } from '../../lib/confirm-forms';
-  import { enableEmailConfirm } from '../../lib/form-helpers';
+  import { enableEmailConfirm, enableSingleWord } from '../../lib/form-helpers';
   enableConfirmForms();
 
   const form = document.getElementById('profile-form') as HTMLFormElement;
   const top = document.getElementById('top-notice')!;
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
+  const okNotice = document.getElementById('ok-notice')!;
+  enableSingleWord(form.querySelector('input[name=nome]'));
   const emailInput = form.querySelector('input[name=email]') as HTMLInputElement;
   // e-mail validado ao sair do campo + confirmação igual (Salvar desabilitado se errado)
   const checkEmail = enableEmailConfirm({
@@ -165,10 +178,20 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
   nova.addEventListener('input', syncCurrent);
 
   function showTop(text: string) {
+    okNotice.classList.add('hidden');
     top.textContent = `! ${text}`;
     top.classList.remove('hidden');
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
+  // recarrega a mesma tela (mantém o ?de=usuarios) com o aviso pedido
+  const reloadWith = (ok: string) => {
+    const url = new URL(location.href);
+    url.searchParams.set('ok', ok);
+    location.href = url.pathname + url.search;
+  };
+  // Cancelar só pergunta se algo mudou
+  const snapshot = () => JSON.stringify([...new FormData(form)].map(([k, v]) => [k, String(v)]));
+  let savedForm = snapshot();
 
   async function post(body: FormData) {
     const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
@@ -183,7 +206,18 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
     try {
       const r = await post(new FormData(form));
       if (r.ok && r.needsCode) return openCode();
-      if (r.ok) return void (window.location.href = '/admin/perfil?ok=salvo');
+      if (r.ok) {
+        // fica na tela: aviso verde no topo, senhas limpas
+        form.querySelectorAll<HTMLInputElement>('input[type=password]').forEach((i) => (i.value = ''));
+        syncCurrent();
+        savedForm = snapshot();
+        top.classList.add('hidden');
+        okNotice.classList.remove('hidden', 'notice-in');
+        void okNotice.offsetWidth; // repete a animação
+        okNotice.classList.add('notice-in');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
       showTop(r.error || 'Não foi possível salvar.');
     } catch {
       showTop('Sem conexão com o servidor.');
@@ -206,7 +240,7 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
   document.getElementById('code-cancel')!.addEventListener('click', () => {
     dialog.close();
     // o resto foi salvo; o e-mail continua o mesmo
-    window.location.href = '/admin/perfil?ok=salvo';
+    reloadWith('salvo');
   });
   document.getElementById('code-form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -215,7 +249,7 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
     body.set('code', codeInput.value);
     try {
       const r = await post(body);
-      if (r.ok) return void (window.location.href = '/admin/perfil?ok=email');
+      if (r.ok) return reloadWith('email');
       codeError.textContent = r.error || 'Código incorreto.';
     } catch {
       codeError.textContent = 'Sem conexão com o servidor.';
@@ -223,11 +257,15 @@ const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.include
     codeError.classList.remove('hidden');
   });
 
-  document.getElementById('cancel-btn')!.addEventListener('click', async () => {
-    const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
-    if (leave) window.location.href = '/admin';
+  document.getElementById('cancel-btn')?.addEventListener('click', async () => {
+    const dirty = snapshot() !== savedForm || !!(document.getElementById('email-confirm') as HTMLInputElement).value;
+    if (dirty) {
+      const leave = await confirmDialog({ title: 'Sair e perder alterações?', confirmLabel: 'Sair', cancelLabel: 'Manter alterações' });
+      if (!leave) return;
+    }
+    window.location.href = '/admin/usuarios?aba=equipe';
   });
-  document.getElementById('delete-btn')!.addEventListener('click', () => {
+  document.getElementById('delete-btn')?.addEventListener('click', () => {
     const n = document.getElementById('delete-notice')!;
     n.classList.remove('hidden', 'notice-in');
     void n.offsetWidth; // repete a animação a cada clique

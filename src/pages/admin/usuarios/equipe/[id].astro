@@ -31,7 +31,7 @@ if (!isNew && !member) return Astro.redirect('/admin/usuarios?aba=equipe');
 const me = Astro.locals.user!.id;
 const isMe = member?.id === me;
 // a própria conta se edita em Meu perfil (mesma tela, com os campos que dá para mudar)
-if (isMe) return Astro.redirect('/admin/perfil');
+if (isMe) return Astro.redirect('/admin/perfil?de=usuarios');
 const isOwnerAccount = !!member && !!ownerEmail && member.email.toLowerCase() === ownerEmail;
 // só o Proprietário dá/tira o cargo Administrador (o servidor confere o resto)
 const assignable = roles.filter((r) => proprietor || !r.is_owner);
@@ -72,10 +72,8 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
       Esta é a sua conta. Os seus dados ficam em <a href="/admin/perfil" class="underline">Meu perfil</a>; o seu cargo só outra pessoa altera.
     </p>
   )}
-  {!canManage && (
-    <p class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">Somente leitura: {isOwnerAccount
-      ? 'ninguém altera o Proprietário (ele edita os próprios dados em Meu perfil).'
-      : member?.is_owner && access.isOwner
+  {!canManage && !isOwnerAccount && (
+    <p class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-bone-50 px-3 py-2 text-sm text-ink-soft">Somente leitura: {member?.is_owner && access.isOwner
         ? 'só o Proprietário altera outros Administradores.'
         : basic
           ? 'só o Proprietário altera Administradores.'
@@ -235,7 +233,7 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
 
 <script>
   import { askSaveActive, confirmDialog } from '../../../../lib/confirm-dialog';
-  import { enableEmailConfirm } from '../../../../lib/form-helpers';
+  import { enableEmailConfirm, enableSingleWord } from '../../../../lib/form-helpers';
 
   const { deleteBlock, isNew, label, adminRoleId } = (window as any).__member as {
     deleteBlock: string;
@@ -246,6 +244,7 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
   const form = document.getElementById('member-form') as HTMLFormElement;
   const top = document.getElementById('top-notice')!;
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
+  enableSingleWord(form.querySelector('input[name=nome]'));
 
   // e-mail validado ao sair do campo + confirmação igual (Salvar desabilitado se errado)
   const emailInput = document.getElementById('email') as HTMLInputElement;

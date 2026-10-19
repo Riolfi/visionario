@@ -123,7 +123,8 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
           </label>
           <p id="email-notice" class="mt-1 hidden text-[12px] text-red-700">! E-mail inválido. Confira o endereço.</p>
         </div>
-        {!basic ? (
+        {/* senha: ao criar, quem escolhe o cargo define; depois, só o Proprietário redefine */}
+        {!basic && (isNew || proprietor) ? (
           <div>
             {/* senha: mesma largura do Cargo, logo abaixo dele */}
             <label class="block">
@@ -135,11 +136,11 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
                 ? 'Defina uma senha temporária (o usuário irá redefini-la em seu primeiro login).'
                 : <>Por segurança, as senhas não são exibidas.<br />Ao definir uma nova senha para este usuário, ela será temporária e ele deverá criar uma nova senha no próximo acesso.</>}
             </p>
-            {/* trocar a senha de alguém: aviso por e-mail só se marcar */}
+            {/* trocar a senha de alguém: aviso por e-mail só se marcar; aparece ao digitar a senha */}
             {!isNew && (
-              <label class="mt-2 flex items-start gap-2 text-[13px] text-ink-soft">
+              <label id="notify-wrap" class="mt-2 hidden items-start gap-2 text-[13px] text-ink-soft">
                 <input type="checkbox" name="avisar_senha" class="mt-0.5" />
-                Enviar e-mail de aviso de alteração informando a nova senha para o usuário?
+                <span>Enviar email de aviso de alteração informando a nova senha para o usuário? — Isso vai permitir que ele tenha acesso à nova senha e redefiní-la</span>
               </label>
             )}
           </div>
@@ -245,6 +246,18 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
   const top = document.getElementById('top-notice')!;
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
   enableSingleWord(form.querySelector('input[name=nome]'));
+
+  // aviso por e-mail da nova senha: só aparece com algo digitado em Redefinir senha
+  const passInput = form.querySelector('input[name=password]') as HTMLInputElement | null;
+  const notifyWrap = document.getElementById('notify-wrap');
+  passInput?.addEventListener('input', () => {
+    const show = !!passInput.value;
+    notifyWrap?.classList.toggle('hidden', !show);
+    notifyWrap?.classList.toggle('flex', show);
+    // apagou a senha: desmarca (não avisa sem senha nova)
+    const box = notifyWrap?.querySelector('input') as HTMLInputElement | null;
+    if (!show && box) box.checked = false;
+  });
 
   // e-mail validado ao sair do campo + confirmação igual (Salvar desabilitado se errado)
   const emailInput = document.getElementById('email') as HTMLInputElement;

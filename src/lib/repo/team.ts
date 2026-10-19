@@ -244,6 +244,8 @@ export async function updateMember(
     auth.email_confirm = true;
   }
   if (input.password) {
+    // redefinir a senha de alguém: só o Proprietário (os outros Administradores não)
+    if (!(await isProprietor(actor.email))) return { ok: false, error: 'Só o Administrador Proprietário pode redefinir a senha de outros usuários.' };
     if (input.password.length < 8) return { ok: false, error: 'A nova senha precisa ter pelo menos 8 caracteres.' };
     auth.password = input.password;
   }

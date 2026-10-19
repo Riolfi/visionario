@@ -247,6 +247,12 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
   const saveBtn = document.getElementById('save-btn') as HTMLButtonElement | null;
   enableSingleWord(form.querySelector('input[name=nome]'));
 
+  // senha de outra pessoa: limpa antes de sair da tela, senão o navegador oferece
+  // guardá-la como se fosse um login seu (pop-up "qual conta atualizar")
+  const clearPassword = () => {
+    if (passInput) passInput.value = '';
+  };
+
   // aviso por e-mail da nova senha: só aparece com algo digitado em Redefinir senha
   const passInput = form.querySelector('input[name=password]') as HTMLInputElement | null;
   const notifyWrap = document.getElementById('notify-wrap');
@@ -350,7 +356,10 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
     try {
       const res = await fetch(form.action, { method: 'POST', body, headers: { accept: 'application/json' } });
       const r = (await res.json().catch(() => ({}))) as { ok?: boolean; error?: string };
-      if (r.ok) return void window.location.reload();
+      if (r.ok) {
+        clearPassword();
+        return void window.location.reload();
+      }
       tokenError.textContent = r.error || 'Código incorreto.';
     } catch {
       tokenError.textContent = 'Sem conexão com o servidor.';
@@ -381,7 +390,10 @@ const ownerMasked = ownerEmail ? ownerEmail.replace(/^(.{2}).*(@.*)$/, '$1***$2'
       }
       const res = await fetch(form.action, { method: 'POST', body: new FormData(form), headers: { accept: 'application/json' } });
       const r = (await res.json().catch(() => ({}))) as { ok?: boolean; id?: string; error?: string };
-      if (r.ok && r.id) return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
+      if (r.ok && r.id) {
+        clearPassword();
+        return void (window.location.href = `/admin/usuarios/equipe/${r.id}`);
+      }
       showTop(r.error || 'Não foi possível salvar.');
     } catch {
       showTop('Sem conexão com o servidor.');

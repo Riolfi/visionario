@@ -28,6 +28,8 @@ const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
       </p>
       {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
       <form method="POST" action="/api/auth/trocar-senha" class="mt-6 space-y-4">
+        {/* conta da senha, escondida: o navegador sabe qual login salvar e não abre a lista "qual conta atualizar" */}
+        <input type="email" value={user.email ?? ''} autocomplete="username" readonly tabindex="-1" aria-hidden="true" class="sr-only" />
         <label class="block"><span class="label">Senha recebida</span><PasswordInput  name="atual" required autocomplete="current-password" autofocus /></label>
         <label class="block"><span class="label">Nova senha</span><PasswordInput  name="nova" required minlength="8" autocomplete="new-password" /></label>
         <label class="block"><span class="label">Confirmar nova senha</span><PasswordInput  name="confirmar" required minlength="8" autocomplete="new-password" /></label>

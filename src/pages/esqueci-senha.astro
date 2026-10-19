@@ -32,6 +32,8 @@ const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
           <form method="POST" action="/api/auth/esqueci-senha" class="mt-6 space-y-4">
             <input type="hidden" name="acao" value="trocar" />
             <input type="hidden" name="email" value={email} />
+            {/* conta da senha, escondida: o navegador sabe qual login salvar e não abre a lista "qual conta atualizar" */}
+            <input type="email" value={email} autocomplete="username" readonly tabindex="-1" aria-hidden="true" class="sr-only" />
             <label class="block">
               <span class="label">Código</span>
               <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required autofocus />

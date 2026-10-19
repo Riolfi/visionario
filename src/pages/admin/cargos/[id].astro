@@ -58,11 +58,17 @@ const listNames = (n: string[]) => (n.length < 2 ? n.join('') : `${n.slice(0, -1
       <>
         <fieldset class="rounded-card border border-ink/10 bg-white">
           <legend class="sr-only">Permissões</legend>
-          <h2 class="border-b border-ink/10 px-4 py-3 font-display text-lg" aria-hidden="true">Permissões</h2>
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-ink/10 px-4 py-3">
+            <h2 class="font-display text-lg" aria-hidden="true">Permissões</h2>
+            {/* busca na lista (sem name: não vai junto ao salvar) */}
+            {permissions.length > 0 && (
+              <input id="perm-search" type="search" class="field h-9 w-full py-1 text-sm sm:w-56" placeholder="Buscar permissão" aria-label="Buscar permissão" autocomplete="off" />
+            )}
+          </div>
           {permissions.length ? (
             <div class="divide-y divide-ink/10">
               {permissions.map((p) => (
-                <label class:list={['flex items-start gap-3 px-4 py-3', outOfReach(p) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-bone-50']} title={outOfReach(p) ? 'Tem acessos que você não tem' : undefined}>
+                <label data-perm data-name={`${p.name} ${p.description ?? ''} ${screensOf(p.rules)}`} class:list={['flex items-start gap-3 px-4 py-3 [&[hidden]]:hidden', outOfReach(p) ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-bone-50']} title={outOfReach(p) ? 'Tem acessos que você não tem' : undefined}>
                   <input type="checkbox" name="permissions" value={p.id} checked={role?.permission_ids.includes(p.id)} disabled={outOfReach(p)} class="mt-1 h-4 w-4 shrink-0" />
                   <span class="min-w-0">
                     <span class="block text-sm font-medium">{p.name}{!p.is_active && <span class="ml-1 text-[11px] font-normal text-ink-muted">(inativa)</span>}</span>
@@ -70,6 +76,7 @@ const listNames = (n: string[]) => (n.length < 2 ? n.join('') : `${n.slice(0, -1
                   </span>
                 </label>
               ))}
+              <p id="perm-empty" class="hidden px-4 py-3 text-sm text-ink-muted">Nenhuma permissão encontrada.</p>
             </div>
           ) : (
             <p class="px-4 py-3 text-sm text-ink-muted">Nenhuma permissão criada. Crie em <a href="/admin/permissoes" class="underline">Permissões</a>.</p>
@@ -115,6 +122,13 @@ const listNames = (n: string[]) => (n.length < 2 ? n.join('') : `${n.slice(0, -1
 
 <script>
   import { confirmDialog } from '../../../lib/confirm-dialog';
+  import { enableListSearch } from '../../../lib/list-search';
+
+  // busca de permissões (nome, descrição e telas); Enter não envia o formulário
+  enableListSearch({ input: 'perm-search', rows: '[data-perm]', noResults: 'perm-empty', noun: ['permissão', 'permissões'] });
+  document.getElementById('perm-search')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') e.preventDefault();
+  });
 
   const { deleteBlock, isNew, roleName, isAdminRole } = (window as any).__role as {
     deleteBlock: string;

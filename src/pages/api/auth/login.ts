@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { safeNextPath, withLoginFlag } from '../../../lib/auth';
 import { claimGuestOrders } from '../../../lib/repo/orders';
-import { getAdminAccess, isAdmin, isInactiveTeamEmail } from '../../../lib/repo/admin';
+import { getAdminAccess, isAdmin } from '../../../lib/repo/admin';
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const sb = locals.supabase;
@@ -15,18 +15,17 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   // outra conta já logada neste navegador: encerra antes de entrar com a nova
   if (locals.user) await sb.auth.signOut({ scope: 'local' });
 
-  // membro da equipe desativado: recusa antes mesmo de conferir a senha
-  if (await isInactiveTeamEmail(email)) return redirect(`/entrar?erro=inativo&next=${encodeURIComponent(next)}`);
-
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
     // conta desativada/bloqueada pela loja (ban no Supabase Auth)
     const erro = error.code === 'user_banned' ? 'conta' : '1';
     return redirect(`/entrar?erro=${erro}&next=${encodeURIComponent(next)}`);
   }
-  // segunda checagem (ex.: e-mail digitado diferente do cadastrado): não entra
+  // membro da equipe desativado: só depois da senha certa (quem não sabe a senha
+  // vê "senha incorreta" e não descobre que a conta existe); a sessão recém-criada
+  // é descartada na hora, sem entrar em tela nenhuma
   if (data.user?.id && (await getAdminAccess(data.user.id))?.inactive) {
-    await sb.auth.signOut();
+    await sb.auth.signOut({ scope: 'local' });
     return redirect(`/entrar?erro=inativo&next=${encodeURIComponent(next)}`);
   }
   // vincula pedidos feitos como convidado antes de a conta existir

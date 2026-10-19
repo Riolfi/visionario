@@ -79,15 +79,3 @@ export async function isAdmin(userId: string): Promise<boolean> {
   return (await getAdminAccess(userId)) !== null;
 }
 
-/**
- * E-mail de um membro da equipe desativado? O login confere isso antes da
- * senha. Busca só as contas inativas (costumam ser poucas), uma a uma.
- */
-export async function isInactiveTeamEmail(email: string): Promise<boolean> {
-  const sb = supabaseAdmin();
-  if (!hasSupabase || !sb || !email) return false;
-  const { data: rows, error } = await sb.from('admin_users').select('user_id').eq('is_active', false);
-  if (error || !rows?.length) return false; // sem a 0020 não há is_active
-  const users = await Promise.all(rows.map((r) => sb.auth.admin.getUserById(r.user_id)));
-  return users.some((u) => u.data.user?.email?.toLowerCase() === email);
-}

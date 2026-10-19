@@ -2,16 +2,11 @@
 import PasswordInput from '../components/PasswordInput.astro';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import { safeNextPath } from '../lib/auth';
-import { isAdmin } from '../lib/repo/admin';
 
 export const prerender = false;
 
-// já logado? vai direto pra conta
-if (Astro.locals.user) {
-  const dest = safeNextPath(Astro.url.searchParams.get('next'), '/');
-  if (dest === '/' && (await isAdmin(Astro.locals.user.id))) return Astro.redirect('/admin');
-  return Astro.redirect(dest);
-}
+// já logado: mostra o formulário mesmo assim (entrar com outra conta encerra esta)
+const current = Astro.locals.user?.email ?? null;
 
 const next = safeNextPath(Astro.url.searchParams.get('next'), '/');
 const erro = Astro.url.searchParams.get('erro');
@@ -25,6 +20,11 @@ const nextQs = `next=${encodeURIComponent(next)}`;
       <p class="eyebrow">Minha conta</p>
       <h1 class="mt-3 font-display text-3xl">Entrar</h1>
 
+      {current && (
+        <p class="mt-5 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Você está conectado como <strong>{current}</strong>. Ao entrar com outra conta, esta sessão será encerrada.
+        </p>
+      )}
       {senhaNova && (
         <p class="mt-5 rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">Senha nova salva. Entre com ela.</p>
       )}

@@ -12,6 +12,9 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const password = String(form.get('password') || '');
   const next = safeNextPath(String(form.get('next') || ''), '/');
 
+  // outra conta já logada neste navegador: encerra antes de entrar com a nova
+  if (locals.user) await sb.auth.signOut({ scope: 'local' });
+
   // membro da equipe desativado: recusa antes mesmo de conferir a senha
   if (await isInactiveTeamEmail(email)) return redirect(`/entrar?erro=inativo&next=${encodeURIComponent(next)}`);
 

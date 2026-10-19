@@ -237,12 +237,10 @@ export async function sendTeamPasswordEmail(opts: {
   kind: 'welcome' | 'reset';
 }): Promise<MailResult> {
   const welcome = opts.kind === 'welcome';
-  const loginUrl = `${env.siteUrl}/entrar?next=%2Fadmin`;
   const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
     <p>${welcome ? `Você foi adicionado(a) à equipe da ${escapeHtml(env.brandName)}.` : 'A sua senha de acesso foi redefinida por um administrador.'}</p>
     <p>E-mail: <strong>${escapeHtml(opts.to)}</strong><br>Senha temporária: <strong>${escapeHtml(opts.password)}</strong></p>
-    <p>Ao entrar, você vai criar uma senha nova. A temporária deixa de valer e ninguém da equipe vê a nova.</p>
-    <p><a href="${loginUrl}">Entrar no painel</a></p>`;
+    <p>Ao entrar, você vai criar uma senha nova. A temporária deixa de valer e ninguém da equipe vê a nova.</p>`;
   if (!hasResend) return { delivered: (await writeEmailFile(`equipe-${Date.now()}`, html)) ? 'file' : 'none' };
   try {
     const { data, error } = await new Resend(env.resendApiKey).emails.send({
@@ -285,7 +283,7 @@ export async function sendTeamInviteEmail(opts: { to: string; name: string }): P
 export async function sendTeamEmailChanged(opts: { to: string; name: string }): Promise<MailResult> {
   const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
     <p>O seu e-mail de acesso à equipe da ${escapeHtml(env.brandName)} agora é <strong>${escapeHtml(opts.to)}</strong>.</p>
-    <p>Use este e-mail para entrar: <a href="${env.siteUrl}/entrar?next=%2Fadmin">entrar no painel</a>. Se não reconhece esta mudança, fale com um Administrador.</p>`;
+    <p>Use este e-mail no próximo login. Se não reconhece esta mudança, fale com um Administrador.</p>`;
   if (!hasResend) return { delivered: (await writeEmailFile(`equipe-email-${Date.now()}`, html)) ? 'file' : 'none' };
   try {
     const { data, error } = await new Resend(env.resendApiKey).emails.send({

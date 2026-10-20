@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { brl, orderLabel } from '../lib/format';
+import { brl, orderLabel, orderStatusBadge } from '../lib/format';
 
 /**
  * Lista de Compras do admin: busca pelo código, filtro por coluna (pop-up
@@ -233,7 +233,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
               </span>
               <span role="cell" class="px-3 py-3 text-ink-muted">{new Date(o.created_at).toLocaleDateString('pt-BR')}</span>
               <span role="cell" class="px-3 py-3 text-ink-soft">{o.source === 'caixa' ? 'Física' : 'Online'}</span>
-              <span role="cell" class="px-3 py-3"><span class="inline-block rounded-full bg-bone-200 px-2 py-0.5 text-[11px] uppercase leading-tight">{o.status_label}</span></span>
+              <span role="cell" class="px-3 py-3"><span class={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium uppercase leading-tight ${orderStatusBadge(o.status, o.source === 'caixa' ? 'caixa' : 'web')}`}>{o.status_label}</span></span>
               <span role="cell" class="px-3 py-3 text-right">{brl(o.total_cents)}</span>
               <span role="cell" class="px-3 py-2 text-right">
                 <a href={`/admin/pedidos/${o.number}`} class="rounded-card border border-ink/20 px-3 py-1 text-[13px] hover:bg-bone-100">Editar</a>

@@ -19,6 +19,33 @@ export const CUSTOMER_STATUS_LABELS: Record<CustomerStatus, string> = {
 const STATUSES: CustomerStatus[] = ['ativo', 'desativado', 'bloqueado'];
 export const isCustomerStatus = (v: unknown): v is CustomerStatus => STATUSES.includes(v as CustomerStatus);
 
+/**
+ * Motivos prontos de cada estado (o texto vai para o histórico e, no futuro,
+ * para o e-mail ao titular — por isso escrito para o cliente ler). "Outro
+ * motivo" deixa escrever um texto livre.
+ */
+export const CUSTOMER_STATUS_REASONS: Record<CustomerStatus, string[]> = {
+  ativo: [
+    'Reativação solicitada pelo titular',
+    'Verificação de dados concluída',
+    'Pendência de pagamento resolvida',
+    'Restrição aplicada por engano',
+  ],
+  desativado: [
+    'Encerramento solicitado pelo titular',
+    'Conta sem uso por longo período',
+    'Dados cadastrais incompletos ou incorretos',
+    'Conta duplicada',
+  ],
+  bloqueado: [
+    'Suspeita de fraude',
+    'Contestação de pagamento (chargeback)',
+    'Violação dos termos de uso',
+    'Uso indevido de cupons ou promoções',
+  ],
+};
+export const OTHER_REASON = 'outro';
+
 /** Estado da conta (sem registro = ativa). Em erro, não bloqueia ninguém. */
 export async function getCustomerStatus(userId: string): Promise<CustomerStatus> {
   const sb = supabaseAdmin();

@@ -1,6 +1,6 @@
 ---
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
-import { CUSTOMER_STATUS_LABELS, getCustomerDetail, type CustomerStatus } from '../../../../lib/repo/customers';
+import { CUSTOMER_STATUS_LABELS, CUSTOMER_STATUS_REASONS, OTHER_REASON, getCustomerDetail, type CustomerStatus } from '../../../../lib/repo/customers';
 import { takeFlash } from '../../../../lib/flash';
 import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../../lib/format';
 import { orderStatusLabel } from '../../../../lib/types';
@@ -55,9 +55,11 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
           <dd class="flex items-center gap-2">
             <span class="break-all">{c.user.email}</span>
             {c.user.email && (
-              <a href={`mailto:${c.user.email}`} class="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink/20 text-ink-soft hover:bg-bone-100" aria-label="Enviar e-mail" title="Enviar e-mail">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
-              </a>
+              <button type="button" data-copy-email={c.user.email} class="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink/20 text-ink-soft hover:bg-bone-100" aria-label="Copiar e-mail" title="Copiar e-mail">
+                <svg class="copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>
+                <svg class="copied-icon hidden text-agua-dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
+              </button>
+              <span data-copy-email-ok class="hidden text-[12px] text-agua-dark" role="status">Copiado</span>
             )}
           </dd>
           <dt class="text-ink-muted">Telefone</dt>
@@ -78,7 +80,7 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
         {c.addresses.length ? (
           <ul class="mt-2 grid gap-3 sm:grid-cols-2">
             {c.addresses.map((a) => (
-              <li class:list={['flex flex-col rounded-card border bg-bone-50 p-3 text-sm', a.is_default ? 'border-agua-dark/50' : 'border-ink/10']}>
+              <li class:list={['flex flex-col rounded-card border p-3 text-sm', a.is_default ? 'border-agua-dark/50' : 'border-ink/10']}>
                 <div class="flex items-center justify-between gap-2">
                   <span class="font-medium">{a.label || 'Endereço'}</span>
                   {a.is_default && <span class="rounded-full bg-agua-dark px-2 py-0.5 text-[10px] font-semibold uppercase text-white">Padrão de entrega</span>}
@@ -160,9 +162,20 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
               </label>
             ))}
           </fieldset>
+          {/* motivo da lista do estado marcado (só o select dele vai junto); "Outro motivo" abre o texto */}
           <label class="block">
             <span class="label">Motivo <span class="text-red-600">*</span></span>
-            <textarea class="field" name="reason" rows="3" required minlength="3" maxlength="500" placeholder="Ex.: pediu para encerrar a conta; chargeback no pedido #12345"></textarea>
+            {(['ativo', 'desativado', 'bloqueado'] as CustomerStatus[]).map((s) => (
+              <select class:list={['field', c.status !== s && 'hidden']} name="motivo" data-motivo={s} required disabled={c.status !== s}>
+                <option value="" selected disabled>Selecione o motivo</option>
+                {CUSTOMER_STATUS_REASONS[s].map((r) => <option value={r}>{r}</option>)}
+                <option value={OTHER_REASON}>Outro motivo</option>
+              </select>
+            ))}
+          </label>
+          <label id="reason-other" class="block hidden">
+            <span class="label">Descreva o motivo <span class="text-red-600">*</span></span>
+            <textarea class="field" name="reason" rows="3" minlength="3" maxlength="500" disabled placeholder="Escrito para o cliente ler (pode ir no e-mail de aviso)"></textarea>
           </label>
           <button class="btn-primary w-full">Salvar estado</button>
         </form>
@@ -193,11 +206,71 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
   import { enableConfirmForms } from '../../../../lib/confirm-forms';
   enableConfirmForms();
 
+  /** copia para a área de transferência (com plano B para navegador sem clipboard API) */
+  async function copyText(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const t = Object.assign(document.createElement('textarea'), { value: text });
+      t.setAttribute('readonly', '');
+      t.style.cssText = 'position:fixed;opacity:0';
+      document.body.append(t);
+      t.select();
+      const ok = document.execCommand('copy');
+      t.remove();
+      if (!ok) throw new Error('copy');
+    }
+  }
+
+  // copiar e-mail: o ícone vira ✓ e aparece "Copiado" por 2 s
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-email]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const ok = b.parentElement!.querySelector<HTMLElement>('[data-copy-email-ok]')!;
+      try {
+        await copyText(b.dataset.copyEmail ?? '');
+        ok.textContent = 'Copiado';
+      } catch {
+        ok.textContent = 'Não deu para copiar';
+      }
+      b.querySelector('.copy-icon')!.classList.add('hidden');
+      b.querySelector('.copied-icon')!.classList.remove('hidden');
+      ok.classList.remove('hidden');
+      setTimeout(() => {
+        b.querySelector('.copy-icon')!.classList.remove('hidden');
+        b.querySelector('.copied-icon')!.classList.add('hidden');
+        ok.classList.add('hidden');
+      }, 2000);
+    }),
+  );
+
+  // motivo: mostra a lista do estado marcado; "Outro motivo" exige o texto
+  const statusForm = document.querySelector<HTMLFormElement>('form[action="/api/admin/customers"]');
+  if (statusForm) {
+    const selects = [...statusForm.querySelectorAll<HTMLSelectElement>('select[data-motivo]')];
+    const other = document.getElementById('reason-other')!;
+    const otherText = other.querySelector('textarea')!;
+    const sync = () => {
+      const st = statusForm.querySelector<HTMLInputElement>('input[name=status]:checked')?.value;
+      let isOther = false;
+      for (const sel of selects) {
+        const on = sel.dataset.motivo === st;
+        sel.classList.toggle('hidden', !on);
+        sel.disabled = !on;
+        if (on) isOther = sel.value === 'outro';
+      }
+      other.classList.toggle('hidden', !isOther);
+      otherText.disabled = !isOther;
+      otherText.required = isOther;
+    };
+    statusForm.addEventListener('change', sync);
+    sync();
+  }
+
   // "Copiar endereço": texto pronto para colar em sistemas de envio
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((b) =>
     b.addEventListener('click', async () => {
       try {
-        await navigator.clipboard.writeText(b.dataset.copy ?? '');
+        await copyText(b.dataset.copy ?? '');
         b.textContent = 'Copiado ✓';
       } catch {
         b.textContent = 'Não deu para copiar';

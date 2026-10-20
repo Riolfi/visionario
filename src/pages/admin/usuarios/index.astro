@@ -208,11 +208,12 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
                 {/* celular: e-mail embaixo (a coluna some) */}
                 <span class="block max-w-[11rem] truncate text-[12px] text-ink-muted sm:hidden">{c.email}</span>
               </td>
-              <td class="hidden whitespace-nowrap px-3 py-3 text-ink-soft md:table-cell">{c.cpf ? formatCpf(c.cpf) : '—'}</td>
-              <td class="hidden max-w-0 px-3 py-3 sm:table-cell"><span class="block truncate text-ink-soft" title={c.email}>{c.email}</span></td>
-              <td class="hidden whitespace-nowrap px-3 py-3 text-ink-soft lg:table-cell">{c.phone ? formatPhone(c.phone) : '—'}</td>
+              {/* clientes: CPF, e-mail, telefone e Visualizar centralizados; Usuário e Conta à esquerda */}
+              <td class="hidden whitespace-nowrap px-3 py-3 text-center text-ink-soft md:table-cell">{c.cpf ? formatCpf(c.cpf) : '—'}</td>
+              <td class="hidden max-w-0 px-3 py-3 text-center sm:table-cell"><span class="block truncate text-ink-soft" title={c.email}>{c.email}</span></td>
+              <td class="hidden whitespace-nowrap px-3 py-3 text-center text-ink-soft lg:table-cell">{c.phone ? formatPhone(c.phone) : '—'}</td>
               <td class="whitespace-nowrap px-3 py-3"><span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span></td>
-              <td class="whitespace-nowrap px-3 py-3 text-right">
+              <td class="whitespace-nowrap px-3 py-3 text-center">
                 <a href={`/admin/usuarios/clientes/${c.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Visualizar</a>
               </td>
             </tr>

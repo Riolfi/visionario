@@ -73,7 +73,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
           });
         }
         if (!pathname.startsWith('/auth/') && pathname !== '/entrar') {
-          return context.redirect(`/entrar?erro=expirou&next=${encodeURIComponent(pathname)}`);
+          return context.redirect(`/entrar?next=${encodeURIComponent(pathname)}`);
         }
       }
       context.locals.user = user;

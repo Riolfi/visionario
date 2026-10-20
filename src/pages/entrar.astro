@@ -36,8 +36,6 @@ const nextQs = `next=${encodeURIComponent(next)}`;
               ? 'Esta conta está desativada ou bloqueada. Fale com a loja para saber mais.'
               : erro === 'inativo'
                 ? 'Esse login não está ativo, fale com um administrador.'
-              : erro === 'expirou'
-                ? 'Sua sessão expirou (2 horas sem uso ou 4 horas logado). Entre de novo.'
               : 'E-mail ou senha incorretos.'}
         </p>
       )}

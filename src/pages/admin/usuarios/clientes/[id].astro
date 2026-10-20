@@ -2,7 +2,7 @@
 import AdminLayout from '../../../../layouts/AdminLayout.astro';
 import { CUSTOMER_STATUS_LABELS, CUSTOMER_STATUS_REASONS, OTHER_REASON, getCustomerDetail, type CustomerStatus } from '../../../../lib/repo/customers';
 import { takeFlash } from '../../../../lib/flash';
-import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../../lib/format';
+import { brl, formatCep, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../../lib/format';
 import { orderStatusLabel } from '../../../../lib/types';
 import { can } from '../../../../lib/rbac';
 
@@ -20,13 +20,9 @@ const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { da
 const fmtExact = (d: string) => new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' });
 const wa = whatsappUrl(c.profile.phone);
 const addressText = (a: (typeof c.addresses)[number]) =>
-  `${a.street}, ${a.number}${a.complement ? ` - ${a.complement}` : ''} - ${a.district} - ${a.city}/${a.state} - CEP ${a.cep}`;
+  `${a.street}, ${a.number}${a.complement ? ` - ${a.complement}` : ''} - ${a.district} - ${a.city}/${a.state} - CEP ${formatCep(a.cep)}`;
 const name = c.profile.full_name || String(c.user.user_metadata?.full_name ?? '') || c.user.email || 'Cliente';
 const PAID = ['paid', 'separating', 'shipped', 'delivered'];
-// histórico de compras: os itens dos pedidos pagos
-const purchases = c.orders
-  .filter((o) => PAID.includes(o.status))
-  .flatMap((o) => o.items.map((it) => ({ order: o, it })));
 const spent = c.orders.filter((o) => PAID.includes(o.status)).reduce((s, o) => s + o.total_cents, 0);
 const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone-200 text-ink-muted', bloqueado: 'bg-red-50 text-red-700' };
 const STATUS_HELP: Record<CustomerStatus, string> = {
@@ -45,145 +41,127 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
     </p>
   )}
 
-  <div class="mt-4 grid gap-6 lg:grid-cols-[1fr_22rem]">
-    <div class="min-w-0 space-y-6">
-      <section class="rounded-card border border-ink/10 bg-white p-5">
-        <h2 class="font-display text-lg">Dados cadastrais</h2>
-        <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-sans text-sm">
-          <dt class="text-ink-muted">Nome</dt><dd>{name}</dd>
-          <dt class="text-ink-muted">E-mail</dt>
-          <dd class="flex items-center gap-2">
-            <span class="break-all">{c.user.email}</span>
-            {c.user.email && (
-              <button type="button" data-copy-email={c.user.email} class="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink/20 text-ink-soft hover:bg-bone-100" aria-label="Copiar e-mail" title="Copiar e-mail">
-                <svg class="copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>
-                <svg class="copied-icon hidden text-agua-dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
-              </button>
-              <span data-copy-email-ok class="hidden text-[12px] text-agua-dark" role="status">Copiado</span>
-            )}
-          </dd>
-          <dt class="text-ink-muted">Telefone</dt>
-          <dd class="flex items-center gap-2">
-            <span>{c.profile.phone ? formatPhone(c.profile.phone) : '—'}</span>
-            {wa && (
-              <a href={wa} target="_blank" rel="noopener" class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#25D366] text-white hover:brightness-95" aria-label="Conversar no WhatsApp" title="Conversar no WhatsApp">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z" /></svg>
-              </a>
-            )}
-          </dd>
-          <dt class="text-ink-muted">CPF</dt><dd>{c.profile.cpf ? formatCpf(c.profile.cpf) : '—'}</dd>
-          <dt class="text-ink-muted">Cliente desde</dt><dd>{fmt(c.user.created_at)}</dd>
-          <dt class="text-ink-muted">Último login</dt><dd>{fmt(c.user.last_sign_in_at)}</dd>
-          <dt class="text-ink-muted">Pedidos</dt><dd>{c.orders.length} · {brl(spent)} em compras pagas</dd>
-        </dl>
-        <h3 class="mt-5 font-sans text-sm font-semibold">Endereços</h3>
-        {c.addresses.length ? (
-          <ul class="mt-2 grid gap-3 sm:grid-cols-2">
-            {c.addresses.map((a) => (
-              <li class:list={['flex flex-col rounded-card border p-3 text-sm', a.is_default ? 'border-agua-dark/50' : 'border-ink/10']}>
-                <div class="flex items-center justify-between gap-2">
-                  <span class="font-medium">{a.label || 'Endereço'}</span>
-                  {a.is_default && <span class="rounded-full bg-agua-dark px-2 py-0.5 text-[10px] font-semibold uppercase text-white">Padrão de entrega</span>}
-                </div>
-                <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[13px]">
-                  <dt class="text-ink-muted">Logradouro</dt><dd>{a.street}{a.complement && ` - ${a.complement}`}</dd>
-                  <dt class="text-ink-muted">Número</dt><dd>{a.number}</dd>
-                  <dt class="text-ink-muted">Bairro</dt><dd>{a.district}</dd>
-                  <dt class="text-ink-muted">Cidade/UF</dt><dd>{a.city}/{a.state}</dd>
-                  <dt class="text-ink-muted">CEP</dt><dd>{a.cep}</dd>
-                </dl>
-                <button type="button" data-copy={addressText(a)} class="mt-3 self-start rounded-card border border-ink/20 px-3 py-1 text-[12px] hover:bg-bone-100">Copiar endereço</button>
-              </li>
+  {/* duas colunas em linhas: Dados ↔ Estado e Pedidos ↔ Histórico ficam com o topo (e a altura) alinhados */}
+  <div class="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <section class="rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Dados cadastrais</h2>
+      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-sans text-sm">
+        <dt class="text-ink-muted">Nome</dt><dd>{name}</dd>
+        <dt class="text-ink-muted">E-mail</dt>
+        <dd class="flex items-center gap-2">
+          <span class="break-all">{c.user.email}</span>
+          {c.user.email && (
+            <button type="button" data-copy-email={c.user.email} class="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-ink/20 text-ink-soft hover:bg-bone-100" aria-label="Copiar e-mail" title="Copiar e-mail">
+              <svg class="copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>
+              <svg class="copied-icon hidden text-agua-dark" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10" /></svg>
+            </button>
+            <span data-copy-email-ok class="hidden text-[12px] text-green-700" role="status">Copiado!</span>
+          )}
+        </dd>
+        <dt class="text-ink-muted">Telefone</dt>
+        <dd class="flex items-center gap-2">
+          <span>{c.profile.phone ? formatPhone(c.profile.phone) : '—'}</span>
+          {wa && (
+            <a href={wa} target="_blank" rel="noopener" class="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-[#25D366] text-white hover:brightness-95" aria-label="Conversar no WhatsApp" title="Conversar no WhatsApp">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z" /></svg>
+            </a>
+          )}
+        </dd>
+        <dt class="text-ink-muted">CPF</dt><dd>{c.profile.cpf ? formatCpf(c.profile.cpf) : '—'}</dd>
+        <dt class="text-ink-muted">Cliente desde</dt><dd>{fmt(c.user.created_at)}</dd>
+        <dt class="text-ink-muted">Último login</dt><dd>{fmt(c.user.last_sign_in_at)}</dd>
+        <dt class="text-ink-muted">Pedidos</dt><dd>{c.orders.length} · {brl(spent)} em compras pagas</dd>
+      </dl>
+      <h3 class="mt-5 font-sans text-sm font-semibold">Endereços</h3>
+      {c.addresses.length ? (
+        <ul class="mt-2 grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-3">
+          {c.addresses.map((a) => (
+            <li class:list={['flex flex-col rounded-card border p-3 text-sm', a.is_default ? 'border-agua-dark/50' : 'border-ink/10']}>
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-medium">{a.label || 'Endereço'}</span>
+                {a.is_default && <span class="rounded-full bg-agua-dark px-2 py-0.5 text-[10px] font-semibold uppercase text-white">Padrão de entrega</span>}
+              </div>
+              <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 text-[13px]">
+                <dt class="text-ink-muted">Logradouro</dt><dd>{a.street}{a.complement && ` - ${a.complement}`}</dd>
+                <dt class="text-ink-muted">Número</dt><dd>{a.number}</dd>
+                <dt class="text-ink-muted">Bairro</dt><dd>{a.district}</dd>
+                <dt class="text-ink-muted">Cidade/UF</dt><dd>{a.city}/{a.state}</dd>
+                <dt class="text-ink-muted">CEP</dt><dd>{formatCep(a.cep)}</dd>
+              </dl>
+              <span class="mt-3 flex items-center gap-2">
+                <button type="button" data-copy={addressText(a)} class="rounded-card border border-ink/20 px-3 py-1 text-[12px] hover:bg-bone-100">Copiar endereço</button>
+                <span data-copy-ok class="hidden text-[12px] text-green-700" role="status">Copiado!</span>
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : <p class="mt-1 text-sm text-ink-muted">Nenhum endereço salvo.</p>}
+    </section>
+    <section class="rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Estado da conta</h2>
+      <p class="mt-2 flex items-center gap-2 text-sm">
+        <span class="text-ink-muted">Estado atual:</span>
+        <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span>
+      </p>
+      {c.reason && c.status !== 'ativo' && <p class="mt-2 text-sm text-ink-soft">Motivo: {c.reason}</p>}
+
+      {canChangeStatus ? (
+      <form method="POST" action="/api/admin/customers" class="mt-4 space-y-3" data-confirm="Alterar o estado da conta?|Desativada ou bloqueada, a pessoa é desconectada e não consegue mais entrar.|Alterar">
+        <input type="hidden" name="acao" value="status" />
+        <input type="hidden" name="id" value={c.user.id} />
+        <fieldset class="space-y-2">
+          <legend class="label">Novo estado</legend>
+          {(['ativo', 'desativado', 'bloqueado'] as CustomerStatus[]).map((s) => (
+            <label class="flex items-start gap-2 text-sm">
+              <input type="radio" name="status" value={s} checked={c.status === s} class="mt-1" />
+              <span><span class="font-medium">{CUSTOMER_STATUS_LABELS[s]}</span><span class="block text-[12px] text-ink-muted">{STATUS_HELP[s]}</span></span>
+            </label>
+          ))}
+        </fieldset>
+        {/* motivo da lista do estado marcado (só o select dele vai junto); "Outro motivo" abre o texto */}
+        <label class="block">
+          <span class="label">Motivo <span class="text-red-600">*</span></span>
+          {(['ativo', 'desativado', 'bloqueado'] as CustomerStatus[]).map((s) => (
+            <select class:list={['field', c.status !== s && 'hidden']} name="motivo" data-motivo={s} required disabled={c.status !== s}>
+              <option value="" selected disabled>Selecione o motivo</option>
+              {CUSTOMER_STATUS_REASONS[s].map((r) => <option value={r}>{r}</option>)}
+              <option value={OTHER_REASON}>Outro motivo</option>
+            </select>
+          ))}
+        </label>
+        <label id="reason-other" class="block hidden">
+          <span class="label">Descreva o motivo <span class="text-red-600">*</span></span>
+          <textarea class="field" name="reason" rows="3" minlength="3" maxlength="500" disabled placeholder="Escrito para o cliente ler (pode ir no e-mail de aviso)"></textarea>
+        </label>
+        <button class="btn-primary w-full">Salvar estado</button>
+      </form>
+      ) : null}
+    </section>
+    <section class="rounded-card border border-ink/10 bg-white p-5">
+      <h2 class="font-display text-lg">Registro de pedidos</h2>
+      <p class="mt-1 text-[12px] text-ink-muted">Todos os pedidos, inclusive não pagos e cancelados — e os feitos sem login com o mesmo e-mail.</p>
+      {c.orders.length ? (
+        <table class="mt-3 w-full text-left text-sm">
+          <thead class="text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+            <tr><th class="py-2">Pedido</th><th class="px-2 py-2">Situação</th><th class="whitespace-nowrap py-2 text-right">Total</th></tr>
+          </thead>
+          <tbody>
+            {c.orders.map((o) => (
+              <tr class="border-t border-ink/10">
+                <td class="py-2">
+                  <a href={`/admin/pedidos/${o.order_number}`} class="text-agua-dark underline">#{o.order_number}</a>
+                  <span class="block text-[12px] text-ink-muted">{fmt(o.created_at)} · {o.source === 'caixa' ? 'Caixa' : 'Site'}{!o.user_id && ' · sem login'}</span>
+                </td>
+                <td class="px-2 py-2"><span class:list={['inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight', orderStatusBadge(o.status, o.source)]}>{orderStatusLabel(o.status, o.source)}</span></td>
+                <td class="whitespace-nowrap py-2 text-right">{brl(o.total_cents)}</td>
+              </tr>
             ))}
-          </ul>
-        ) : <p class="mt-1 text-sm text-ink-muted">Nenhum endereço salvo.</p>}
-      </section>
-
-      <section class="rounded-card border border-ink/10 bg-white p-5">
-        <h2 class="font-display text-lg">Histórico de compras</h2>
-        {purchases.length ? (
-          <ul class="mt-3 divide-y divide-ink/10 text-sm">
-            {purchases.map(({ order, it }) => (
-              <li class="flex items-baseline justify-between gap-3 py-2">
-                <span class="min-w-0">
-                  <span class="block truncate">{it.quantity}× {it.product_name}</span>
-                  <span class="block text-[12px] text-ink-muted">#{order.order_number} · {fmt(order.created_at)}</span>
-                </span>
-                <span class="shrink-0">{brl(it.unit_price_cents * it.quantity)}</span>
-              </li>
-            ))}
-          </ul>
-        ) : <p class="mt-2 text-sm text-ink-muted">Nenhuma compra paga.</p>}
-      </section>
-
-      <section class="rounded-card border border-ink/10 bg-white p-5">
-        <h2 class="font-display text-lg">Registro de pedidos</h2>
-        <p class="mt-1 text-[12px] text-ink-muted">Todos os pedidos, inclusive não pagos e cancelados — e os feitos sem login com o mesmo e-mail.</p>
-        {c.orders.length ? (
-          <table class="mt-3 w-full table-fixed text-left text-sm">
-            <thead class="text-[11px] uppercase tracking-[0.1em] text-ink-muted">
-              <tr><th class="py-2">Pedido</th><th class="w-40 py-2">Situação</th><th class="w-24 py-2 text-right">Total</th></tr>
-            </thead>
-            <tbody>
-              {c.orders.map((o) => (
-                <tr class="border-t border-ink/10">
-                  <td class="py-2">
-                    <a href={`/admin/pedidos/${o.order_number}`} class="text-agua-dark underline">#{o.order_number}</a>
-                    <span class="block text-[12px] text-ink-muted">{fmt(o.created_at)} · {o.source === 'caixa' ? 'Caixa' : 'Site'}{!o.user_id && ' · sem login'}</span>
-                  </td>
-                  <td class="py-2"><span class:list={['inline-block rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight', orderStatusBadge(o.status, o.source)]}>{orderStatusLabel(o.status, o.source)}</span></td>
-                  <td class="py-2 text-right">{brl(o.total_cents)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : <p class="mt-2 text-sm text-ink-muted">Nenhum pedido.</p>}
-      </section>
-    </div>
-
-    <aside class="space-y-6">
-      <section class="rounded-card border border-ink/10 bg-white p-5">
-        <h2 class="font-display text-lg">Estado da conta</h2>
-        <p class="mt-2">
-          <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span>
-        </p>
-        {c.reason && c.status !== 'ativo' && <p class="mt-2 text-sm text-ink-soft">Motivo: {c.reason}</p>}
-
-        {canChangeStatus ? (
-        <form method="POST" action="/api/admin/customers" class="mt-4 space-y-3" data-confirm="Alterar o estado da conta?|Desativada ou bloqueada, a pessoa é desconectada e não consegue mais entrar.|Alterar">
-          <input type="hidden" name="acao" value="status" />
-          <input type="hidden" name="id" value={c.user.id} />
-          <fieldset class="space-y-2">
-            <legend class="label">Novo estado</legend>
-            {(['ativo', 'desativado', 'bloqueado'] as CustomerStatus[]).map((s) => (
-              <label class="flex items-start gap-2 text-sm">
-                <input type="radio" name="status" value={s} checked={c.status === s} class="mt-1" />
-                <span><span class="font-medium">{CUSTOMER_STATUS_LABELS[s]}</span><span class="block text-[12px] text-ink-muted">{STATUS_HELP[s]}</span></span>
-              </label>
-            ))}
-          </fieldset>
-          {/* motivo da lista do estado marcado (só o select dele vai junto); "Outro motivo" abre o texto */}
-          <label class="block">
-            <span class="label">Motivo <span class="text-red-600">*</span></span>
-            {(['ativo', 'desativado', 'bloqueado'] as CustomerStatus[]).map((s) => (
-              <select class:list={['field', c.status !== s && 'hidden']} name="motivo" data-motivo={s} required disabled={c.status !== s}>
-                <option value="" selected disabled>Selecione o motivo</option>
-                {CUSTOMER_STATUS_REASONS[s].map((r) => <option value={r}>{r}</option>)}
-                <option value={OTHER_REASON}>Outro motivo</option>
-              </select>
-            ))}
-          </label>
-          <label id="reason-other" class="block hidden">
-            <span class="label">Descreva o motivo <span class="text-red-600">*</span></span>
-            <textarea class="field" name="reason" rows="3" minlength="3" maxlength="500" disabled placeholder="Escrito para o cliente ler (pode ir no e-mail de aviso)"></textarea>
-          </label>
-          <button class="btn-primary w-full">Salvar estado</button>
-        </form>
-        ) : (
-          <p class="mt-3 text-[12px] text-ink-muted">Seu cargo não permite alterar o estado da conta.</p>
-        )}
-      </section>
-
+          </tbody>
+        </table>
+      ) : <p class="mt-2 text-sm text-ink-muted">Nenhum pedido.</p>}
+    </section>
+    {/* histórico: só para quem pode alterar o estado */}
+    {canChangeStatus && (
       <section class="rounded-card border border-ink/10 bg-white p-5">
         <h2 class="font-display text-lg">Histórico da conta</h2>
         {c.log.length ? (
@@ -198,7 +176,7 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
           </ul>
         ) : <p class="mt-2 text-sm text-ink-muted">Nenhuma alteração registrada.</p>}
       </section>
-    </aside>
+    )}
   </div>
 </AdminLayout>
 
@@ -228,7 +206,7 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
       const ok = b.parentElement!.querySelector<HTMLElement>('[data-copy-email-ok]')!;
       try {
         await copyText(b.dataset.copyEmail ?? '');
-        ok.textContent = 'Copiado';
+        ok.textContent = 'Copiado!';
       } catch {
         ok.textContent = 'Não deu para copiar';
       }
@@ -266,16 +244,18 @@ const STATUS_HELP: Record<CustomerStatus, string> = {
     sync();
   }
 
-  // "Copiar endereço": texto pronto para colar em sistemas de envio
+  // "Copiar endereço": texto pronto para colar em sistemas de envio; "Copiado!" verde por 2 s
   document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((b) =>
     b.addEventListener('click', async () => {
+      const ok = b.parentElement!.querySelector<HTMLElement>('[data-copy-ok]')!;
       try {
         await copyText(b.dataset.copy ?? '');
-        b.textContent = 'Copiado ✓';
+        ok.textContent = 'Copiado!';
       } catch {
-        b.textContent = 'Não deu para copiar';
+        ok.textContent = 'Não deu para copiar';
       }
-      setTimeout(() => (b.textContent = 'Copiar endereço'), 2000);
+      ok.classList.remove('hidden');
+      setTimeout(() => ok.classList.add('hidden'), 2000);
     }),
   );
 </script>

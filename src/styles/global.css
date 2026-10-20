@@ -660,6 +660,12 @@ html.tema-escuro .bg-sky-100 { background-color: rgb(12 74 110 / 0.6); }
 html.tema-escuro .bg-purple-100 { background-color: rgb(88 28 135 / 0.6); }
 html.tema-escuro .text-sky-800 { color: rgb(125 211 252); }
 html.tema-escuro .text-purple-800 { color: rgb(216 180 254); }
+html.tema-escuro .bg-orange-100 { background-color: rgb(124 45 18 / 0.55); }
+html.tema-escuro .text-orange-800 { color: rgb(253 186 116); }
+html.tema-escuro .bg-yellow-100 { background-color: rgb(113 63 18 / 0.55); }
+html.tema-escuro .text-yellow-800 { color: rgb(253 224 71); }
+html.tema-escuro .bg-blue-100 { background-color: rgb(30 58 138 / 0.6); }
+html.tema-escuro .text-blue-800 { color: rgb(147 197 253); }
 /* etiquetas fortes (Entregue, Concluída do Caixa) e canal (Venda online/no caixa) */
 html.tema-escuro .rounded-full.bg-green-600.text-white { background-color: rgb(22 101 52 / 0.85); color: rgb(187 247 208); }
 html.tema-escuro .bg-blush-light { background-color: rgb(76 29 149 / 0.55); }

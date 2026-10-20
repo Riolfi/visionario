@@ -123,13 +123,15 @@ export const moneyToCents = (masked: string) => Number(masked.replace(/\D/g, '')
  * entregue/concluída = verde cheio · cancelado/não pago = vermelho.
  */
 export function orderStatusBadge(status: string, source: 'web' | 'caixa' = 'web'): string {
-  if (status === 'paid') return source === 'caixa' ? 'bg-green-600 text-white' : 'bg-green-100 text-green-800';
+  // Pago laranja · Em separação amarelo · Enviado azul · Entregue verde · Cancelado vermelho
+  // (Caixa: "Concluída" já é o fim da venda, verde forte; aguardando pagamento, neutro)
+  if (status === 'paid') return source === 'caixa' ? 'bg-green-600 text-white' : 'bg-orange-100 text-orange-800';
   return (
     {
-      pending: 'bg-amber-100 text-amber-800',
-      separating: 'bg-sky-100 text-sky-800',
-      shipped: 'bg-purple-100 text-purple-800',
-      delivered: 'bg-green-600 text-white',
+      pending: 'bg-bone-200 text-ink-soft',
+      separating: 'bg-yellow-100 text-yellow-800',
+      shipped: 'bg-blue-100 text-blue-800',
+      delivered: 'bg-green-100 text-green-800',
       failed: 'bg-red-100 text-red-800',
       cancelled: 'bg-red-100 text-red-800',
     } as Record<string, string>

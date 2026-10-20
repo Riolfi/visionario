@@ -27,6 +27,7 @@ const ERROS: Record<string, string> = {
   retrocesso: 'O status só avança: não dá para voltar a um status anterior.',
   final: 'Pedido entregue ou cancelado não muda mais de status.',
   igual: 'Escolha um status diferente do atual.',
+  migracao: 'O banco ainda não aceita este status. Rode a migration 0024 (supabase/migrations/0024_separating_cancel_request.sql) no Supabase e tente de novo.',
 };
 // só os próximos status da linha do tempo (cancelar tem botão próprio); final = travado
 const isFinal = FINAL_STATUSES.includes(order.status);
@@ -171,6 +172,7 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
         class="rounded-card border border-ink/10 bg-white p-5"
         data-current={order.status}
         data-email={order.customer_email ?? ''}
+        data-unverified={!order.mp_payment_id || order.mp_payment_id.startsWith('SIMULADO') ? '1' : undefined}
       >
         <h2 class="font-display text-lg">Atualizar status</h2>
         <input type="hidden" name="order_number" value={order.order_number} />
@@ -462,6 +464,17 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
       const ok = await confirmDialog({
         title: 'Aprovar pagamento manualmente?',
         message: 'Confirma a aprovação manual deste pagamento sem a validação do gateway?',
+        confirmLabel: 'Confirmar',
+        cancelLabel: 'Voltar',
+        tone: 'primary',
+      });
+      if (!ok) return;
+    }
+    // pagamento que o gateway não confirmou (simulado/sem id) indo para Em separação
+    if (statusSel?.value === 'separating' && current !== 'separating' && statusForm.dataset.unverified) {
+      const ok = await confirmDialog({
+        title: 'Pagamento sem confirmação',
+        message: 'Confirma a aprovação manual deste pagamento sem a validação de recebimento?',
         confirmLabel: 'Confirmar',
         cancelLabel: 'Voltar',
         tone: 'primary',

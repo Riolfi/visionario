@@ -43,8 +43,10 @@ export const POST: APIRoute = async ({ request, redirect }) => {
     trackingCode: withTracking ? trackingCode : undefined,
   });
   if (!order) {
-    // falta de estoque ao marcar como pago: mostra o motivo
-    return back(`erro=update${error && /estoque/i.test(error) ? '&motivo=estoque' : ''}`);
+    // falta de estoque ao marcar como pago, ou banco sem a migration do status
+    const motivo = error && /estoque/i.test(error) ? '&motivo=estoque' : error && /status_check/i.test(error) ? '&motivo=migracao' : '';
+    if (!motivo) console.error('[admin/orders] status não mudou:', error);
+    return back(`erro=update${motivo}`);
   }
 
   if (notify) {

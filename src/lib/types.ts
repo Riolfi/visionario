@@ -174,6 +174,7 @@ export interface Order {
   delivered_at?: string | null;
   return_requested_at?: string | null;
   return_reason?: string | null;
+  return_completed_at?: string | null;
   mp_payment_id: string | null;
   tracking_code: string | null;
   /** origem do pedido: 'web' (loja online) ou 'caixa' (venda de balcão). */

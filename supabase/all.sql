@@ -1517,3 +1517,13 @@ $$;
 
 revoke execute on function public.change_order_status(text, text, text) from public, anon, authenticated;
 grant execute on function public.change_order_status(text, text, text) to service_role;
+
+-- =============================================================================
+-- 0026_return_completed.sql
+-- =============================================================================
+-- =============================================================================
+-- Devolução concluída: quando a loja recebeu o produto e estornou o valor.
+-- O pedido vira Cancelado (o estoque volta pelo change_order_status).
+-- Reexecutável. Rode no SQL Editor depois da 0025.
+-- =============================================================================
+alter table public.orders add column if not exists return_completed_at timestamptz;

@@ -8,42 +8,69 @@ const brandName = Astro.locals.brand.name;
 
 <LegalLayout
   title="Política de Trocas e Devoluções"
-  description={`Como solicitar troca, devolução ou reembolso de produtos comprados na ${brandName}, conforme o Código de Defesa do Consumidor.`}
-  updated="29 de agosto de 2026"
+  description={`Como cancelar, devolver ou trocar produtos comprados na ${brandName}, conforme o Código de Defesa do Consumidor.`}
+  updated="20 de outubro de 2026"
 >
-  <h2>1. Direito de arrependimento</h2>
+  <h2>1. Cancelamento antes do envio</h2>
   <p>
-    Conforme o art. 49 do Código de Defesa do Consumidor, você pode desistir da compra em até
-    <strong>7 (sete) dias corridos</strong> a partir do recebimento do produto, sem necessidade
-    de justificativa. Nesse caso, devolvemos o valor integral pago, incluindo o frete.
+    Enquanto o pedido estiver <strong>Aguardando pagamento</strong>, <strong>Pago</strong> ou
+    <strong>Em separação</strong>, você mesmo cancela em <a href="/conta/pedidos">Minha conta › Pedidos</a>,
+    escolhendo o motivo. O cancelamento é na hora: se o pagamento já tiver sido aprovado, o valor é
+    estornado automaticamente para o mesmo meio de pagamento e você recebe a confirmação por e-mail.
   </p>
 
-  <h2>2. Troca por defeito</h2>
+  <h2>2. Depois do envio</h2>
   <p>
-    Produtos com defeito de fabricação, avaria no transporte ou divergência em relação ao pedido
-    podem ser trocados em até <strong>30 dias</strong> (produtos não duráveis) a partir do
-    recebimento. Entre em contato com fotos do item e da embalagem.
+    Com o pedido <strong>Enviado</strong>, não é mais possível cancelar pelo site. Se não quiser receber,
+    você pode recusar a entrega ou falar com a gente; quando o pacote voltar, devolvemos o valor. Depois de
+    <strong>Entregue</strong>, vale a devolução descrita abaixo.
   </p>
 
-  <h2>3. Produtos que não aceitamos de volta</h2>
-  <ul>
-    <li>Itens abertos ou com lacre rompido, salvo em caso de defeito;</li>
-    <li>Produtos com sinais de uso além da simples avaliação;</li>
-    <li>Itens sem a embalagem original ou nota fiscal.</li>
-  </ul>
-
-  <h2>4. Como solicitar</h2>
-  <ul>
-    <li>Envie um e-mail para <a href={`mailto:${email}`}>{email}</a> ou mensagem no WhatsApp;</li>
-    <li>Informe o número do pedido e o motivo;</li>
-    <li>Aguarde o código de postagem reversa (custeado por nós em caso de defeito ou arrependimento).</li>
-  </ul>
-
-  <h2>5. Prazos de reembolso</h2>
+  <h2>3. Direito de arrependimento (7 dias)</h2>
   <p>
-    Após recebermos e conferirmos o produto, o estorno é feito em até 10 dias úteis. Para pagamentos
-    via Pix, o valor é devolvido na conta de origem; para cartão de crédito, o estorno aparece em
-    até duas faturas, conforme o prazo da operadora.
+    Conforme o art. 49 do Código de Defesa do Consumidor, você pode desistir da compra feita pelo site em até
+    <strong>7 (sete) dias corridos</strong> a partir do recebimento, sem precisar justificar. Peça em
+    <a href="/conta/pedidos">Minha conta › Pedidos</a>, no botão <strong>Solicitar devolução</strong>
+    (ele aparece no pedido entregue enquanto o prazo estiver valendo). Devolvemos o valor integral, incluindo o
+    frete, e a postagem de volta é por nossa conta.
+  </p>
+
+  <h2>4. Produto com defeito ou diferente do pedido</h2>
+  <p>
+    Defeito de fabricação, avaria no transporte ou produto diferente do anunciado: nos primeiros 7 dias, use o
+    <strong>Solicitar devolução</strong> com o motivo correspondente; depois disso, fale com a gente em até
+    <strong>30 dias</strong> (produtos não duráveis) ou <strong>90 dias</strong> (produtos duráveis) do
+    recebimento, com fotos do item e da embalagem. Você escolhe entre troca, outro produto de mesmo valor ou o
+    reembolso.
+  </p>
+
+  <h2>5. Condições do produto devolvido</h2>
+  <ul>
+    <li>Pode abrir a embalagem e experimentar para conferir — isso não impede a devolução;</li>
+    <li>O produto deve voltar sem sinais de uso além dessa conferência, com etiquetas e acessórios;</li>
+    <li>Sempre que possível, na embalagem original.</li>
+  </ul>
+
+  <h2>6. Como acompanhar</h2>
+  <ul>
+    <li>Depois do pedido de devolução, combinamos a coleta ou o código de postagem reversa;</li>
+    <li>O status e as mensagens ficam em <a href="/conta/pedidos">Minha conta › Pedidos</a>;</li>
+    <li>Dúvidas: <a href={`mailto:${email}`}>{email}</a> ou WhatsApp, informando o número do pedido.</li>
+  </ul>
+
+  <h2>7. Prazos de reembolso</h2>
+  <p>
+    <strong>Cancelamento antes do envio:</strong> o estorno é pedido na hora do cancelamento.
+    <strong>Devolução:</strong> o estorno é feito assim que o produto chega e é conferido, em até 10 dias úteis.
+    No Pix, o valor volta para a conta de origem em instantes; no cartão de crédito, aparece como crédito em até
+    duas faturas, conforme a operadora.
+  </p>
+
+  <h2>8. Compras na loja física</h2>
+  <p>
+    O direito de arrependimento do art. 49 vale para compras fora do estabelecimento (site, telefone). Compras
+    feitas no balcão podem ser trocadas ou devolvidas na própria loja, com o comprovante, em caso de defeito ou
+    conforme combinado no momento da compra.
   </p>
 
   <p>

@@ -52,7 +52,11 @@ const msg = MSG[q.has('cancelamento') ? `cancelamento=${q.get('cancelamento')}` 
   {msg && (
     <p class:list={['mt-4 rounded-card border px-3 py-2 text-sm', msg[0] === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{msg[1]}</p>
   )}
-  {order.return_requested_at && (
+  {order.return_completed_at ? (
+    <p class="mt-4 rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+      Devolução concluída em {fmtDay(order.return_completed_at)}. O valor foi estornado para o mesmo meio de pagamento.
+    </p>
+  ) : order.return_requested_at && (
     <p class="mt-4 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
       Devolução solicitada em {fmtDay(order.return_requested_at)}. A loja entra em contato para combinar a coleta e o reembolso.
     </p>

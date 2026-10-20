@@ -19,6 +19,8 @@ interface StatusCopy {
 /** extra.refundCents: valor estornado no cancelamento (null = nada foi cobrado) */
 export interface StatusExtra {
   refundCents?: number | null;
+  /** cancelado por devolução concluída (o cliente devolveu o produto) */
+  returned?: boolean;
 }
 
 function statusCopy(order: Order, status: OrderStatus, extra: StatusExtra = {}): StatusCopy {
@@ -68,6 +70,17 @@ function statusCopy(order: Order, status: OrderStatus, extra: StatusExtra = {}):
         body: `Olá, ${first}. Não conseguimos confirmar o pagamento do pedido <strong>${n}</strong>. Nenhum valor foi cobrado. Você pode tentar novamente a qualquer momento.`,
       };
     case 'cancelled':
+      if (extra.returned) {
+        return {
+          subject: `Devolução concluída — pedido ${n} — ${env.brandName}`,
+          headline: 'Devolução concluída',
+          body: `Olá, ${first}. Recebemos o produto devolvido do pedido <strong>${n}</strong>.${
+            extra.refundCents
+              ? ` O valor de <strong>${brl(extra.refundCents)}</strong> foi estornado para o mesmo meio de pagamento: no Pix volta em instantes; no cartão, aparece como crédito em até 2 faturas, conforme o banco.`
+              : ' Se algum valor foi cobrado, o estorno é feito pelo mesmo meio de pagamento.'
+          }`,
+        };
+      }
       return {
         subject: `Pedido ${n} cancelado — ${env.brandName}`,
         headline: 'Pedido cancelado',

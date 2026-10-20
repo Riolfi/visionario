@@ -45,6 +45,7 @@ function rowToOrder(row: any, items: any[]): Order {
     delivered_at: row.delivered_at ?? null,
     return_requested_at: row.return_requested_at ?? null,
     return_reason: row.return_reason ?? null,
+    return_completed_at: row.return_completed_at ?? null,
     mp_payment_id: row.mp_payment_id,
     tracking_code: row.tracking_code ?? null,
     source: row.source === 'caixa' ? 'caixa' : 'web',

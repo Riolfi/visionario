@@ -113,11 +113,11 @@
     {
       "id": "e1000000-0000-4000-8000-000000000001",
       "slug": "bucket-hat-dupla-face-verde-musgo",
-      "name": "Bucket Hat Dupla Face Verde Musgo",
+      "name": "Bucket Hat Dupla Face Preto/Limão",
       "category_slug": "buckets-e-gorros",
-      "short_description": "Dois chapéus em um: verde musgo de um lado, estampado do outro.",
-      "description": "Bucket de sarja pesada com aba média que não desaba na primeira chuva. Vira do avesso e vira outro chapéu — um lado liso verde musgo, o outro estampado. Costura reforçada na aba e tamanho único com folga.",
-      "ingredients": "100% algodão (sarja 10 oz). Forro estampado em algodão.",
+      "short_description": "Dois chapéus em um: preto de um lado, verde-limão do outro.",
+      "description": "Bucket de sarja pesada com aba média que não desaba na primeira chuva. Vira do avesso e vira outro chapéu — um lado preto liso, o outro verde-limão. Costura reforçada na aba e tamanho único com folga.",
+      "ingredients": "100% algodão (sarja 10 oz). Forro verde-limão em algodão.",
       "how_to_use": "Lave à mão com água fria. Seque à sombra, na forma da cabeça.",
       "price_cents": 11900,
       "compare_at_price_cents": null,
@@ -127,17 +127,16 @@
       "rating": 4.8,
       "reviews_count": 61,
       "images": [
-        "https://images.unsplash.com/photo-1627683566270-bf7e75dfec0a",
-        "https://images.unsplash.com/photo-1627681828965-048a32cdf16f"
+        "/images/produtos/bucket-hat-dupla-face-preto-limao/principal.webp"
       ]
     },
     {
       "id": "e1000000-0000-4000-8000-000000000002",
       "slug": "gorro-beanie-canelado-laranja",
-      "name": "Gorro Beanie Canelado Laranja",
+      "name": "Gorro Beanie Canelado Verde-Limão",
       "category_slug": "buckets-e-gorros",
-      "short_description": "Canelado grosso, barra dobrada e laranja de sinalização.",
-      "description": "Beanie de malha canelada com barra dupla dobrável — usa curto em cima da orelha ou desdobrado no frio de verdade. Laranja vivo que aparece de longe na foto.",
+      "short_description": "Canelado grosso, barra dobrada e verde-limão que aparece de longe.",
+      "description": "Beanie de malha canelada com barra dupla dobrável — usa curto em cima da orelha ou desdobrado no frio de verdade. Verde-limão que aparece de longe na foto.",
       "ingredients": "Acrílico macio antipilling.",
       "how_to_use": "Lave à mão ou no ciclo delicado. Não use secadora.",
       "price_cents": 6900,
@@ -148,15 +147,16 @@
       "rating": 4.7,
       "reviews_count": 88,
       "images": [
-        "https://images.unsplash.com/photo-1511500118080-275313ec90a1"
+        "/images/produtos/gorro-beanie-canelado-verde-limao/principal.webp",
+        "/images/produtos/gorro-beanie-canelado-verde-limao/alternativa.webp"
       ]
     },
     {
       "id": "e1000000-0000-4000-8000-000000000003",
       "slug": "gorro-pompom-amarelo",
-      "name": "Gorro Pompom Amarelo",
+      "name": "Gorro Pompom Roxo",
       "category_slug": "buckets-e-gorros",
-      "short_description": "Tricô trançado e pompom fofo. Amarelo gema.",
+      "short_description": "Tricô trançado e pompom fofo. Roxo intenso.",
       "description": "Gorro de tricô com tranças em relevo e pompom grande. Quentinho sem esquentar demais, com elastano na barra pra não sair da cabeça.",
       "ingredients": "Acrílico e lã (70/30). Pompom em fio acrílico.",
       "how_to_use": "Lave à mão em água fria e seque deitado.",
@@ -168,7 +168,8 @@
       "rating": 4.6,
       "reviews_count": 27,
       "images": [
-        "https://images.unsplash.com/photo-1576529598261-96e376f6aabb"
+        "/images/produtos/gorro-pompom-roxo/principal.webp",
+        "/images/produtos/gorro-pompom-roxo/alternativa.webp"
       ]
     },
     {
@@ -188,16 +189,17 @@
       "rating": 4.8,
       "reviews_count": 104,
       "images": [
-        "https://images.unsplash.com/photo-1521369909029-2afed882baee"
+        "/images/produtos/bone-dad-hat-lavado-grafite/principal.webp",
+        "/images/produtos/bone-dad-hat-lavado-grafite/alternativa.webp"
       ]
     },
     {
       "id": "e1000000-0000-4000-8000-000000000005",
       "slug": "bone-dad-hat-amarelo-gema",
-      "name": "Boné Dad Hat Amarelo Gema",
+      "name": "Boné Dad Hat Roxo Lavado",
       "category_slug": "bones",
-      "short_description": "O mesmo dad hat, em amarelo que liga o look.",
-      "description": "Copa baixa desestruturada, aba curva e fecho ajustável. Amarelo forte que combina com preto, jeans e cinza — ou seja, com o armário inteiro.",
+      "short_description": "O mesmo dad hat, em roxo lavado que liga o look.",
+      "description": "Copa baixa desestruturada, aba curva e fecho ajustável. Roxo lavado que combina com preto, jeans e cinza — ou seja, com o armário inteiro.",
       "ingredients": "100% algodão. Fivela em metal.",
       "how_to_use": "Lave à mão com sabão neutro. Não torça.",
       "price_cents": 8900,
@@ -208,7 +210,7 @@
       "rating": 4.6,
       "reviews_count": 39,
       "images": [
-        "https://images.unsplash.com/photo-1645266729222-17cd32e06fd0"
+        "/images/produtos/bone-dad-hat-roxo-lavado/principal.webp"
       ]
     },
     {
@@ -228,17 +230,18 @@
       "rating": 4.5,
       "reviews_count": 33,
       "images": [
-        "https://images.unsplash.com/photo-1678721938524-1a3ee398de2a"
+        "/images/produtos/bone-trucker-preto-e-branco/principal.webp",
+        "/images/produtos/bone-trucker-preto-e-branco/alternativa.webp"
       ]
     },
     {
       "id": "e1000000-0000-4000-8000-000000000007",
       "slug": "bone-trucker-azul-royal",
-      "name": "Boné Trucker Azul Royal",
+      "name": "Boné Trucker Preto e Limão",
       "category_slug": "bones",
-      "short_description": "Trucker todo azul royal com etiqueta de couro na aba.",
-      "description": "Azul royal do painel à tela, aba reta com etiqueta aplicada e snapback. Pra quem quer um boné que seja o ponto de cor do look.",
-      "ingredients": "Poliéster e espuma. Etiqueta em couro sintético.",
+      "short_description": "Painel preto, tela e aba de baixo em verde-limão.",
+      "description": "Painel frontal preto em espuma, tela verde-limão respirável, aba reta com o lado de baixo também em limão e fecho snapback. Pra quem quer um boné que seja o ponto de cor do look.",
+      "ingredients": "Poliéster e espuma.",
       "how_to_use": "Limpe com pano úmido e sabão neutro.",
       "price_cents": 9900,
       "compare_at_price_cents": 11900,
@@ -248,7 +251,7 @@
       "rating": 4.7,
       "reviews_count": 21,
       "images": [
-        "https://images.unsplash.com/photo-1620231109648-302d034cb29b"
+        "/images/produtos/bone-trucker-preto-e-limao/principal.webp"
       ]
     },
     {
@@ -268,7 +271,8 @@
       "rating": 4.7,
       "reviews_count": 46,
       "images": [
-        "https://images.unsplash.com/photo-1789110855224-5598c2c7de1a"
+        "/images/produtos/pochete-transparente-roxa/principal.webp",
+        "/images/produtos/pochete-transparente-roxa/alternativa.webp"
       ]
     },
     {
@@ -288,8 +292,8 @@
       "rating": 4.8,
       "reviews_count": 72,
       "images": [
-        "https://images.unsplash.com/photo-1620786514684-ff35b5aae55e",
-        "https://images.unsplash.com/photo-1789110854460-18562d439e1c"
+        "/images/produtos/bolsa-transversal-preta-nylon/principal.webp",
+        "/images/produtos/bolsa-transversal-preta-nylon/alternativa.webp"
       ]
     },
     {
@@ -309,8 +313,8 @@
       "rating": 4.6,
       "reviews_count": 58,
       "images": [
-        "https://images.unsplash.com/photo-1574365569389-a10d488ca3fb",
-        "https://images.unsplash.com/photo-1630381260512-e3fe55c11973"
+        "/images/produtos/tote-bag-algodao-cru/principal.webp",
+        "/images/produtos/tote-bag-algodao-cru/alternativa.webp"
       ]
     },
     {
@@ -330,16 +334,17 @@
       "rating": 4.7,
       "reviews_count": 19,
       "images": [
-        "https://images.unsplash.com/photo-1680039211156-66c721b87625"
+        "/images/produtos/mochila-minimal-preta/principal.webp",
+        "/images/produtos/mochila-minimal-preta/alternativa.webp"
       ]
     },
     {
       "id": "e1000000-0000-4000-8000-000000000012",
       "slug": "kit-3-meias-cano-alto-listradas",
-      "name": "Kit 3 Meias Cano Alto Listradas",
+      "name": "Kit 3 Meias Cano Alto (Preta, Roxa e Limão)",
       "category_slug": "meias",
-      "short_description": "Três pares listrados, cano alto e punho que não afrouxa.",
-      "description": "Meias de algodão penteado com cano alto, listras coloridas e punho canelado com elastano. Vem um par de cada combinação de cor. Tamanho 38–43.",
+      "short_description": "Três pares de cano alto: preto, roxo e verde-limão.",
+      "description": "Meias de algodão penteado com cano alto e punho canelado com elastano. Vem um par preto, um roxo e um verde-limão. Tamanho 38–43.",
       "ingredients": "Algodão penteado, poliamida e elastano.",
       "how_to_use": "Lave do avesso, água fria. Não use alvejante.",
       "price_cents": 7900,
@@ -350,8 +355,8 @@
       "rating": 4.9,
       "reviews_count": 131,
       "images": [
-        "https://images.unsplash.com/photo-1580973757787-e22cdecb9cd5",
-        "https://images.unsplash.com/photo-1585499583264-491df5142e83"
+        "/images/produtos/kit-3-meias-cano-alto/principal.webp",
+        "/images/produtos/kit-3-meias-cano-alto/alternativa.webp"
       ]
     },
     {
@@ -463,7 +468,7 @@
       "name": "Kit Rolê Completo",
       "category_slug": "kits-prontos",
       "short_description": "Dad hat + transversal + kit 3 meias. Visual fechado com desconto.",
-      "description": "O combo pra sair de casa pronto: Boné Dad Hat Lavado Grafite, Bolsa Transversal Preta Nylon e Kit 3 Meias Cano Alto Listradas. Sai mais barato que comprar separado.",
+      "description": "O combo pra sair de casa pronto: Boné Dad Hat Lavado Grafite, Bolsa Transversal Preta Nylon e Kit 3 Meias Cano Alto (Preta, Roxa e Limão). Sai mais barato que comprar separado.",
       "ingredients": "Ver itens individuais.",
       "how_to_use": "Ver cuidados de cada item.",
       "price_cents": 27900,
@@ -482,8 +487,8 @@
       "slug": "kit-dupla-de-bones",
       "name": "Kit Dupla de Bonés",
       "category_slug": "kits-prontos",
-      "short_description": "Dois dad hats (grafite + amarelo gema) com desconto.",
-      "description": "Um boné neutro e um que liga o look: Dad Hat Lavado Grafite e Dad Hat Amarelo Gema. Bom pra dividir com alguém — ou não.",
+      "short_description": "Dois dad hats (grafite + roxo lavado) com desconto.",
+      "description": "Um boné neutro e um que liga o look: Dad Hat Lavado Grafite e Dad Hat Roxo Lavado. Bom pra dividir com alguém — ou não.",
       "ingredients": "Ver itens individuais.",
       "how_to_use": "Ver cuidados de cada item.",
       "price_cents": 15900,

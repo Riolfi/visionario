@@ -541,33 +541,50 @@ export async function changeOrderStatus(
   return { order: await setOrderStatus(orderNumber, status, opts) };
 }
 
+/** Linha do registro de caixa: venda (entrada) ou cancelamento (saída). */
+export interface CaixaEntry {
+  kind: 'venda' | 'cancelamento';
+  at: string;
+  order_number: string;
+  operator_id: string | null;
+  payment_method: PaymentMethod | null;
+  cents: number; // positivo na venda, negativo no cancelamento
+  reason: string;
+}
+
+/** AAAA-MM-DD de hoje em São Paulo. */
+export const todaySP = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+
 /**
- * Caixa do dia (fuso de São Paulo): entradas = vendas do Caixa feitas hoje
- * (mesmo as canceladas depois); saídas = cancelamentos feitos hoje (o valor
- * devolvido no balcão). Assim cada dia fecha certo, mesmo quando a venda é de
- * um dia e o cancelamento de outro.
+ * Registro de caixa de um período (dias de São Paulo, inclusivos):
+ * entradas = vendas do Caixa feitas no período (mesmo as canceladas depois);
+ * saídas = cancelamentos feitos no período (o valor devolvido no balcão).
+ * Assim cada dia fecha certo, mesmo com venda num dia e cancelamento noutro.
+ * operatorId filtra pelas vendas daquela pessoa.
  */
-export async function caixaDay(): Promise<{
-  sales: { count: number; cents: number };
-  refunds: { order_number: string; cents: number; at: string; reason: string }[];
-} | null> {
+export async function caixaLedger(opts: { from: string; to: string; operatorId?: string | null }): Promise<CaixaEntry[] | null> {
   const sb = supabaseAdmin();
   if (!hasSupabase || !sb) return null;
-  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
-  const start = new Date(`${day}T00:00:00-03:00`).toISOString(); // Brasil sem horário de verão desde 2019
-  const { data, error } = await sb
+  // Brasil sem horário de verão desde 2019: -03:00 fixo
+  const start = new Date(`${opts.from}T00:00:00-03:00`).toISOString();
+  const end = new Date(`${opts.to}T23:59:59.999-03:00`).toISOString();
+  let q = sb
     .from('orders')
-    .select('order_number, total_cents, status, created_at, cancelled_at, cancel_reason')
+    .select('order_number, total_cents, status, created_at, cancelled_at, cancel_reason, operator_id, payment_method')
     .eq('source', 'caixa')
-    .or(`created_at.gte.${start},cancelled_at.gte.${start}`);
+    .or(`and(created_at.gte.${start},created_at.lte.${end}),and(cancelled_at.gte.${start},cancelled_at.lte.${end})`);
+  if (opts.operatorId) q = q.eq('operator_id', opts.operatorId);
+  const { data, error } = await q;
   if (error) return null;
-  const rows = data ?? [];
-  const today = rows.filter((r) => r.created_at >= start);
-  return {
-    sales: { count: today.length, cents: today.reduce((t, r) => t + r.total_cents, 0) },
-    refunds: rows
-      .filter((r) => r.status === 'cancelled' && r.cancelled_at && r.cancelled_at >= start)
-      .map((r) => ({ order_number: r.order_number, cents: r.total_cents, at: r.cancelled_at!, reason: r.cancel_reason ?? '' }))
-      .sort((a, b) => a.at.localeCompare(b.at)),
-  };
+  const out: CaixaEntry[] = [];
+  for (const r of data ?? []) {
+    const base = { order_number: r.order_number, operator_id: r.operator_id ?? null, payment_method: (r.payment_method ?? null) as PaymentMethod | null };
+    // venda que entrou de fato: paga, ou paga e cancelada depois (Pix do Caixa que não foi pago não conta)
+    const sold = r.status === 'paid' || (r.status === 'cancelled' && !!r.cancelled_at);
+    if (sold && r.created_at >= start && r.created_at <= end) out.push({ ...base, kind: 'venda', at: r.created_at, cents: r.total_cents, reason: '' });
+    if (r.status === 'cancelled' && r.cancelled_at && r.cancelled_at >= start && r.cancelled_at <= end) {
+      out.push({ ...base, kind: 'cancelamento', at: r.cancelled_at, cents: -r.total_cents, reason: r.cancel_reason ?? '' });
+    }
+  }
+  return out.sort((a, b) => b.at.localeCompare(a.at));
 }

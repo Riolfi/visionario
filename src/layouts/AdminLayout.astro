@@ -20,12 +20,17 @@ const nav: { href: string; label: string }[] = access
       .map(({ href, label }) => ({ href, label }))
   : [];
 if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' }, { href: '/admin/cargos', label: 'Cargos' });
+// Registro de Caixa: logo abaixo do Caixa, para quem abre o Caixa
+const caixaAt = nav.findIndex((n) => n.href === '/admin/caixa');
+if (caixaAt >= 0) nav.splice(caixaAt + 1, 0, { href: '/admin/caixa/registro', label: 'Registro de Caixa' });
 const showBell = can(access, 'notificacoes.ver');
 
 const unread = showBell ? await unreadNotificationCount() : 0;
 
-const isActive = (href: string) =>
-  path === href || (href !== '/admin' && path.startsWith(href));
+// marca só o item mais específico (em /admin/caixa/registro, não acende o Caixa)
+const matches = (href: string) => path === href || (href !== '/admin' && path.startsWith(href));
+const activeHref = [...nav.map((n) => n.href), '/admin/perfil'].filter(matches).sort((a, b) => b.length - a.length)[0];
+const isActive = (href: string) => href === activeHref;
 
 ---
 
@@ -98,7 +103,7 @@ const isActive = (href: string) =>
 
       <div class="min-w-0 flex-1">
         <!-- fixo no topo: o ☰ fica sempre ao alcance, mesmo rolando a página -->
-        <header class="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-bone px-4 py-4 sm:px-6">
+        <header data-admin-header class="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 bg-bone px-4 py-4 sm:px-6">
           <div class="flex items-center gap-3">
             <button
               type="button"

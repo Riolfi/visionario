@@ -279,6 +279,31 @@ export async function sendTeamInviteEmail(opts: { to: string; name: string }): P
   return { delivered: 'none' };
 }
 
+/**
+ * Tentaram criar conta com um e-mail que já tem conta (o Supabase não cria nem
+ * avisa ninguém): conta para o dono do e-mail como entrar ou recuperar a senha.
+ */
+export async function sendAccountExistsEmail(opts: { to: string }): Promise<MailResult> {
+  const html = `<p>Olá.</p>
+    <p>Alguém tentou criar uma conta na ${escapeHtml(env.brandName)} com este e-mail, mas ele já tem uma conta.</p>
+    <p>Se foi você, é só entrar com a sua senha. Esqueceu? <a href="${env.siteUrl}/esqueci-senha?email=${encodeURIComponent(opts.to)}">Crie uma senha nova</a>.</p>
+    <p>Se não foi você, pode ignorar: nada mudou na sua conta.</p>`;
+  if (!hasResend) return { delivered: (await writeEmailFile(`conta-existe-${Date.now()}`, html)) ? 'file' : 'none' };
+  try {
+    const { data, error } = await new Resend(env.resendApiKey).emails.send({
+      from: env.resendFrom,
+      to: opts.to,
+      subject: `Você já tem uma conta — ${env.brandName}`,
+      html,
+    });
+    if (!error) return { delivered: 'resend', ref: data?.id ?? null };
+    console.error('[email] conta existente Resend falhou:', error.message);
+  } catch (err) {
+    console.error('[email] conta existente Resend falhou:', err);
+  }
+  return { delivered: 'none' };
+}
+
 /** Aviso ao endereço novo quando um Administrador troca o e-mail de acesso de alguém da equipe. */
 export async function sendTeamEmailChanged(opts: { to: string; name: string }): Promise<MailResult> {
   const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>

@@ -118,7 +118,12 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
     draft[key].length ? draft[key].map((v) => labelOf(list, v)).join(', ') : 'Todos';
 
   // etiqueta de uma coluna: várias opções na mesma borda, separadas por |
-  const Chip = ({ title, items }: { title: string; items: { label: string; onRemove: () => void }[] }) => (
+  // status com a cor da etiqueta (mesma de orderStatusBadge)
+  const badge = (status: string, label: string) => (
+    <span class={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium uppercase leading-tight ${orderStatusBadge(status)}`}>{label}</span>
+  );
+
+  const Chip = ({ title, items }: { title: string; items: { label: preact.ComponentChildren; text?: string; onRemove: () => void }[] }) => (
     <span class="inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-ink bg-ink py-1 pl-3 pr-1.5 font-sans text-[13px] text-bone">
       <span class="text-bone/70">{title}:</span>
       {items.map((it, i) => (
@@ -126,7 +131,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
           {i > 0 && <span class="text-bone/50" aria-hidden="true">|</span>}
           <span class="inline-flex items-center gap-1">
             {it.label}
-            <button type="button" onClick={it.onRemove} class="grid h-5 w-5 place-items-center rounded-full hover:bg-bone/20" aria-label={`Tirar filtro ${title}: ${it.label}`}>
+            <button type="button" onClick={it.onRemove} class="grid h-5 w-5 place-items-center rounded-full hover:bg-bone/20" aria-label={`Tirar filtro ${title}: ${it.text ?? it.label}`}>
               {X_ICON}
             </button>
           </span>
@@ -153,7 +158,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
       {list.map(([value, label]) => (
         <label class="flex cursor-pointer items-center gap-3 rounded-card px-1 py-2 text-[15px] hover:bg-bone-50">
           <input type="checkbox" class="h-4 w-4" checked={draft[fkey].includes(value)} onChange={() => toggle(fkey, value)} />
-          {label}
+          {fkey === 'statuses' ? badge(value, label) : label}
         </label>
       ))}
     </div>
@@ -161,10 +166,10 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
 
   const chips = [
     applied.formats.length > 0 && (
-      <Chip key="f" title="Formato" items={applied.formats.map((v) => ({ label: labelOf(FORMATS, v), onRemove: () => remove('formats', v) }))} />
+      <Chip key="f" title="Formato" items={applied.formats.map((v) => ({ label: labelOf(FORMATS, v), text: labelOf(FORMATS, v), onRemove: () => remove('formats', v) }))} />
     ),
     applied.statuses.length > 0 && (
-      <Chip key="s" title="Status" items={applied.statuses.map((v) => ({ label: labelOf(STATUSES, v), onRemove: () => remove('statuses', v) }))} />
+      <Chip key="s" title="Status" items={applied.statuses.map((v) => ({ label: badge(v, labelOf(STATUSES, v)), text: labelOf(STATUSES, v), onRemove: () => remove('statuses', v) }))} />
     ),
     (applied.from || applied.to) && (
       <Chip

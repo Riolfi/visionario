@@ -43,9 +43,11 @@ function statusCopy(order: Order, status: OrderStatus): StatusCopy {
         subject: `Seu pedido ${n} está a caminho — ${env.brandName}`,
         headline: 'Seu pedido está a caminho',
         body: `Olá, ${first}. O pedido <strong>${n}</strong> foi postado e está a caminho do seu endereço.${
-          order.tracking_code
-            ? ` Acompanhe pelo código de rastreio <strong>${escapeHtml(order.tracking_code)}</strong>: <a href="https://rastreamento.correios.com.br/app/index.php?objetos=${encodeURIComponent(order.tracking_code)}">rastrear nos Correios</a>.`
-            : ''
+          !order.tracking_code
+            ? ''
+            : /^https?:\/\//i.test(order.tracking_code)
+              ? ` Acompanhe a entrega: <a href="${escapeHtml(order.tracking_code)}">rastrear o pedido</a>.`
+              : ` Acompanhe pelo código de rastreio <strong>${escapeHtml(order.tracking_code)}</strong>: <a href="https://rastreamento.correios.com.br/app/index.php?objetos=${encodeURIComponent(order.tracking_code)}">rastrear nos Correios</a>.`
         }`,
       };
     case 'delivered':

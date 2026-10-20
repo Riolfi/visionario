@@ -404,6 +404,10 @@ header .container-x {
   background-image: var(--tb-halftone);
   background-size: 15px 15px;
 }
+/* avisos (caixas arredondadas) ficam com fundo sólido, sem o pontilhado */
+.bg-agua-wash.rounded-card {
+  background-image: none;
+}
 
 /* — cartão de produto: moldura + sombra que salta — */
 .product-card__media {
@@ -656,6 +660,10 @@ html.tema-escuro .bg-sky-100 { background-color: rgb(12 74 110 / 0.6); }
 html.tema-escuro .bg-purple-100 { background-color: rgb(88 28 135 / 0.6); }
 html.tema-escuro .text-sky-800 { color: rgb(125 211 252); }
 html.tema-escuro .text-purple-800 { color: rgb(216 180 254); }
+/* etiquetas fortes (Entregue, Concluída do Caixa) e canal (Venda online/no caixa) */
+html.tema-escuro .rounded-full.bg-green-600.text-white { background-color: rgb(22 101 52 / 0.85); color: rgb(187 247 208); }
+html.tema-escuro .bg-blush-light { background-color: rgb(76 29 149 / 0.55); }
+html.tema-escuro .bg-blush-light.text-ink-soft { color: rgb(221 214 254); }
 html.tema-escuro .text-agua-dark { color: rgb(var(--agua-light)); }
 html.tema-escuro .btn-primary { color: #fff; box-shadow: 4px 4px 0 rgb(0 0 0 / 0.55); }
 html.tema-escuro .btn-outline { box-shadow: 4px 4px 0 rgb(108 43 217); }

@@ -60,6 +60,36 @@ function rowToOrder(row: any, items: any[]): Order {
 /* eslint-enable @typescript-eslint/no-explicit-any */
 
 /**
+ * Reserva: itens de pedidos "Aguardando pagamento" criados há menos de
+ * RESERVE_MINUTES seguram o estoque (a baixa de verdade é no pagamento).
+ * Depois desse tempo a reserva some sozinha — sem tarefa agendada.
+ * ponytail: janela fixa (Pix expira em 30 min); se entrar boleto, aumentar
+ */
+export const RESERVE_MINUTES = 60;
+export async function reservedStock(exceptOrderId?: string): Promise<Map<string, number>> {
+  const since = new Date(Date.now() - RESERVE_MINUTES * 60_000).toISOString();
+  const map = new Map<string, number>();
+  const add = (id: string, q: number) => map.set(id, (map.get(id) ?? 0) + q);
+  const sb = supabaseAdmin();
+  if (hasSupabase && sb) {
+    const { data, error } = await sb
+      .from('order_items')
+      .select('product_id, quantity, orders!inner(id, status, created_at)')
+      .eq('orders.status', 'pending')
+      .gte('orders.created_at', since);
+    if (error) return map; // sem reserva é melhor que travar a venda
+    for (const r of (data ?? []) as unknown as { product_id: string; quantity: number; orders: { id: string } }[]) {
+      if (r.orders?.id !== exceptOrderId) add(r.product_id, r.quantity);
+    }
+    return map;
+  }
+  for (const o of await readOrders()) {
+    if (o.status === 'pending' && o.created_at >= since && o.id !== exceptOrderId) for (const it of o.items) add(it.product_id, it.quantity);
+  }
+  return map;
+}
+
+/**
  * Resolve preços, nomes e estoque NO SERVIDOR a partir do catálogo —
  * nunca confiamos nos valores enviados pelo cliente.
  */
@@ -69,11 +99,13 @@ export async function priceCart(
   if (!lines.length) throw new Error('Carrinho vazio.');
   const items: OrderItem[] = [];
   let subtotal = 0;
+  const reserved = await reservedStock();
   for (const line of lines) {
     const product = await getProductById(line.product_id);
     if (!product || !product.is_active) throw new Error('Produto indisponível no carrinho.');
     const qty = Math.max(1, Math.floor(line.quantity));
-    if (product.stock < qty) throw new Error(`Estoque insuficiente para "${product.name}".`);
+    // disponível = estoque menos o reservado por pedidos aguardando pagamento
+    if (product.stock - (reserved.get(product.id) ?? 0) < qty) throw new Error(`Estoque insuficiente para "${product.name}".`);
     subtotal += product.price_cents * qty;
     items.push({
       product_id: product.id,

@@ -62,6 +62,36 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
 /** Situações em que o pagamento entrou (contam como recebido e o estoque já saiu). */
 export const RECEIVED_STATUSES: OrderStatus[] = ['paid', 'separating', 'shipped', 'delivered'];
 
+/**
+ * Linha do tempo do pedido online: só avança. Aguardando pagamento → Pago →
+ * Em separação → Enviado → Entregue (Pago pode ir direto a Enviado). Cancelar
+ * tem fluxo próprio; Entregue e Cancelado são finais.
+ */
+export const ORDER_NEXT: Record<OrderStatus, OrderStatus[]> = {
+  pending: ['paid', 'failed'],
+  failed: ['paid'],
+  paid: ['separating', 'shipped'],
+  separating: ['shipped'],
+  shipped: ['delivered'],
+  delivered: [],
+  cancelled: [],
+};
+export const FINAL_STATUSES: OrderStatus[] = ['delivered', 'cancelled'];
+
+/** Rastreio: código dos Correios (AA123456789BR) ou link http(s) da transportadora. */
+export function isValidTracking(v: string): boolean {
+  const t = v.trim();
+  if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(t.toUpperCase())) return true;
+  try {
+    const u = new URL(t);
+    return (u.protocol === 'https:' || u.protocol === 'http:') && /\.[a-z]{2,}$/i.test(u.hostname);
+  } catch {
+    return false;
+  }
+}
+/** Código dos Correios em maiúsculas; link fica como veio. */
+export const normalizeTracking = (v: string) => (/^https?:\/\//i.test(v.trim()) ? v.trim() : v.trim().toUpperCase());
+
 export function orderStatusLabel(status: OrderStatus, source: 'web' | 'caixa'): string {
   return source === 'caixa' && status === 'paid' ? 'Concluída' : ORDER_STATUS_LABELS[status];
 }

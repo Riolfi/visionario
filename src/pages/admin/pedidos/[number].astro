@@ -3,7 +3,8 @@ import { orderLabel } from '../../../lib/format';
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import { getOrderByNumber } from '../../../lib/repo/orders';
 import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../lib/format';
-import { orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
+import { FINAL_STATUSES, ORDER_NEXT, ORDER_STATUS_LABELS, orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
+import { RESERVE_MINUTES } from '../../../lib/repo/orders';
 
 export const prerender = false;
 
@@ -13,9 +14,23 @@ if (!order) return Astro.redirect('/admin/pedidos');
 
 const a = order.shipping_address;
 const saved = Astro.url.searchParams.get('ok') === '1';
+const savedEmail = Astro.url.searchParams.get('email') === '1';
 const updateError = Astro.url.searchParams.get('erro') === 'update';
-// cancelar não é por aqui (motivo + pedido do cliente + estorno, no botão próprio)
-const statuses = Object.entries({ pending: 'Aguardando pagamento', paid: 'Pago', separating: 'Em separação', shipped: 'Enviado', delivered: 'Entregue', failed: 'Pagamento não concluído' }) as [OrderStatus, string][];
+const motivo = Astro.url.searchParams.get('motivo');
+const ERROS: Record<string, string> = {
+  estoque: 'Não dá para marcar como pago: falta estoque de um dos produtos. Reponha o estoque e tente de novo.',
+  rastreio: 'Para marcar como Enviado, informe o código de rastreio.',
+  'rastreio-invalido': 'Código de rastreio inválido. Use o código dos Correios (ex.: AA123456789BR) ou o link de rastreio da transportadora.',
+  email: 'Não foi possível enviar o e-mail ao cliente, então nada foi alterado. Confira o e-mail do cliente ou salve sem enviar o e-mail.',
+  retrocesso: 'O status só avança: não dá para voltar a um status anterior.',
+  final: 'Pedido entregue ou cancelado não muda mais de status.',
+  igual: 'Escolha um status diferente do atual.',
+};
+// só os próximos status da linha do tempo (cancelar tem botão próprio); final = travado
+const isFinal = FINAL_STATUSES.includes(order.status);
+const statuses = [order.status, ...ORDER_NEXT[order.status]].map((s) => [s, ORDER_STATUS_LABELS[s]]) as [OrderStatus, string][];
+// aguardando pagamento: estoque reservado até a hora limite (a baixa é no pagamento)
+const reservedUntil = order.status === 'pending' ? new Date(new Date(order.created_at).getTime() + RESERVE_MINUTES * 60_000) : null;
 import { can } from '../../../lib/rbac';
 import { takeFlash } from '../../../lib/flash';
 const canStatus = can(Astro.locals.admin, 'pedidos.status');
@@ -55,17 +70,13 @@ const CANCEL_REASONS = [
     <p role="status" class:list={['mt-4 rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
   )}
   {saved && (
-    <p class="mt-4 rounded-card border border-agua/40 bg-agua-wash px-3 py-2 text-sm text-agua-dark">
-      Status atualizado e e-mail enviado ao cliente.
+    <p role="status" class="mt-4 rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
+      {savedEmail ? 'Status atualizado e e-mail enviado ao cliente.' : 'Status atualizado.'}
     </p>
   )}
   {updateError && (
-    <p class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
-      {Astro.url.searchParams.get('motivo') === 'estoque'
-        ? 'Não dá para marcar como pago: falta estoque de um dos produtos. Reponha o estoque e tente de novo.'
-        : Astro.url.searchParams.get('motivo') === 'rastreio'
-          ? 'Para marcar como Enviado, informe o código de rastreio.'
-          : 'Não foi possível atualizar o status. Tente de novo.'}
+    <p role="alert" class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
+      {ERROS[motivo ?? ''] ?? 'Não foi possível atualizar o status. Tente de novo.'}
     </p>
   )}
 
@@ -133,39 +144,56 @@ const CANCEL_REASONS = [
               : 'Venda concluída e paga no caixa. Não há separação, envio ou código de rastreio para este pedido.'}
           </p>
         </div>
-      ) : !canStatus ? (
-        <p class="rounded-card border border-ink/10 bg-white p-5 text-sm text-ink-soft">Seu cargo não permite mudar o status deste pedido.</p>
+      ) : !canStatus || isFinal ? (
+        <div class="rounded-card border border-ink/10 bg-white p-5 text-sm text-ink-soft">
+          <h2 class="font-display text-lg text-ink">Status</h2>
+          <p class="mt-2">{isFinal ? 'Pedido entregue ou cancelado: o status não muda mais.' : 'Seu cargo não permite mudar o status deste pedido.'}</p>
+          {order.tracking_code && <p class="mt-2">Rastreio: <span class="break-all font-medium text-ink">{order.tracking_code}</span></p>}
+        </div>
       ) : (
       <form
+        id="status-form"
         method="POST"
         action="/api/admin/orders"
         class="rounded-card border border-ink/10 bg-white p-5"
+        data-current={order.status}
       >
         <h2 class="font-display text-lg">Atualizar status</h2>
         <input type="hidden" name="order_number" value={order.order_number} />
         <label class="label mt-3" for="status">Status do pedido</label>
+        {/* só o atual e os próximos da linha do tempo */}
         <select id="status" name="status" class="field" data-status-select>
           {statuses.map(([value, label]) => (
             <option value={value} selected={value === order.status}>{label}</option>
           ))}
         </select>
+        {reservedUntil && (
+          <p class="mt-2 text-[12px] text-ink-muted">Estoque reservado até {reservedUntil.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} de {reservedUntil.toLocaleDateString('pt-BR')}; a baixa acontece quando o pagamento é confirmado.</p>
+        )}
 
-        <label class="label mt-3" for="tracking_code">Código de rastreio <span id="tracking-req" class:list={['text-red-600', order.status !== 'shipped' && 'hidden']}>* (obrigatório para Enviado)</span></label>
-        <input
-          id="tracking_code"
-          name="tracking_code"
-          class="field"
-          value={order.tracking_code ?? ''}
-          required={order.status === 'shipped'}
-          placeholder="ex.: AA123456789BR"
-        />
+        {/* rastreio: só aparece (e é obrigatório) com Enviado escolhido */}
+        <div id="tracking-wrap" class:list={['mt-3', order.status !== 'shipped' && 'hidden']}>
+          <label class="label" for="tracking_code">Código de rastreio <span class="text-red-600">*</span></label>
+          <input
+            id="tracking_code"
+            name="tracking_code"
+            class="field"
+            value={order.tracking_code ?? ''}
+            required={order.status === 'shipped'}
+            disabled={order.status !== 'shipped'}
+            autocomplete="off"
+            placeholder="AA123456789BR ou link da transportadora"
+          />
+          <p id="tracking-error" class="mt-1 hidden text-[12px] text-red-700">! Use o código dos Correios (AA123456789BR) ou um link de rastreio (https://…).</p>
+        </div>
 
+        {/* desmarcado por padrão; marca sozinho ao escolher um status que o cliente precisa saber */}
         <label class="mt-3 flex items-center gap-2 text-sm text-ink-soft">
-          <input type="checkbox" name="notify" checked />
+          <input type="checkbox" name="notify" id="notify" />
           Enviar e-mail ao cliente
         </label>
 
-        <button type="submit" class="btn-primary mt-4 w-full">Salvar e notificar</button>
+        <button type="submit" class="btn-primary mt-4 w-full">Salvar</button>
       </form>
       )}
 
@@ -270,6 +298,7 @@ const CANCEL_REASONS = [
 
 <script>
   import { enableConfirmForms } from '../../../lib/confirm-forms';
+  import { confirmDialog } from '../../../lib/confirm-dialog';
   enableConfirmForms();
 
   // cancelar: motivo obrigatório ("Outro" exige o texto)
@@ -282,13 +311,60 @@ const CANCEL_REASONS = [
     if (detalhe) detalhe.required = motivo.value === 'Outro';
   });
 
-  // rastreio obrigatório só quando o status escolhido é Enviado
+  // ---- status: rastreio só em Enviado, e-mail marcado só em mudança relevante ----
+  const statusForm = document.getElementById('status-form') as HTMLFormElement | null;
   const statusSel = document.querySelector<HTMLSelectElement>('[data-status-select]');
   const tracking = document.getElementById('tracking_code') as HTMLInputElement | null;
+  const trackingError = document.getElementById('tracking-error');
+  const notify = document.getElementById('notify') as HTMLInputElement | null;
+  const current = statusForm?.dataset.current ?? '';
+  // mudanças que o cliente precisa saber (o resto é ajuste interno)
+  const RELEVANT = ['paid', 'separating', 'shipped', 'delivered'];
+  // mesmo formato do servidor (isValidTracking em lib/types)
+  const validTracking = (v: string) => {
+    const t = v.trim();
+    if (/^[A-Z]{2}\d{9}[A-Z]{2}$/.test(t.toUpperCase())) return true;
+    try {
+      const u = new URL(t);
+      return /^https?:$/.test(u.protocol) && /\.[a-z]{2,}$/i.test(u.hostname);
+    } catch {
+      return false;
+    }
+  };
   statusSel?.addEventListener('change', () => {
     const shipped = statusSel.value === 'shipped';
-    if (tracking) tracking.required = shipped;
-    document.getElementById('tracking-req')?.classList.toggle('hidden', !shipped);
+    document.getElementById('tracking-wrap')?.classList.toggle('hidden', !shipped);
+    if (tracking) {
+      tracking.required = shipped;
+      tracking.disabled = !shipped;
+    }
+    if (notify) notify.checked = statusSel.value !== current && RELEVANT.includes(statusSel.value);
+  });
+  tracking?.addEventListener('input', () => {
+    tracking.setCustomValidity('');
+    trackingError?.classList.add('hidden');
+  });
+  statusForm?.addEventListener('submit', async (e) => {
+    if (statusForm.dataset.confirmed) return;
+    e.preventDefault();
+    if (tracking && !tracking.disabled && !validTracking(tracking.value)) {
+      trackingError?.classList.remove('hidden');
+      tracking.focus();
+      return;
+    }
+    // Pago é do Mercado Pago (webhook): marcar à mão pede confirmação
+    if (statusSel?.value === 'paid' && current !== 'paid') {
+      const ok = await confirmDialog({
+        title: 'Aprovar pagamento manualmente?',
+        message: 'Confirma a aprovação manual deste pagamento sem a validação do gateway?',
+        confirmLabel: 'Confirmar',
+        cancelLabel: 'Voltar',
+        tone: 'primary',
+      });
+      if (!ok) return;
+    }
+    statusForm.dataset.confirmed = '1';
+    statusForm.requestSubmit();
   });
 
   // "Copiar endereço": linha pronta para etiqueta dos Correios/transportadora

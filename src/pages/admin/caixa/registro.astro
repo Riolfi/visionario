@@ -94,30 +94,32 @@ const fmt = (d: string) => new Date(d).toLocaleString('pt-BR', { dateStyle: 'sho
       </div>
     </section>
 
-    <div class="mt-4 overflow-x-auto rounded-card border border-ink/10 bg-white">
-      <table class="w-full min-w-[44rem] text-left text-sm">
+    <div data-table class="data-table-box mt-4 rounded-card border border-ink/10 bg-white">
+      <table class="w-full min-w-[50rem] text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class="px-3 py-3">Data</th>
-            <th class="px-3 py-3">Compra</th>
+            <th class="px-3 py-3" data-sort="date">Data</th>
+            <th class="px-3 py-3" data-sort="text">Compra</th>
+            <th class="px-3 py-3" data-sort="text">Cliente</th>
             <th class="px-3 py-3">Tipo</th>
             <th class="px-3 py-3">Usuário</th>
             <th class="px-3 py-3">Pagamento</th>
-            <th class="px-3 py-3 text-right">Valor</th>
+            <th class="px-3 py-3 text-right" data-sort="number">Valor</th>
             <th class="px-3 py-3">Motivo</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
             <tr class="border-t border-ink/10">
-              <td class="whitespace-nowrap px-3 py-2 text-ink-muted">{fmt(r.at)}</td>
-              <td class="whitespace-nowrap px-3 py-2"><a href={`/admin/pedidos/${r.order_number}`} class="text-agua-dark underline">{orderLabel(r.order_number)}</a></td>
+              <td class="whitespace-nowrap px-3 py-2 text-ink-muted" data-sort={r.at}>{fmt(r.at)}</td>
+              <td class="whitespace-nowrap px-3 py-2" data-sort={r.order_number}><a href={`/admin/pedidos/${r.order_number}`} class="text-agua-dark underline">{orderLabel(r.order_number)}</a></td>
+              <td class="whitespace-nowrap px-3 py-2">{r.customer_name}</td>
               <td class="px-3 py-2">
                 <span class:list={['inline-block rounded-full px-2 py-0.5 text-[11px] font-medium uppercase', r.kind === 'venda' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800']}>{r.kind === 'venda' ? 'Venda' : 'Cancelamento'}</span>
               </td>
               <td class="whitespace-nowrap px-3 py-2">{nameOf(r.operator_id)}</td>
               <td class="whitespace-nowrap px-3 py-2 text-ink-soft">{r.payment_method ? PAYMENT_METHOD_LABELS[r.payment_method] : '—'}</td>
-              <td class:list={['whitespace-nowrap px-3 py-2 text-right', r.cents < 0 && 'text-red-700']}>{r.cents < 0 ? `− ${brl(-r.cents)}` : brl(r.cents)}</td>
+              <td class:list={['whitespace-nowrap px-3 py-2 text-right', r.cents < 0 && 'text-red-700']} data-sort={r.cents}>{r.cents < 0 ? `− ${brl(-r.cents)}` : brl(r.cents)}</td>
               <td class="px-3 py-2 text-ink-soft">{r.reason || '—'}</td>
             </tr>
           ))}

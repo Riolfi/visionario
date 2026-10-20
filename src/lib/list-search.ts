@@ -27,8 +27,10 @@ export function enableListSearch(opts: {
       const name = fold(row.dataset.name ?? '');
       const ok = words.every((w) => name.includes(w)) && (opts.extra?.(row) ?? true);
       row.hidden = !ok;
+      row.toggleAttribute('data-out', !ok); // paginação (lib/data-table) conta só as que sobraram
       if (ok) shown++;
     }
+    document.dispatchEvent(new Event('table:filter'));
     const total = rows.length;
     const [one, many] = opts.noun;
     if (count) count.textContent = shown === total ? `${total} ${total === 1 ? one : many}` : `${shown} de ${total} ${many}`;

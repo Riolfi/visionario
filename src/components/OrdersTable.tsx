@@ -14,6 +14,7 @@ export interface OrderRow {
   status: string;
   status_label: string;
   total_cents: number;
+  customer: string;
 }
 
 const FORMATS = [
@@ -48,7 +49,13 @@ const labelOf = (list: readonly (readonly [string, string])[], key: string) => l
 
 /** Colunas proporcionais; abaixo da largura mínima a tabela rola pro lado. */
 // última coluna: botão Editar (e a margem à direita do total no rodapé)
-const COLS = 'grid grid-cols-[1.1fr_1fr_0.9fr_1.6fr_1fr_5.5rem] min-w-[40rem]';
+const COLS = 'grid grid-cols-[1.1fr_1.2fr_1.4fr_0.8fr_1.6fr_1fr_5.5rem] min-w-[50rem]';
+
+// ordenação por coluna (clique no título alterna ▲/▼) e paginação (como lib/data-table)
+type SortKey = 'number' | 'created_at' | 'customer' | 'status_label' | 'total_cents';
+const SIZES = [10, 20, 30, 50];
+const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
+const PAGE_BTN = 'grid h-8 w-8 place-items-center rounded-card border border-ink/15 text-ink hover:bg-bone-100 disabled:cursor-not-allowed disabled:opacity-30';
 
 const FILTER_ICON = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8.5V19l-4 2v-7.5z" /></svg>
@@ -64,6 +71,9 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
   const [open, setOpen] = useState<string | null>(null); // seção aberta no pop-up
   const dialog = useRef<HTMLDialogElement>(null);
   const box = useRef<HTMLDivElement>(null);
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 } | null>(null);
+  const [page, setPage] = useState(1);
+  const [size, setSize] = useState(10);
 
   // a tabela ocupa até o fim da tela: cabeçalho em cima, totais embaixo e as
   // compras rolando entre eles (sobra espaço em branco quando são poucas)
@@ -73,7 +83,8 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
       if (!el) return;
       const top = el.getBoundingClientRect().top + window.scrollY;
       const pad = parseFloat(getComputedStyle(el.closest('main') ?? document.body).paddingBottom) || 0;
-      el.style.height = `${Math.max(280, window.innerHeight - top - pad)}px`;
+      // desconta o rodapé de paginação logo abaixo
+      el.style.height = `${Math.max(280, window.innerHeight - top - pad - 64)}px`;
     };
     fit();
     window.addEventListener('resize', fit);
@@ -93,6 +104,29 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
       return true;
     });
   }, [orders, query, applied]);
+  // filtro, busca ou itens por página mudaram: volta para a página 1
+  useEffect(() => setPage(1), [query, applied, size, sort]);
+  const sorted = useMemo(() => {
+    if (!sort) return visible;
+    const { key, dir } = sort;
+    return [...visible].sort((a, b) =>
+      dir * (key === 'total_cents' ? a.total_cents - b.total_cents : key === 'created_at' ? a.created_at.localeCompare(b.created_at) : collator.compare(a[key], b[key])),
+    );
+  }, [visible, sort]);
+  const pages = Math.max(1, Math.ceil(sorted.length / size));
+  const current = Math.min(page, pages);
+  const start = (current - 1) * size;
+  const pageRows = sorted.slice(start, start + size);
+  const toggleSort = (key: SortKey) => setSort((s) => (s?.key === key ? { key, dir: s.dir === 1 ? -1 : 1 } : { key, dir: 1 }));
+  const SortHead = ({ k, label, right }: { k: SortKey; label: string; right?: boolean }) => (
+    <span role="columnheader" aria-sort={sort?.key === k ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'} class={`px-3 py-3 ${right ? 'text-right' : ''}`}>
+      <button type="button" onClick={() => toggleSort(k)} class="inline-flex items-center gap-1 uppercase tracking-[inherit] hover:text-ink">
+        {label}
+        <span aria-hidden="true" class={`text-[10px] ${sort?.key === k ? '' : 'opacity-30'}`}>{sort?.key === k ? (sort.dir === 1 ? '▲' : '▼') : '▲▼'}</span>
+      </button>
+    </span>
+  );
+
   // total recebido: só pago/enviado/entregue (cancelada, pendente e não paga ficam fora)
   const RECEIVED = ['paid', 'separating', 'shipped', 'delivered'];
   const total = visible.filter((o) => RECEIVED.includes(o.status)).reduce((s, o) => s + o.total_cents, 0);
@@ -224,19 +258,21 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
       <div ref={box} class="mt-4 overflow-auto rounded-card border border-ink/10 bg-white" role="table" aria-label="Compras">
         <div class="flex min-h-full w-full min-w-fit flex-col text-sm">
           <div role="row" class={`${COLS} sticky top-0 z-10 border-b border-ink/10 bg-white text-[11px] uppercase tracking-[0.1em] text-ink-muted`}>
-            <span role="columnheader" class="px-3 py-3">Compra</span>
-            <span role="columnheader" class="px-3 py-3">Data</span>
+            <SortHead k="number" label="Compra" />
+            <SortHead k="created_at" label="Data" />
+            <SortHead k="customer" label="Cliente" />
             <span role="columnheader" class="px-3 py-3">Formato</span>
-            <span role="columnheader" class="px-3 py-3">Status</span>
-            <span role="columnheader" class="px-3 py-3 text-right">Valor</span>
+            <SortHead k="status_label" label="Status" />
+            <SortHead k="total_cents" label="Valor" right />
             <span role="columnheader" class="px-3 py-3"><span class="sr-only">Ações</span></span>
           </div>
-          {visible.map((o) => (
+          {pageRows.map((o) => (
             <div role="row" key={o.number} class={`${COLS} items-center border-b border-ink/10 hover:bg-bone-50`}>
               <span role="cell" class="truncate px-3 py-3">
                 <a href={`/admin/pedidos/${o.number}`} class="text-agua-dark">{orderLabel(o.number)}</a>
               </span>
-              <span role="cell" class="px-3 py-3 text-ink-muted">{new Date(o.created_at).toLocaleDateString('pt-BR')}</span>
+              <span role="cell" class="whitespace-nowrap px-3 py-3 text-ink-muted">{new Date(o.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</span>
+              <span role="cell" class="truncate px-3 py-3" title={o.customer}>{o.customer}</span>
               <span role="cell" class="px-3 py-3 text-ink-soft">{o.source === 'caixa' ? 'Física' : 'Online'}</span>
               <span role="cell" class="px-3 py-3"><span class={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium uppercase leading-tight ${orderStatusBadge(o.status, o.source === 'caixa' ? 'caixa' : 'web')}`}>{o.status_label}</span></span>
               <span role="cell" class="px-3 py-3 text-right">{brl(o.total_cents)}</span>
@@ -250,11 +286,29 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
           <div class="flex-1" aria-hidden="true" />
           <div role="row" class={`${COLS} sticky bottom-0 z-10 border-t border-ink/10 bg-bone font-sans`}>
             <span role="cell" class="whitespace-nowrap px-3 py-3">Compras: <strong>{visible.length}</strong></span>
-            <span role="cell" /><span role="cell" /><span role="cell" />
+            <span role="cell" /><span role="cell" /><span role="cell" /><span role="cell" />
             <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold" title="Soma das compras pagas, enviadas ou entregues (canceladas e pendentes ficam fora)">{brl(total)}</span>
             <span role="cell" />
           </div>
         </div>
+      </div>
+
+      {/* paginação: itens por página, ⏮ ◀ ▶ ⏭ e quantos estão aparecendo */}
+      <div class="flex flex-wrap items-center justify-between gap-3 px-1 py-3 font-sans text-[13px] text-ink-muted">
+        <label class="flex items-center gap-2">
+          Itens por página
+          <select class="rounded-card border border-ink/15 bg-white px-2 py-1 text-ink" value={size} onChange={(e) => setSize(Number((e.target as HTMLSelectElement).value))}>
+            {SIZES.map((n) => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </label>
+        <span aria-live="polite">{sorted.length ? `Exibindo ${start + 1}–${Math.min(start + size, sorted.length)} de ${sorted.length} ${sorted.length === 1 ? 'item' : 'itens'}` : 'Nenhum item'}</span>
+        <span class="flex items-center gap-1">
+          <button type="button" class={PAGE_BTN} disabled={current <= 1} onClick={() => setPage(1)} aria-label="Primeira página" title="Primeira página">⏮</button>
+          <button type="button" class={PAGE_BTN} disabled={current <= 1} onClick={() => setPage(current - 1)} aria-label="Página anterior" title="Anterior">◀</button>
+          <span class="px-2 text-ink">{current} / {pages}</span>
+          <button type="button" class={PAGE_BTN} disabled={current >= pages} onClick={() => setPage(current + 1)} aria-label="Próxima página" title="Próxima">▶</button>
+          <button type="button" class={PAGE_BTN} disabled={current >= pages} onClick={() => setPage(pages)} aria-label="Última página" title="Última página">⏭</button>
+        </span>
       </div>
 
       {/* pop-up "Filtro": folha de baixo no celular, centralizado no desktop */}

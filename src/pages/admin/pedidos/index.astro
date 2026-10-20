@@ -14,6 +14,8 @@ const orders: OrderRow[] = (await listOrders(500)).map((o) => ({
   status: o.status,
   status_label: orderStatusLabel(o.status, o.source),
   total_cents: o.total_cents,
+  // venda sem cadastro no Caixa: "Não identificado" (como na tela da compra)
+  customer: !o.user_id && (!o.customer_name || o.customer_name === 'Consumidor') ? 'Não identificado' : o.customer_name || o.customer_email || 'Não identificado',
 }));
 ---
 

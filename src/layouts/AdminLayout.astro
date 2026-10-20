@@ -157,6 +157,10 @@ const isActive = (href: string) => href === activeHref;
       <span class="sr-only">Carregando…</span>
     </div>
     <script>
+      // ---- tabelas: ordenar e paginar (as marcadas com data-table) ----
+      import { enableDataTables } from '../lib/data-table';
+      enableDataTables();
+
       // ---- modo escuro ----
       document.querySelector('[data-theme-toggle]')?.addEventListener('click', () => {
         const dark = document.documentElement.classList.toggle('tema-escuro');

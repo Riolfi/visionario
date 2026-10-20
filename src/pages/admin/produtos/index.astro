@@ -43,14 +43,15 @@ const canEdit = can(Astro.locals.admin, 'produtos.editar');
   </div>
 
   <!-- table-fixed + nome truncado: cabe na tela sem rolagem lateral -->
-  <div class="mt-6 rounded-card border border-ink/10 bg-white">
+  <div data-table class="data-table-box mt-6 rounded-card border border-ink/10 bg-white">
     <table class="w-full table-fixed text-left text-sm">
       <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
         <tr>
           <th class="w-14 py-3 pl-2 sm:w-16 sm:pl-3">Prévia</th>
-          <th class="px-2 py-3 sm:px-3">Produto</th>
-          <th class="hidden w-20 px-3 py-3 text-right sm:table-cell">Estoque</th>
-          <th class="w-[4.5rem] px-1 py-3 sm:w-24 sm:px-3">Status</th>
+          <th class="px-2 py-3 sm:px-3" data-sort="text">Produto</th>
+          <th class="hidden w-28 px-3 py-3 text-right sm:table-cell" data-sort="number">Preço</th>
+          <th class="hidden w-24 px-3 py-3 text-right sm:table-cell" data-sort="number">Estoque</th>
+          <th class="w-[5.5rem] px-1 py-3 sm:w-28 sm:px-3" data-sort="text">Status</th>
           <th class="w-[4.5rem] px-2 py-3 sm:w-24 sm:px-3"><span class="sr-only">Ações</span></th>
         </tr>
       </thead>
@@ -62,12 +63,13 @@ const canEdit = can(Astro.locals.admin, 'produtos.editar');
                 {p.images[0] && <img src={p.images[0]} alt="" loading="lazy" class="h-full w-full object-cover" />}
               </span>
             </td>
-            <td class="px-2 py-3 sm:px-3">
+            <td class="px-2 py-3 sm:px-3" data-sort={p.name}>
               <a href={`/admin/produtos/${p.id}`} class="block truncate font-medium text-agua-dark" title={p.name}>{p.name}</a>
-              <span class="block truncate text-[12px] text-ink-muted">{brl(p.price_cents)}<span class="hidden sm:inline"> · {p.category_name}</span></span>
+              <span class="block truncate text-[12px] text-ink-muted"><span class="sm:hidden">{brl(p.price_cents)} · </span>{p.category_name}</span>
             </td>
-            <td class:list={['hidden px-3 py-3 text-right sm:table-cell', p.stock <= 5 && 'text-red-700']}>{p.stock}</td>
-            <td class="px-1 py-3 sm:px-3">
+            <td class="hidden whitespace-nowrap px-3 py-3 text-right sm:table-cell" data-sort={p.price_cents}>{brl(p.price_cents)}</td>
+            <td class:list={['hidden px-3 py-3 text-right sm:table-cell', p.stock <= 5 && 'text-red-700']} data-sort={p.stock}>{p.stock}</td>
+            <td class="px-1 py-3 sm:px-3" data-sort={p.is_active ? 'ativo' : 'inativo'}>
               <span class:list={['rounded-full px-2 py-0.5 text-[10px] uppercase sm:text-[11px]', p.is_active ? 'bg-agua-wash text-agua-dark' : 'bg-bone-200 text-ink-muted']}>
                 {p.is_active ? 'ativo' : 'inativo'}
               </span>
@@ -101,8 +103,10 @@ const canEdit = can(Astro.locals.admin, 'produtos.editar');
       const name = fold(row.dataset.name ?? '');
       const ok = words.every((w) => name.includes(w)) && (!digits || (row.dataset.barcode ?? '').includes(digits));
       row.hidden = !ok;
+      row.toggleAttribute('data-out', !ok); // paginação (lib/data-table) conta só as que sobraram
       if (ok) shown++;
     }
+    document.dispatchEvent(new Event('table:filter'));
     const total = Number(count.dataset.total);
     count.textContent = shown === total ? `${total} produtos no catálogo` : `${shown} de ${total} produtos`;
     document.getElementById('no-results')!.classList.toggle('hidden', shown > 0);

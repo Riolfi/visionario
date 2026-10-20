@@ -547,6 +547,7 @@ export interface CaixaEntry {
   at: string;
   order_number: string;
   operator_id: string | null;
+  customer_name: string;
   payment_method: PaymentMethod | null;
   cents: number; // positivo na venda, negativo no cancelamento
   reason: string;
@@ -570,7 +571,7 @@ export async function caixaLedger(opts: { from: string; to: string; operatorId?:
   const end = new Date(`${opts.to}T23:59:59.999-03:00`).toISOString();
   let q = sb
     .from('orders')
-    .select('order_number, total_cents, status, created_at, cancelled_at, cancel_reason, operator_id, payment_method')
+    .select('order_number, total_cents, status, created_at, cancelled_at, cancel_reason, operator_id, payment_method, customer_name, user_id')
     .eq('source', 'caixa')
     .or(`and(created_at.gte.${start},created_at.lte.${end}),and(cancelled_at.gte.${start},cancelled_at.lte.${end})`);
   if (opts.operatorId) q = q.eq('operator_id', opts.operatorId);
@@ -578,7 +579,9 @@ export async function caixaLedger(opts: { from: string; to: string; operatorId?:
   if (error) return null;
   const out: CaixaEntry[] = [];
   for (const r of data ?? []) {
-    const base = { order_number: r.order_number, operator_id: r.operator_id ?? null, payment_method: (r.payment_method ?? null) as PaymentMethod | null };
+    // venda sem cadastro no Caixa: "Não identificado" (como na tela da compra)
+    const customer = !r.user_id && (!r.customer_name || r.customer_name === 'Consumidor') ? 'Não identificado' : r.customer_name || 'Não identificado';
+    const base = { order_number: r.order_number, operator_id: r.operator_id ?? null, customer_name: customer, payment_method: (r.payment_method ?? null) as PaymentMethod | null };
     // venda que entrou de fato: paga, ou paga e cancelada depois (Pix do Caixa que não foi pago não conta)
     const sold = r.status === 'paid' || (r.status === 'cancelled' && !!r.cancelled_at);
     if (sold && r.created_at >= start && r.created_at <= end) out.push({ ...base, kind: 'venda', at: r.created_at, cents: r.total_cents, reason: '' });

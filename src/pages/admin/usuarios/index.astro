@@ -60,6 +60,8 @@ const canToggle = canManageMember;
 // Editar: Administradores (regras acima) ou "Criar/editar usuários" em quem não é Administrador
 const canEditMember = (m: (typeof team)[number]) =>
   canManageMember(m) || (!access.isOwner && canManageTeam && m.id !== me && !m.is_owner);
+// data curta das colunas Cadastro / Último acesso
+const shortDate = (d: string) => new Date(d).toLocaleDateString('pt-BR');
 const noun = aba === 'equipe' ? ['membro', 'membros'] : ['cliente', 'clientes'];
 // filtros como em Compras: Cargo (só Equipe) e Status (as duas abas)
 const STATUS: [string, string][] = [['ativo', 'Ativo'], ['inativo', 'Inativo']];
@@ -115,15 +117,15 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
   </nav>
 
   {aba === 'equipe' && (
-    <div class="overflow-x-auto rounded-card border border-ink/10 bg-white">
+    <div data-table class="data-table-box rounded-card border border-ink/10 bg-white">
       {/* largura pelo conteúdo: colunas curtas com w-px + nowrap, o e-mail fica com o resto */}
       <table class="w-full text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class:list={[TH, 'w-px']}>Usuário</th>
+            <th class:list={[TH, 'w-px']} data-sort="text">Usuário</th>
             <th class="hidden whitespace-nowrap px-2 py-3 text-center md:table-cell">E-mail</th>
-            <th class:list={[TH, 'hidden w-px sm:table-cell']}>Cargo</th>
-            <th class:list={[TH, 'w-px']}>Ativo</th>
+            <th class:list={[TH, 'hidden w-px sm:table-cell']} data-sort="text">Cargo</th>
+            <th class:list={[TH, 'w-px']} data-sort="text">Ativo</th>
             <th class:list={[TH, 'hidden w-px sm:table-cell']}>Situação</th>
             <th class:list={[TH, 'w-px']}><span class="sr-only">Ações</span></th>
           </tr>
@@ -131,7 +133,7 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
         <tbody>
           {team.map((m) => (
             <tr class="user-row border-t border-ink/10 hover:bg-bone-50" data-name={`${m.name} ${m.email}`} data-role={m.role_id ?? 'none'} data-status={m.is_active ? 'ativo' : 'inativo'}>
-              <td class:list={[TD, 'whitespace-nowrap']}>
+              <td class:list={[TD, 'whitespace-nowrap']} data-sort={m.name || m.email}>
                 <span class="block font-medium">{firstName(m)}</span>
                 {/* celular: cargo e situação embaixo do nome (as colunas somem) */}
                 <span class="block text-[12px] text-ink-muted sm:hidden">{m.role_name}</span>
@@ -142,10 +144,10 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
               <td class="hidden max-w-0 px-2 py-3 md:table-cell">
                 <span class="block truncate text-ink-soft" title={m.email}>{m.email}</span>
               </td>
-              <td class:list={[TD, 'hidden whitespace-nowrap sm:table-cell']}>
+              <td class:list={[TD, 'hidden whitespace-nowrap sm:table-cell']} data-sort={m.role_name}>
                 <span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', m.is_owner ? 'bg-blush-light text-blush' : m.role_id ? 'bg-bone-200 text-ink-soft' : 'bg-red-50 text-red-700']}>{m.role_name}</span>
               </td>
-              <td class:list={[TD, 'text-center']}>
+              <td class:list={[TD, 'text-center']} data-sort={m.is_active ? 'ativo' : 'inativo'}>
                 {/* chave ativo/inativo; só Administradores clicam para trocar (não na própria conta nem no Proprietário) */}
                 {canToggle(m) ? (
                   <form method="POST" action="/api/admin/users" class="inline" data-confirm={`Deseja ${m.is_active ? 'desativar' : 'ativar'} usuário?|${m.name || m.email} ${m.is_active ? 'fica sem acesso ao painel' : 'volta a entrar no painel com o acesso do cargo'}.|Sim|Não|primary`}>
@@ -184,15 +186,17 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
   )}
 
   {aba === 'clientes' && (
-    <div class="overflow-x-auto rounded-card border border-ink/10 bg-white">
+    <div data-table class="data-table-box rounded-card border border-ink/10 bg-white">
       <table class="w-full text-left text-sm">
         <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
           <tr>
-            <th class:list={[TH, 'w-px']}>Usuário</th>
+            <th class:list={[TH, 'w-px']} data-sort="text">Usuário</th>
             <th class:list={[TH, 'hidden w-px md:table-cell']}>CPF</th>
-            <th class="hidden whitespace-nowrap px-2 py-3 text-center sm:table-cell">E-mail</th>
+            <th class="hidden whitespace-nowrap px-2 py-3 text-center sm:table-cell" data-sort="text">E-mail</th>
             <th class:list={[TH, 'hidden w-px lg:table-cell']}>Telefone</th>
-            <th class:list={[TH, 'w-px']}>Conta</th>
+            <th class:list={[TH, 'hidden w-px xl:table-cell']} data-sort="date">Cadastro</th>
+            <th class:list={[TH, 'hidden w-px xl:table-cell']} data-sort="date">Último acesso</th>
+            <th class:list={[TH, 'w-px']} data-sort="text">Conta</th>
             <th class="w-px px-3 py-3"><span class="sr-only">Ações</span></th>
           </tr>
         </thead>
@@ -203,16 +207,18 @@ const statusClass = { ativo: 'bg-agua-wash text-agua-dark', desativado: 'bg-bone
               data-name={`${c.name} ${c.email} ${c.cpf} ${formatCpf(c.cpf)} ${c.phone} ${formatPhone(c.phone)} ${c.phone.replace(/\D/g, '')}`}
               data-status={c.status === 'ativo' ? 'ativo' : 'inativo'}
             >
-              <td class="whitespace-nowrap px-3 py-3">
+              <td class="whitespace-nowrap px-3 py-3" data-sort={c.name || c.email}>
                 <span class="block font-medium">{c.name || '—'}</span>
                 {/* celular: e-mail embaixo (a coluna some) */}
                 <span class="block max-w-[11rem] truncate text-[12px] text-ink-muted sm:hidden">{c.email}</span>
               </td>
               {/* clientes: CPF, e-mail, telefone e Visualizar centralizados; Usuário e Conta à esquerda */}
               <td class="hidden whitespace-nowrap px-3 py-3 text-center text-ink-soft md:table-cell">{c.cpf ? formatCpf(c.cpf) : '—'}</td>
-              <td class="hidden max-w-0 px-3 py-3 text-center sm:table-cell"><span class="block truncate text-ink-soft" title={c.email}>{c.email}</span></td>
+              <td class="hidden max-w-0 px-3 py-3 text-center sm:table-cell" data-sort={c.email}><span class="block truncate text-ink-soft" title={c.email}>{c.email}</span></td>
               <td class="hidden whitespace-nowrap px-3 py-3 text-center text-ink-soft lg:table-cell">{c.phone ? formatPhone(c.phone) : '—'}</td>
-              <td class="whitespace-nowrap px-3 py-3"><span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span></td>
+              <td class="hidden whitespace-nowrap px-3 py-3 text-center text-ink-soft xl:table-cell" data-sort={c.created_at}>{shortDate(c.created_at)}</td>
+              <td class="hidden whitespace-nowrap px-3 py-3 text-center text-ink-soft xl:table-cell" data-sort={c.last_sign_in_at ?? ''}>{c.last_sign_in_at ? shortDate(c.last_sign_in_at) : 'nunca'}</td>
+              <td class="whitespace-nowrap px-3 py-3" data-sort={CUSTOMER_STATUS_LABELS[c.status]}><span class:list={['rounded-full px-2 py-0.5 text-[11px] uppercase', statusClass[c.status]]}>{CUSTOMER_STATUS_LABELS[c.status]}</span></td>
               <td class="whitespace-nowrap px-3 py-3 text-center">
                 <a href={`/admin/usuarios/clientes/${c.id}`} class="rounded-card border border-ink/20 px-2 py-1 text-[12px] hover:bg-bone-100 sm:px-3 sm:text-[13px]">Visualizar</a>
               </td>

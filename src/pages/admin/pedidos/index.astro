@@ -19,6 +19,6 @@ const orders: OrderRow[] = (await listOrders(500)).map((o) => ({
 }));
 ---
 
-<AdminLayout title="Compras">
+<AdminLayout title="Vendas">
   <OrdersTable client:load orders={orders} />
 </AdminLayout>

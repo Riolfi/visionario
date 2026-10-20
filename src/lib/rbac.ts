@@ -15,7 +15,7 @@ export const SCREENS = [
   { key: 'painel', label: 'Painel', href: '/admin', view: 'painel.ver' },
   { key: 'caixa', label: 'Caixa', href: '/admin/caixa', view: 'caixa.vender' },
   { key: 'produtos', label: 'Produtos', href: '/admin/produtos', view: 'produtos.ver' },
-  { key: 'pedidos', label: 'Compras', href: '/admin/pedidos', view: 'pedidos.ver' },
+  { key: 'pedidos', label: 'Vendas', href: '/admin/pedidos', view: 'pedidos.ver' },
   { key: 'ofertas', label: 'Ofertas', href: '/admin/ofertas', view: 'ofertas.ver' },
   { key: 'categorias', label: 'Categorias', href: '/admin/categorias', view: 'categorias.ver' },
   { key: 'conteudo', label: 'Conteúdo', href: '/admin/site', view: 'conteudo.ver' },
@@ -25,15 +25,15 @@ export const SCREENS = [
 export type ScreenKey = (typeof SCREENS)[number]['key'];
 
 export const RULES = [
-  { key: 'painel.ver', screen: 'painel', label: 'Ver o painel', help: 'Resumo de vendas e pedidos recentes.' },
+  { key: 'painel.ver', screen: 'painel', label: 'Ver o painel', help: 'Resumo e vendas recentes.' },
   { key: 'caixa.vender', screen: 'caixa', label: 'Vender no Caixa', help: 'Abrir o Caixa, ler produtos e registrar vendas (dinheiro, cartão, Pix).' },
   { key: 'caixa.cancelar', screen: 'caixa', label: 'Cancelar vendas do Caixa', help: 'Cancela a venda e devolve os itens ao estoque.' },
   { key: 'produtos.ver', screen: 'produtos', label: 'Ver produtos', help: 'Lista e ficha dos produtos, sem alterar.' },
   { key: 'produtos.editar', screen: 'produtos', label: 'Cadastrar e editar produtos', help: 'Criar, alterar preço/estoque, enviar fotos e buscar nas bases públicas.' },
   { key: 'produtos.excluir', screen: 'produtos', label: 'Excluir produtos', help: 'Apagar produtos (ou desativar os que já foram vendidos).' },
-  { key: 'pedidos.ver', screen: 'pedidos', label: 'Ver pedidos', help: 'Lista e detalhes dos pedidos, com dados do cliente.' },
-  { key: 'pedidos.status', screen: 'pedidos', label: 'Mudar status de pedidos', help: 'Marcar como pago, enviado, entregue ou cancelado (mexe no estoque).' },
-  { key: 'pedidos.cancelar', screen: 'pedidos', label: 'Cancelar compras', help: 'Botão "Cancelar compra" no detalhe da compra (online ou do Caixa); devolve os itens ao estoque.' },
+  { key: 'pedidos.ver', screen: 'pedidos', label: 'Ver vendas', help: 'Lista e detalhes das vendas, com dados do cliente.' },
+  { key: 'pedidos.status', screen: 'pedidos', label: 'Mudar status de vendas', help: 'Marcar como pago, enviado, entregue ou cancelado (mexe no estoque).' },
+  { key: 'pedidos.cancelar', screen: 'pedidos', label: 'Cancelar vendas', help: 'Botão "Cancelar venda" no detalhe da venda (online ou do Caixa); devolve os itens ao estoque.' },
   { key: 'ofertas.ver', screen: 'ofertas', label: 'Ver ofertas', help: 'Carrossel da página inicial.' },
   { key: 'ofertas.editar', screen: 'ofertas', label: 'Editar ofertas', help: 'Criar, alterar e excluir banners do carrossel.' },
   { key: 'categorias.ver', screen: 'categorias', label: 'Ver categorias', help: 'Árvore de categorias.' },
@@ -42,7 +42,7 @@ export const RULES = [
   { key: 'conteudo.editar', screen: 'conteudo', label: 'Editar conteúdo do site', help: 'Textos da loja, logo, rodapé, Sobre e Contato.' },
   { key: 'equipe.ver', screen: 'usuarios', label: 'Visualizar usuários', help: 'Ver a lista da equipe e a ficha de cada um (sem senha).' },
   { key: 'equipe.gerenciar', screen: 'usuarios', label: 'Criar/editar usuários', help: 'Criar usuários e editar o nome de quem não é Administrador. Senha, cargo, ativo e exclusão são só de Administradores.' },
-  { key: 'clientes.ver', screen: 'usuarios', label: 'Ver clientes', help: 'Dados cadastrais, endereços, compras e pedidos dos clientes.' },
+  { key: 'clientes.ver', screen: 'usuarios', label: 'Ver clientes', help: 'Dados cadastrais, endereços e vendas dos clientes.' },
   { key: 'clientes.estado', screen: 'usuarios', label: 'Ativar, desativar e bloquear clientes', help: 'Muda o estado da conta, com motivo registrado.' },
   { key: 'notificacoes.ver', screen: 'notificacoes', label: 'Ver notificações', help: 'Avisos automáticos (estoque esgotado, pagamentos a conferir).' },
 ] as const;

@@ -21,9 +21,9 @@ const lowStock = products.filter((p) => p.is_active && p.stock <= 5);
 
 const stats = [
   { label: 'Produtos ativos', value: String(products.filter((p) => p.is_active).length) },
-  { label: 'Pedidos pagos', value: String(paid.length) },
+  { label: 'Vendas pagas', value: String(paid.length) },
   { label: 'Receita confirmada', value: brl(revenue) },
-  { label: 'Pedidos pendentes', value: String(pending) },
+  { label: 'Vendas pendentes', value: String(pending) },
 ];
 
 const recent = orders.slice(0, 8);
@@ -42,15 +42,15 @@ const recent = orders.slice(0, 8);
   <div class="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
     <section class="rounded-card border border-ink/10 bg-white p-5">
       <div class="flex items-center justify-between">
-        <h2 class="font-display text-lg">Pedidos recentes</h2>
+        <h2 class="font-display text-lg">Vendas recentes</h2>
         <a href="/admin/pedidos" class="font-sans text-[12px] uppercase tracking-[0.12em] text-agua-dark">Ver todos</a>
       </div>
       {recent.length === 0 ? (
-        <p class="mt-4 font-sans text-sm text-ink-muted">Nenhum pedido ainda.</p>
+        <p class="mt-4 font-sans text-sm text-ink-muted">Nenhuma venda ainda.</p>
       ) : (
         <table class="mt-4 w-full text-left text-sm">
           <thead class="text-[12px] uppercase tracking-[0.1em] text-ink-muted">
-            <tr><th class="pb-2">Pedido</th><th class="pb-2">Cliente</th><th class="pb-2">Status</th><th class="pb-2 text-right">Total</th></tr>
+            <tr><th class="pb-2">Venda</th><th class="pb-2">Cliente</th><th class="pb-2">Status</th><th class="pb-2 text-right">Total</th></tr>
           </thead>
           <tbody>
             {recent.map((o) => (

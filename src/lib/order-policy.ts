@@ -57,7 +57,7 @@ export async function cancelOnlineOrder(
   opts: { notify?: boolean; restock?: boolean } = {},
 ): Promise<{ ok: true; refundedCents: number | null; simulated?: boolean } | { ok: false; error: string }> {
   if (!STAFF_CANCELABLE_ONLINE.includes(order.status)) {
-    return { ok: false, error: 'Pedido já enviado ou finalizado: não dá para cancelar. Para devolver, use a solicitação de devolução.' };
+    return { ok: false, error: 'Venda já enviada ou finalizada: não dá para cancelar. Para devolver, use a solicitação de devolução.' };
   }
   const paid = RECEIVED_STATUSES.includes(order.status);
   let refundedCents: number | null = null;

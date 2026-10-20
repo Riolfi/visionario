@@ -25,10 +25,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     return redirect(back);
   };
   // o middleware já confere; de novo aqui porque é ação destrutiva
-  if (!can(locals.admin, 'pedidos.cancelar')) return fail('Seu cargo não permite cancelar compras.');
+  if (!can(locals.admin, 'pedidos.cancelar')) return fail('Seu cargo não permite cancelar vendas.');
   const order = number ? await getOrderByNumber(number) : null;
   if (!order) return redirect('/admin/pedidos');
-  if (order.status === 'cancelled') return fail('Esta compra já está cancelada.');
+  if (order.status === 'cancelled') return fail('Esta venda já está cancelada.');
 
   const motivo = String(form.get('motivo') || '').trim();
   const reasons = order.source === 'caixa' ? CANCEL_REASONS_CAIXA : CANCEL_REASONS_ONLINE;
@@ -43,7 +43,7 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     try {
       await cancelCaixaSale(number);
     } catch (e) {
-      return fail(e instanceof Error ? e.message : 'Não foi possível cancelar a compra.');
+      return fail(e instanceof Error ? e.message : 'Não foi possível cancelar a venda.');
     }
     if (!restock) await withdrawStock(order.items);
     await recordCancellation(number, by, reason);
@@ -62,6 +62,6 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     : '';
   // só faz diferença se o estoque já tinha baixado (compra paga)
   const stock = RECEIVED_STATUSES.includes(order.status) ? (restock ? ' Os itens voltaram ao estoque.' : ' Os itens não voltaram ao estoque.') : '';
-  setFlash(cookies, 'ok', `Compra cancelada.${stock}${notify ? ' O cliente foi avisado por e-mail.' : ''}${refund}`);
+  setFlash(cookies, 'ok', `Venda cancelada.${stock}${notify ? ' O cliente foi avisado por e-mail.' : ''}${refund}`);
   return redirect(back);
 };

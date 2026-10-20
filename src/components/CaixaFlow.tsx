@@ -396,9 +396,9 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
   async function cancelPurchase() {
     const ok = await confirmDialog({
-      title: 'Cancelar compra?',
+      title: 'Cancelar venda?',
       message: 'Os itens e os valores informados saem do caixa.',
-      confirmLabel: 'Cancelar compra',
+      confirmLabel: 'Cancelar venda',
       cancelLabel: 'Voltar',
     });
     if (ok) resetSale();
@@ -611,7 +611,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             </div>
           )}
           <a href="/admin/pedidos" class="font-sans text-[13px] text-ink-muted underline">
-            Ver em Compras
+            Ver em Vendas
           </a>
         </div>
       </div>
@@ -1029,7 +1029,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
             class="mt-2 w-full font-sans text-[13px] text-red-700 underline"
             onClick={cancelPurchase}
           >
-            Cancelar compra
+            Cancelar venda
           </button>
         )}
       </aside>

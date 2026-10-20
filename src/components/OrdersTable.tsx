@@ -233,12 +233,12 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
           {FILTER_ICON}
         </button>
         <div class="flex min-w-0 flex-1 gap-2 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {chips.length ? chips : <span class="self-center font-sans text-[13px] text-ink-muted">Todas as compras</span>}
+          {chips.length ? chips : <span class="self-center font-sans text-[13px] text-ink-muted">Todas as vendas</span>}
         </div>
       </div>
 
       <div class="mt-4 rounded-card border border-ink/10 bg-white p-4">
-        <label class="label" for="order-search">Compra</label>
+        <label class="label" for="order-search">Venda</label>
         <span class="relative block">
           <svg class="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-muted" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
           <input
@@ -246,7 +246,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
             class="field pl-11"
             type="search"
             inputMode="numeric"
-            placeholder="Pesquise pelo código da compra…"
+            placeholder="Pesquise pelo código da venda…"
             autoComplete="off"
             value={query}
             onInput={(e) => setQuery((e.target as HTMLInputElement).value)}
@@ -255,10 +255,10 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
       </div>
 
       {/* uma área de rolagem só: cabeçalho, compras e totais rolam juntos pro lado */}
-      <div ref={box} class="mt-4 overflow-auto rounded-card border border-ink/10 bg-white" role="table" aria-label="Compras">
+      <div ref={box} class="mt-4 overflow-auto rounded-card border border-ink/10 bg-white" role="table" aria-label="Vendas">
         <div class="flex min-h-full w-full min-w-fit flex-col text-sm">
           <div role="row" class={`${COLS} sticky top-0 z-10 border-b border-ink/10 bg-white text-[11px] uppercase tracking-[0.1em] text-ink-muted`}>
-            <SortHead k="number" label="Compra" />
+            <SortHead k="number" label="Venda" />
             <SortHead k="created_at" label="Data" />
             <SortHead k="customer" label="Cliente" />
             <span role="columnheader" class="px-3 py-3">Formato</span>
@@ -281,13 +281,13 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
               </span>
             </div>
           ))}
-          {visible.length === 0 && <p class="p-6 text-center text-sm text-ink-muted">Nenhuma compra encontrada.</p>}
+          {visible.length === 0 && <p class="p-6 text-center text-sm text-ink-muted">Nenhuma venda encontrada.</p>}
           {/* espaço em branco até os totais */}
           <div class="flex-1" aria-hidden="true" />
           <div role="row" class={`${COLS} sticky bottom-0 z-10 border-t border-ink/10 bg-bone font-sans`}>
-            <span role="cell" class="whitespace-nowrap px-3 py-3">Compras: <strong>{visible.length}</strong></span>
+            <span role="cell" class="whitespace-nowrap px-3 py-3">Vendas: <strong>{visible.length}</strong></span>
             <span role="cell" /><span role="cell" /><span role="cell" /><span role="cell" />
-            <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold" title="Soma das compras pagas, enviadas ou entregues (canceladas e pendentes ficam fora)">{brl(total)}</span>
+            <span role="cell" class="whitespace-nowrap px-3 py-3 text-right font-semibold" title="Soma das vendas pagas, enviadas ou entregues (canceladas e pendentes ficam fora)">{brl(total)}</span>
             <span role="cell" />
           </div>
         </div>
@@ -346,7 +346,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
                   <input type="date" class="field py-2.5" value={draft.to} min={draft.from || undefined} onInput={(e) => setDraft((d) => ({ ...d, to: (e.target as HTMLInputElement).value }))} />
                 </label>
               </div>
-              <p class="mt-2 text-[12px] text-ink-muted">Sem "Data (até)", mostra só as compras do dia escolhido.</p>
+              <p class="mt-2 text-[12px] text-ink-muted">Sem "Data (até)", mostra só as vendas do dia escolhido.</p>
             </div>
           </div>
 

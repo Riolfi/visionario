@@ -8,6 +8,10 @@ import { canAccess, getAdminAccess, homeFor, type AdminAccess } from './lib/repo
 import { getCustomerStatus } from './lib/repo/customers';
 import { sessionExpired } from './lib/session-limits';
 
+// Datas e horas formatadas no servidor (toLocaleString sem timeZone) saem no
+// fuso da loja, não no UTC da Vercel (venda às 10h aparecia como 13h).
+process.env.TZ = 'America/Sao_Paulo';
+
 // O que uma conta de administrador pode abrir fora de /admin: login/sair,
 // fotos enviadas e as APIs que o próprio painel chama (status do Pix na
 // Caixa, CEP). O resto é loja, e admin não compra como cliente.

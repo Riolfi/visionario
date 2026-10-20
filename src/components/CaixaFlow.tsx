@@ -93,6 +93,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [cancelDetalhe, setCancelDetalhe] = useState('');
+  const [cancelRestock, setCancelRestock] = useState(true);
   const [pixWait, setPixWait] = useState<PixWait | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
@@ -513,7 +514,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
       const res = await fetch('/api/admin/caixa', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel', order_number: done.order_number, motivo: cancelMotivo, detalhe: cancelDetalhe }),
+        body: JSON.stringify({ action: 'cancel', order_number: done.order_number, motivo: cancelMotivo, detalhe: cancelDetalhe, restock: cancelRestock }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
       if (!res.ok || !data.ok) {
@@ -570,7 +571,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
         {cancelled && (
           <p class="mt-4 rounded-card bg-agua-wash p-3 font-sans text-[13px] text-agua-dark">
-            Os itens voltaram ao estoque e o valor saiu do caixa de hoje. Devolva o dinheiro ao cliente.
+            {cancelRestock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia. Devolva o dinheiro ao cliente.
           </p>
         )}
         {error && <p class="mt-4 font-sans text-[13px] text-red-700">{error}</p>}
@@ -593,9 +594,15 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
                   {CANCEL_REASONS_CAIXA.map((r) => <option key={r} value={r}>{r}</option>)}
                 </select>
               </label>
-              <label class="block">
-                <span class="label">Detalhes {cancelMotivo === 'Outro' ? <span class="text-red-600">*</span> : <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span>}</span>
-                <textarea class="field" rows={2} maxLength={400} value={cancelDetalhe} onInput={(e) => setCancelDetalhe((e.target as HTMLTextAreaElement).value)} />
+              {cancelMotivo === 'Outro' && (
+                <label class="block">
+                  <span class="label">Detalhes <span class="text-red-600">*</span></span>
+                  <textarea class="field" rows={2} maxLength={400} value={cancelDetalhe} onInput={(e) => setCancelDetalhe((e.target as HTMLTextAreaElement).value)} />
+                </label>
+              )}
+              <label class="flex items-start gap-2 text-[13px] text-ink-soft">
+                <input type="checkbox" class="mt-0.5" checked={cancelRestock} onChange={(e) => setCancelRestock((e.target as HTMLInputElement).checked)} />
+                Devolver os itens ao estoque (desmarque se o produto está danificado)
               </label>
               <div class="flex gap-2">
                 <button type="button" class="flex-1 rounded-card border border-ink/20 px-3 py-2 text-[13px]" onClick={() => setCancelOpen(false)}>Voltar</button>

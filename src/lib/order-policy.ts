@@ -31,6 +31,20 @@ export function returnDeadline(order: Order): Date | null {
 }
 
 /**
+ * Tira de novo do estoque itens que o cancelamento devolveu — para produto
+ * danificado que não pode voltar à venda.
+ * ponytail: ler e gravar por produto (ação rara, de uma pessoa só); se virar gargalo, RPC
+ */
+export async function withdrawStock(items: Order['items']) {
+  const sb = supabaseAdmin();
+  if (!sb) return;
+  for (const it of items) {
+    const { data } = await sb.from('products').select('stock').eq('id', it.product_id).maybeSingle();
+    if (data) await sb.from('products').update({ stock: Math.max(0, data.stock - it.quantity) }).eq('id', it.product_id);
+  }
+}
+
+/**
  * Cancela uma compra online: estorna no Mercado Pago se já foi paga (estorno
  * falhou = nada muda), põe Cancelado (o estoque volta se já tinha baixado),
  * grava quem/quando/motivo e avisa o cliente com os dados do reembolso.
@@ -40,6 +54,7 @@ export async function cancelOnlineOrder(
   order: Order,
   by: string | null,
   reason: string,
+  opts: { notify?: boolean; restock?: boolean } = {},
 ): Promise<{ ok: true; refundedCents: number | null; simulated?: boolean } | { ok: false; error: string }> {
   if (!STAFF_CANCELABLE_ONLINE.includes(order.status)) {
     return { ok: false, error: 'Pedido já enviado ou finalizado: não dá para cancelar. Para devolver, use a solicitação de devolução.' };
@@ -65,10 +80,14 @@ export async function cancelOnlineOrder(
     }
     return { ok: false, error: error || 'Não foi possível cancelar.' };
   }
+  // já tinha dado baixa (pago) e o produto não volta à venda: tira de novo
+  if (paid && opts.restock === false) await withdrawStock(order.items);
   await recordCancellation(order.order_number, by, reason);
-  await sendOrderStatusEmail(updated, 'cancelled', { refundCents: refundedCents }).catch((e) =>
-    console.error('[cancel] e-mail falhou:', e),
-  );
+  if (opts.notify !== false) {
+    await sendOrderStatusEmail(updated, 'cancelled', { refundCents: refundedCents }).catch((e) =>
+      console.error('[cancel] e-mail falhou:', e),
+    );
+  }
   return { ok: true, refundedCents, simulated };
 }
 
@@ -108,13 +127,7 @@ export async function completeReturn(
     return { ok: false, error: error || 'Não foi possível concluir a devolução.' };
   }
   // o change_order_status devolveu os itens ao estoque; produto com defeito não volta à venda
-  if (!restock) {
-    // ponytail: ler e gravar por produto (ação rara, de uma pessoa só); se virar gargalo, RPC
-    for (const it of order.items) {
-      const { data } = await sb.from('products').select('stock').eq('id', it.product_id).maybeSingle();
-      if (data) await sb.from('products').update({ stock: Math.max(0, data.stock - it.quantity) }).eq('id', it.product_id);
-    }
-  }
+  if (!restock) await withdrawStock(order.items);
   await sb.from('orders').update({ return_completed_at: new Date().toISOString() }).eq('id', order.id);
   await recordCancellation(order.order_number, by, `Devolução: ${order.return_reason ?? 'sem motivo'}`);
   await sendOrderStatusEmail(updated, 'cancelled', { refundCents: refundedCents, returned: true }).catch((e) =>

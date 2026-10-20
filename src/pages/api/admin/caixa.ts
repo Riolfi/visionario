@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { CANCEL_REASONS_CAIXA, joinReason } from '../../../lib/types';
+import { withdrawStock } from '../../../lib/order-policy';
 import {
   createCaixaSale,
   cancelCaixaSale,
@@ -184,7 +185,14 @@ export const POST: APIRoute = async ({ request, locals }) => {
     if (!CANCEL_REASONS_CAIXA.includes(motivo) || reason.length < 3) return json({ error: 'Escolha o motivo do cancelamento.' }, 400);
     try {
       const outcome = await cancelCaixaSale(orderNumber);
-      if (outcome === 'cancelled') await recordCancellation(orderNumber, locals.user?.id ?? null, reason);
+      if (outcome === 'cancelled') {
+        // desmarcado: produto danificado, não volta à venda
+        if (body.restock === false) {
+          const order = await getOrderByNumber(orderNumber);
+          if (order) await withdrawStock(order.items);
+        }
+        await recordCancellation(orderNumber, locals.user?.id ?? null, reason);
+      }
       if (outcome === 'not_found') return json({ error: 'Venda não encontrada.' }, 404);
       if (outcome === 'not_caixa') return json({ error: 'Esse pedido não é do Caixa.' }, 400);
       return json({ ok: true, outcome });

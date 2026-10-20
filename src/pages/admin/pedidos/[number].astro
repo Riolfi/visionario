@@ -22,6 +22,7 @@ const ERROS: Record<string, string> = {
   estoque: 'Não dá para marcar como pago: falta estoque de um dos produtos. Reponha o estoque e tente de novo.',
   rastreio: 'Para marcar como Enviado, informe o código de rastreio.',
   'rastreio-invalido': 'Código de rastreio inválido. Use o código dos Correios (ex.: AA123456789BR) ou o link de rastreio da transportadora.',
+  'email-invalido': 'O e-mail do cliente é inválido. Desmarque "Enviar e-mail ao cliente" para salvar sem avisar.',
   email: 'Não foi possível enviar o e-mail ao cliente, então nada foi alterado. Confira o e-mail do cliente ou salve sem enviar o e-mail.',
   retrocesso: 'O status só avança: não dá para voltar a um status anterior.',
   final: 'Pedido entregue ou cancelado não muda mais de status.',
@@ -29,6 +30,12 @@ const ERROS: Record<string, string> = {
 };
 // só os próximos status da linha do tempo (cancelar tem botão próprio); final = travado
 const isFinal = FINAL_STATUSES.includes(order.status);
+// rastreio visível/obrigatório de Enviado em diante
+const TRACKING_STATUSES = ['shipped', 'delivered'];
+const trackingOn = TRACKING_STATUSES.includes(order.status);
+const COPY_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>';
+// estoque já baixou (pago ou Caixa): no cancelamento, escolher se os itens voltam
+const stockOut = order.source === 'caixa' || RECEIVED_STATUSES.includes(order.status);
 const statuses = [order.status, ...ORDER_NEXT[order.status]].map((s) => [s, ORDER_STATUS_LABELS[s]]) as [OrderStatus, string][];
 // aguardando pagamento: estoque reservado até a hora limite (a baixa é no pagamento)
 const reservedUntil = order.status === 'pending' ? new Date(new Date(order.created_at).getTime() + RESERVE_MINUTES * 60_000) : null;
@@ -114,10 +121,10 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
           <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>{PAYMENT_METHOD_LABELS[p.method]}{p.method === 'cash' && ' (recebido)'}</dt><dd>{brl(p.amount_cents)}</dd></div>
         ))}
         {received != null && (
-          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>Valor recebido pelo caixa</dt><dd>{brl(received)}</dd></div>
+          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>Valor recebido</dt><dd>{brl(received)}</dd></div>
         )}
         {change != null && (
-          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>Troco devolvido ao cliente</dt><dd>{brl(change)}</dd></div>
+          <div class="flex justify-between pl-3 text-[13px] text-ink-muted"><dt>Troco</dt><dd>{brl(change)}</dd></div>
         )}
       </dl>
       {order.mp_payment_id && (
@@ -145,7 +152,16 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
         <div class="rounded-card border border-ink/10 bg-white p-5 text-sm text-ink-soft">
           <h2 class="font-display text-lg text-ink">Status</h2>
           <p class="mt-2">{isFinal ? 'Pedido entregue ou cancelado: o status não muda mais.' : 'Seu cargo não permite mudar o status deste pedido.'}</p>
-          {order.tracking_code && <p class="mt-2">Rastreio: <span class="break-all font-medium text-ink">{order.tracking_code}</span></p>}
+          {order.tracking_code && (
+            <label class="mt-3 block">
+              <span class="label">Código de rastreio</span>
+              <span class="relative block">
+                <input class="field pr-11" value={order.tracking_code} readonly />
+                <button type="button" data-copy-field class="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-ink-muted hover:text-ink" aria-label="Copiar código de rastreio" title="Copiar" set:html={COPY_ICON}></button>
+              </span>
+              <span data-copy-ok class="mt-1 hidden text-[12px] text-green-700" role="status">Copiado!</span>
+            </label>
+          )}
         </div>
       ) : (
       <form
@@ -154,6 +170,7 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
         action="/api/admin/orders"
         class="rounded-card border border-ink/10 bg-white p-5"
         data-current={order.status}
+        data-email={order.customer_email ?? ''}
       >
         <h2 class="font-display text-lg">Atualizar status</h2>
         <input type="hidden" name="order_number" value={order.order_number} />
@@ -168,25 +185,31 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
           <p class="mt-2 text-[12px] text-ink-muted">Estoque reservado até {reservedUntil.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} de {reservedUntil.toLocaleDateString('pt-BR')}; a baixa acontece quando o pagamento é confirmado.</p>
         )}
 
-        {/* rastreio: só aparece (e é obrigatório) com Enviado escolhido */}
-        <div id="tracking-wrap" class:list={['mt-3', order.status !== 'shipped' && 'hidden']}>
+        {/* rastreio: aparece (e é obrigatório) de Enviado em diante; depois de enviado, com copiar */}
+        <div id="tracking-wrap" class:list={['mt-3', !trackingOn && 'hidden']}>
           <label class="label" for="tracking_code">Código de rastreio <span class="text-red-600">*</span></label>
-          <input
-            id="tracking_code"
-            name="tracking_code"
-            class="field"
-            value={order.tracking_code ?? ''}
-            required={order.status === 'shipped'}
-            disabled={order.status !== 'shipped'}
-            autocomplete="off"
-            placeholder="AA123456789BR ou link da transportadora"
-          />
+          <span class="relative block">
+            <input
+              id="tracking_code"
+              name="tracking_code"
+              class:list={['field', order.tracking_code && 'pr-11']}
+              value={order.tracking_code ?? ''}
+              required={trackingOn}
+              disabled={!trackingOn}
+              autocomplete="off"
+              placeholder="AA123456789BR ou link da transportadora"
+            />
+            {order.tracking_code && (
+              <button type="button" data-copy-field class="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-ink-muted hover:text-ink" aria-label="Copiar código de rastreio" title="Copiar" set:html={COPY_ICON}></button>
+            )}
+          </span>
+          <span data-copy-ok class="mt-1 hidden text-[12px] text-green-700" role="status">Copiado!</span>
           <p id="tracking-error" class="mt-1 hidden text-[12px] text-red-700">! Use o código dos Correios (AA123456789BR) ou um link de rastreio (https://…).</p>
         </div>
 
-        {/* desmarcado por padrão; marca sozinho ao escolher um status que o cliente precisa saber */}
+        {/* lembra a última escolha de quem opera (neste navegador) */}
         <label class="mt-3 flex items-center gap-2 text-sm text-ink-soft">
-          <input type="checkbox" name="notify" id="notify" />
+          <input type="checkbox" name="notify" id="notify" data-remember-notify />
           Enviar e-mail ao cliente
         </label>
 
@@ -250,22 +273,24 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
 
       <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
         <h2 class="font-display text-lg">Cliente</h2>
-        {/* cliente com conta: nome vira link para a ficha dele */}
-        <p class="mt-2 text-ink-soft">
-          {order.user_id ? <a href={`/admin/usuarios/clientes/${order.user_id}`} class="text-agua-dark underline">{customerName}</a> : customerName}
-        </p>
-        {order.customer_email && <p class="text-ink-soft">{order.customer_email}</p>}
-        {order.customer_phone && (
-          <p class="flex items-center gap-2 text-ink-soft">
-            {formatPhone(order.customer_phone)}
-            {whatsappUrl(order.customer_phone) && (
+        <dl class="mt-2 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1.5 text-ink-soft">
+          <dt class="text-ink-muted">Nome:</dt>
+          {/* cliente com conta: nome vira link para a ficha dele */}
+          <dd>{order.user_id ? <a href={`/admin/usuarios/clientes/${order.user_id}`} class="text-agua-dark underline">{customerName}</a> : customerName}</dd>
+          <dt class="text-ink-muted">Email:</dt>
+          <dd class="break-all">{order.customer_email || '—'}</dd>
+          <dt class="text-ink-muted">Telefone:</dt>
+          <dd class="flex items-center gap-2">
+            {order.customer_phone ? formatPhone(order.customer_phone) : '—'}
+            {order.customer_phone && whatsappUrl(order.customer_phone) && (
               <a href={whatsappUrl(order.customer_phone)} target="_blank" rel="noopener" class="grid h-7 w-7 place-items-center rounded-full bg-[#25D366] text-white hover:brightness-95" aria-label="Conversar no WhatsApp" title="Conversar no WhatsApp">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2Zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2Zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8-.2-.1-.4-.1-.6.1l-.8 1c-.1.2-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.2 5.2 0 0 0 1.1 2.8 11.9 11.9 0 0 0 4.6 4c1.7.7 2.4.8 3.2.7a2.8 2.8 0 0 0 1.8-1.3 2.3 2.3 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3Z" /></svg>
               </a>
             )}
-          </p>
-        )}
-        {order.customer_cpf && <p class="text-ink-soft">CPF {formatCpf(order.customer_cpf)}</p>}
+          </dd>
+          <dt class="text-ink-muted">CPF:</dt>
+          <dd>{order.customer_cpf ? formatCpf(order.customer_cpf) : '—'}</dd>
+        </dl>
       </div>
       <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
         <h2 class="font-display text-lg">Entrega</h2>
@@ -288,7 +313,7 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
             <input type="hidden" name="order_number" value={order.order_number} />
             <h2 class="font-display text-xl">Cancelar a compra {orderLabel(order.order_number)}?</h2>
             <p class="text-sm text-ink-soft">
-              Os itens voltam ao estoque e o valor sai dos totais recebidos.
+              O valor sai dos totais recebidos.
               {RECEIVED_STATUSES.includes(order.status) && (order.source === 'caixa'
                 ? ' Devolva o valor ao cliente no balcão.'
                 : ' O valor é estornado automaticamente pelo Mercado Pago e o cliente recebe um e-mail; se o estorno falhar, nada é cancelado.')}
@@ -300,10 +325,22 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
                 {CANCEL_REASONS.map((r) => <option value={r}>{r}</option>)}
               </select>
             </label>
-            <label class="block">
-              <span class="label">Detalhes <span class="text-[11px] font-normal text-ink-muted/60">(obrigatório em "Outro")</span></span>
-              <textarea id="cancel-detalhe" name="detalhe" rows="3" maxlength="400" class="field"></textarea>
+            <label id="cancel-detalhe-wrap" class="block hidden">
+              <span class="label">Detalhes <span class="text-red-600">*</span></span>
+              <textarea id="cancel-detalhe" name="detalhe" rows="3" maxlength="400" class="field" disabled></textarea>
             </label>
+            {stockOut && (
+              <label class="flex items-start gap-2 text-[13px] text-ink-soft">
+                <input type="checkbox" name="restock" class="mt-0.5" checked />
+                Devolver os itens ao estoque (desmarque se o produto está danificado e não volta à venda)
+              </label>
+            )}
+            {!isCaixa && (
+              <label class="flex items-center gap-2 text-[13px] text-ink-soft">
+                <input type="checkbox" name="notify" data-remember-notify />
+                Enviar e-mail ao cliente
+              </label>
+            )}
             <div class="flex justify-end gap-2">
               <button type="button" id="cancel-close" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Voltar</button>
               <button class="rounded-card bg-red-700 px-4 py-2 font-sans text-sm text-white hover:bg-red-800">Cancelar compra</button>
@@ -329,9 +366,46 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
   const detalhe = document.getElementById('cancel-detalhe') as HTMLTextAreaElement | null;
   document.getElementById('cancel-open')?.addEventListener('click', () => dlg?.showModal());
   document.getElementById('cancel-close')?.addEventListener('click', () => dlg?.close());
+  // Detalhes só aparece (e é obrigatório) em "Outro"
   motivo?.addEventListener('change', () => {
-    if (detalhe) detalhe.required = motivo.value === 'Outro';
+    const other = motivo.value === 'Outro';
+    document.getElementById('cancel-detalhe-wrap')?.classList.toggle('hidden', !other);
+    if (detalhe) {
+      detalhe.required = other;
+      detalhe.disabled = !other;
+    }
   });
+
+  // "Enviar e-mail ao cliente": lembra a escolha (localStorage) até mudar de novo
+  const NOTIFY_KEY = 'compras-enviar-email';
+  let savedNotify = false;
+  try {
+    savedNotify = localStorage.getItem(NOTIFY_KEY) === '1';
+  } catch {}
+  document.querySelectorAll<HTMLInputElement>('[data-remember-notify]').forEach((box) => {
+    box.checked = savedNotify;
+    box.addEventListener('change', () => {
+      try {
+        localStorage.setItem(NOTIFY_KEY, box.checked ? '1' : '0');
+      } catch {}
+    });
+  });
+
+  // copiar o código de rastreio
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-field]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const input = b.parentElement!.querySelector('input')!;
+      const ok = b.closest('label, div')!.querySelector<HTMLElement>('[data-copy-ok]');
+      try {
+        await navigator.clipboard.writeText(input.value);
+        if (ok) ok.textContent = 'Copiado!';
+      } catch {
+        if (ok) ok.textContent = 'Não deu para copiar';
+      }
+      ok?.classList.remove('hidden');
+      setTimeout(() => ok?.classList.add('hidden'), 2000);
+    }),
+  );
 
   // ---- status: rastreio só em Enviado, e-mail marcado só em mudança relevante ----
   const statusForm = document.getElementById('status-form') as HTMLFormElement | null;
@@ -340,8 +414,7 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
   const trackingError = document.getElementById('tracking-error');
   const notify = document.getElementById('notify') as HTMLInputElement | null;
   const current = statusForm?.dataset.current ?? '';
-  // mudanças que o cliente precisa saber (o resto é ajuste interno)
-  const RELEVANT = ['paid', 'separating', 'shipped', 'delivered'];
+  const customerEmail = statusForm?.dataset.email ?? '';
   // mesmo formato do servidor (isValidTracking em lib/types)
   const validTracking = (v: string) => {
     const t = v.trim();
@@ -354,13 +427,12 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
     }
   };
   statusSel?.addEventListener('change', () => {
-    const shipped = statusSel.value === 'shipped';
-    document.getElementById('tracking-wrap')?.classList.toggle('hidden', !shipped);
+    const on = ['shipped', 'delivered'].includes(statusSel.value);
+    document.getElementById('tracking-wrap')?.classList.toggle('hidden', !on);
     if (tracking) {
-      tracking.required = shipped;
-      tracking.disabled = !shipped;
+      tracking.required = on;
+      tracking.disabled = !on;
     }
-    if (notify) notify.checked = statusSel.value !== current && RELEVANT.includes(statusSel.value);
   });
   tracking?.addEventListener('input', () => {
     tracking.setCustomValidity('');
@@ -372,6 +444,17 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
     if (tracking && !tracking.disabled && !validTracking(tracking.value)) {
       trackingError?.classList.remove('hidden');
       tracking.focus();
+      return;
+    }
+    // aviso marcado + e-mail inválido: não salva (desmarcado salva sem avisar)
+    if (notify?.checked && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(customerEmail)) {
+      await confirmDialog({
+        title: 'E-mail do cliente inválido',
+        message: 'Não dá para enviar o aviso. Desmarque "Enviar e-mail ao cliente" para salvar sem avisar.',
+        confirmLabel: 'Entendi',
+        cancelLabel: 'Fechar',
+        tone: 'primary',
+      });
       return;
     }
     // Pago é do Mercado Pago (webhook): marcar à mão pede confirmação

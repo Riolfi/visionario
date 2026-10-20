@@ -32,14 +32,15 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // só para frente (o mesmo status vale para trocar o rastreio de um Enviado)
   if (status !== current.status && !ORDER_NEXT[current.status].includes(status)) return back('erro=update&motivo=retrocesso');
   if (status === current.status && status !== 'shipped') return back('erro=update&motivo=igual');
-  // Enviado exige rastreio válido
-  if (status === 'shipped' && !trackingCode) return back('erro=update&motivo=rastreio');
-  if (status === 'shipped' && !isValidTracking(trackingCode)) return back('erro=update&motivo=rastreio-invalido');
+  // Enviado e Entregue exigem rastreio válido
+  const withTracking = status === 'shipped' || status === 'delivered';
+  if (withTracking && !trackingCode) return back('erro=update&motivo=rastreio');
+  if (withTracking && !isValidTracking(trackingCode)) return back('erro=update&motivo=rastreio-invalido');
   // vai avisar: e-mail do cliente precisa ser válido antes de mudar qualquer coisa
-  if (notify && !isValidEmail(current.customer_email ?? '')) return back('erro=update&motivo=email');
+  if (notify && !isValidEmail(current.customer_email ?? '')) return back('erro=update&motivo=email-invalido');
 
   const { order, error } = await changeOrderStatus(orderNumber, status, {
-    trackingCode: status === 'shipped' ? trackingCode : undefined,
+    trackingCode: withTracking ? trackingCode : undefined,
   });
   if (!order) {
     // falta de estoque ao marcar como pago: mostra o motivo

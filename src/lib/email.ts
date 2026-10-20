@@ -16,7 +16,12 @@ interface StatusCopy {
   body: string;
 }
 
-function statusCopy(order: Order, status: OrderStatus): StatusCopy {
+/** extra.refundCents: valor estornado no cancelamento (null = nada foi cobrado) */
+export interface StatusExtra {
+  refundCents?: number | null;
+}
+
+function statusCopy(order: Order, status: OrderStatus, extra: StatusExtra = {}): StatusCopy {
   const n = orderLabel(order.order_number);
   const first = firstName(order.customer_name);
   switch (status) {
@@ -66,7 +71,13 @@ function statusCopy(order: Order, status: OrderStatus): StatusCopy {
       return {
         subject: `Pedido ${n} cancelado — ${env.brandName}`,
         headline: 'Pedido cancelado',
-        body: `Olá, ${first}. O pedido <strong>${n}</strong> foi cancelado. Se algum valor foi cobrado, o estorno é feito automaticamente pelo meio de pagamento.`,
+        body: `Olá, ${first}. O pedido <strong>${n}</strong> foi cancelado.${
+          extra.refundCents
+            ? ` O valor de <strong>${brl(extra.refundCents)}</strong> foi estornado para o mesmo meio de pagamento: no Pix volta em instantes; no cartão, aparece como crédito em até 2 faturas, conforme o banco.`
+            : extra.refundCents === null
+              ? ' Nenhum valor foi cobrado.'
+              : ' Se algum valor foi cobrado, o estorno é feito automaticamente pelo meio de pagamento.'
+        }`,
       };
   }
 }
@@ -75,8 +86,8 @@ function statusCopy(order: Order, status: OrderStatus): StatusCopy {
 // HTML
 // ---------------------------------------------------------------------------
 
-export function orderStatusHtml(order: Order, status: OrderStatus): string {
-  const copy = statusCopy(order, status);
+export function orderStatusHtml(order: Order, status: OrderStatus, extra: StatusExtra = {}): string {
+  const copy = statusCopy(order, status, extra);
   const addr = order.shipping_address;
 
   const rows = order.items
@@ -164,13 +175,13 @@ async function deliver(to: string, subject: string, html: string, fileName: stri
 }
 
 /** Dispara o e-mail correspondente a um status do pedido. */
-export async function sendOrderStatusEmail(order: Order, status: OrderStatus): Promise<MailResult> {
-  const copy = statusCopy(order, status);
+export async function sendOrderStatusEmail(order: Order, status: OrderStatus, extra: StatusExtra = {}): Promise<MailResult> {
+  const copy = statusCopy(order, status, extra);
   const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   return deliver(
     order.customer_email,
     copy.subject,
-    orderStatusHtml(order, status),
+    orderStatusHtml(order, status, extra),
     `${order.order_number}-${status}-${stamp}`,
   );
 }

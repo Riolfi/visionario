@@ -5,6 +5,7 @@ import { getOrderByNumber } from '../../../lib/repo/orders';
 import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../lib/format';
 import { FINAL_STATUSES, ORDER_NEXT, ORDER_STATUS_LABELS, orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
 import { RESERVE_MINUTES } from '../../../lib/repo/orders';
+import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, returnDeadline } from '../../../lib/order-policy';
 
 export const prerender = false;
 
@@ -35,8 +36,8 @@ import { can } from '../../../lib/rbac';
 import { takeFlash } from '../../../lib/flash';
 const canStatus = can(Astro.locals.admin, 'pedidos.status');
 const canCancel = can(Astro.locals.admin, 'pedidos.cancelar') && order.status !== 'cancelled';
-// compra online: só cancela se o cliente pediu (Minha conta › Pedidos)
-const cancelBlocked = order.source !== 'caixa' && !order.cancel_requested_at;
+// compra online: a equipe cancela até o envio; depois disso, só devolução
+const cancelBlocked = order.source !== 'caixa' && !STAFF_CANCELABLE_ONLINE.includes(order.status);
 const flash = takeFlash(Astro.cookies);
 import { getPersonSummary } from '../../../lib/repo/team';
 const isCaixa = order.source === 'caixa';
@@ -52,15 +53,9 @@ const customerName = anonymous ? 'Não identificado' : order.customer_name || or
 const cashPart = order.payments?.find((p) => p.method === 'cash');
 const received = order.payment_method === 'cash' ? order.received_cents ?? null : null;
 const change = received != null ? Math.max(0, received - order.total_cents) : cashPart ? Math.max(0, (order.payments ?? []).reduce((t, p) => t + p.amount_cents, 0) - order.total_cents) : null;
-const CANCEL_REASONS = [
-  'Cliente desistiu da compra',
-  'Erro ao registrar a venda',
-  'Venda duplicada',
-  'Produto com defeito',
-  'Troca por outro produto',
-  'Pagamento não aprovado ou estornado',
-  'Outro',
-];
+const CANCEL_REASONS = order.source === 'caixa' ? CANCEL_REASONS_CAIXA : CANCEL_REASONS_ONLINE;
+// quem cancelou: o próprio cliente ou alguém da equipe (nome e cargo)
+const cancelledByCustomer = !!order.cancelled_by && order.cancelled_by === order.user_id;
 ---
 
 <AdminLayout title={`Pedido ${orderLabel(order.order_number)}`}>
@@ -200,18 +195,27 @@ const CANCEL_REASONS = [
       {canCancel && (
         <div class="rounded-card border border-red-200 bg-white p-5">
           <h2 class="font-display text-lg">Cancelar compra</h2>
-          {order.source !== 'caixa' && order.cancel_requested_at && (
-            <p class="mt-2 rounded-card bg-amber-50 px-3 py-2 text-[13px] text-amber-800">
-              O cliente pediu o cancelamento em {new Date(order.cancel_requested_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: {order.cancel_request_reason}
-            </p>
-          )}
           <p class="mt-2 text-sm text-ink-soft">
             {cancelBlocked
-              ? 'Compras online só podem ser canceladas a pedido do cliente (em Minha conta › Pedidos).'
-              : 'Cancela a compra, devolve os itens ao estoque e tira o valor dos totais recebidos.'}
+              ? 'Pedido já enviado: não dá para cancelar. Se o cliente quiser devolver, ele pede em Minha conta › Pedidos (até 7 dias depois da entrega).'
+              : isCaixa
+                ? 'Cancela a venda, devolve os itens ao estoque e registra a saída do valor no caixa de hoje.'
+                : 'Cancela a compra, estorna o valor pelo Mercado Pago (se já foi pago), devolve os itens ao estoque e avisa o cliente.'}
           </p>
           <button type="button" id="cancel-open" disabled={cancelBlocked} class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">Cancelar compra</button>
         </div>
+      )}
+
+      {/* devolução pedida pelo cliente (até 7 dias depois da entrega) */}
+      {order.return_requested_at && (
+        <div class="rounded-card border border-amber-300 bg-white p-5 text-sm">
+          <h2 class="font-display text-lg">Devolução solicitada</h2>
+          <p class="mt-2 text-ink-soft">Em {new Date(order.return_requested_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: {order.return_reason}</p>
+          <p class="mt-2 text-[12px] text-ink-muted">Combine a coleta com o cliente; o reembolso sai quando o produto chegar.</p>
+        </div>
+      )}
+      {order.status === 'delivered' && !order.return_requested_at && returnDeadline(order) && (
+        <p class="text-[12px] text-ink-muted">Prazo de devolução do cliente: até {returnDeadline(order)!.toLocaleDateString('pt-BR')}.</p>
       )}
 
       {/* auditoria do cancelamento */}
@@ -219,7 +223,8 @@ const CANCEL_REASONS = [
         <div class="rounded-card border border-red-200 bg-white p-5 text-sm">
           <h2 class="font-display text-lg">Cancelamento</h2>
           <dl class="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
-            <dt class="text-ink-muted">Por</dt><dd>{canceller ? `${canceller.name} (${canceller.email})` : '—'}</dd>
+            <dt class="text-ink-muted">Por</dt><dd>{cancelledByCustomer ? `Cliente — ${customerName}` : canceller ? `${canceller.name} (${canceller.role}) · ${canceller.email}` : '—'}</dd>
+            {isCaixa && <><dt class="text-ink-muted">Venda feita por</dt><dd>{operator ? `${operator.name} (${operator.role})` : '—'}</dd></>}
             <dt class="text-ink-muted">Quando</dt><dd>{order.cancelled_at ? new Date(order.cancelled_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'medium' }) : '—'}</dd>
             <dt class="text-ink-muted">Motivo</dt><dd>{order.cancel_reason || '—'}</dd>
           </dl>
@@ -269,7 +274,7 @@ const CANCEL_REASONS = [
               Os itens voltam ao estoque e o valor sai dos totais recebidos.
               {RECEIVED_STATUSES.includes(order.status) && (order.source === 'caixa'
                 ? ' Devolva o valor ao cliente no balcão.'
-                : ' O valor é estornado automaticamente pelo Mercado Pago; se o estorno falhar, nada é cancelado.')}
+                : ' O valor é estornado automaticamente pelo Mercado Pago e o cliente recebe um e-mail; se o estorno falhar, nada é cancelado.')}
             </p>
             <label class="block">
               <span class="label">Motivo <span class="text-red-600">*</span></span>

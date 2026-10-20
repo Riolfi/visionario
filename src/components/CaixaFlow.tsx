@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import CameraScanner from './CameraScanner';
 import { SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
 import { brl, maskMoney, moneyToCents, orderLabel } from '../lib/format';
-import { PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentPart } from '../lib/types';
+import { CANCEL_REASONS_CAIXA, PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentPart } from '../lib/types';
 import { SINGLE_METHODS, SPLIT_METHODS, splitChange, splitError } from '../lib/payments';
 import { confirmDialog } from '../lib/confirm-dialog';
 
@@ -89,6 +89,10 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<Done | null>(null);
   const [cancelled, setCancelled] = useState(false);
+  // cancelar logo após a venda: motivo obrigatório ("Outro" pede detalhe)
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelMotivo, setCancelMotivo] = useState('');
+  const [cancelDetalhe, setCancelDetalhe] = useState('');
   const [pixWait, setPixWait] = useState<PixWait | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
@@ -499,14 +503,17 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
   async function cancelSale() {
     if (!done || busy) return;
-    if (!window.confirm('Cancelar esta venda e devolver os itens ao estoque?')) return;
+    if (!cancelMotivo || (cancelMotivo === 'Outro' && cancelDetalhe.trim().length < 3)) {
+      setError(cancelMotivo ? 'Descreva o motivo.' : 'Escolha o motivo do cancelamento.');
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
       const res = await fetch('/api/admin/caixa', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel', order_number: done.order_number }),
+        body: JSON.stringify({ action: 'cancel', order_number: done.order_number, motivo: cancelMotivo, detalhe: cancelDetalhe }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
       if (!res.ok || !data.ok) {
@@ -563,7 +570,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
         {cancelled && (
           <p class="mt-4 rounded-card bg-agua-wash p-3 font-sans text-[13px] text-agua-dark">
-            Os itens voltaram ao estoque.
+            Os itens voltaram ao estoque e o valor saiu do caixa de hoje. Devolva o dinheiro ao cliente.
           </p>
         )}
         {error && <p class="mt-4 font-sans text-[13px] text-red-700">{error}</p>}
@@ -572,15 +579,29 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
           <button type="button" class="btn-primary w-full" onClick={resetSale}>
             Nova venda
           </button>
-          {!cancelled && canCancel && (
-            <button
-              type="button"
-              class="font-sans text-[13px] text-red-700 underline disabled:opacity-50"
-              onClick={cancelSale}
-              disabled={busy}
-            >
+          {!cancelled && canCancel && !cancelOpen && (
+            <button type="button" class="font-sans text-[13px] text-red-700 underline" onClick={() => setCancelOpen(true)}>
               Cancelar esta venda
             </button>
+          )}
+          {!cancelled && canCancel && cancelOpen && (
+            <div class="mt-2 space-y-2 rounded-card border border-red-200 p-3 text-left font-sans text-sm">
+              <label class="block">
+                <span class="label">Motivo do cancelamento <span class="text-red-600">*</span></span>
+                <select class="field" value={cancelMotivo} onChange={(e) => setCancelMotivo((e.target as HTMLSelectElement).value)}>
+                  <option value="" disabled>Selecione o motivo</option>
+                  {CANCEL_REASONS_CAIXA.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </label>
+              <label class="block">
+                <span class="label">Detalhes {cancelMotivo === 'Outro' ? <span class="text-red-600">*</span> : <span class="text-[11px] font-normal text-ink-muted/60">(opcional)</span>}</span>
+                <textarea class="field" rows={2} maxLength={400} value={cancelDetalhe} onInput={(e) => setCancelDetalhe((e.target as HTMLTextAreaElement).value)} />
+              </label>
+              <div class="flex gap-2">
+                <button type="button" class="flex-1 rounded-card border border-ink/20 px-3 py-2 text-[13px]" onClick={() => setCancelOpen(false)}>Voltar</button>
+                <button type="button" class="flex-1 rounded-card bg-red-700 px-3 py-2 text-[13px] text-white disabled:opacity-50" onClick={cancelSale} disabled={busy}>Cancelar venda</button>
+              </div>
+            </div>
           )}
           <a href="/admin/pedidos" class="font-sans text-[13px] text-ink-muted underline">
             Ver em Compras

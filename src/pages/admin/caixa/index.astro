@@ -4,6 +4,8 @@ import CaixaFlow from '../../../components/CaixaFlow.tsx';
 import { hasSupabase } from '../../../lib/env';
 import { getProducts } from '../../../lib/repo/catalog';
 import { can } from '../../../lib/rbac';
+import { caixaDay } from '../../../lib/repo/orders';
+import { brl, orderLabel } from '../../../lib/format';
 
 export const prerender = false;
 
@@ -19,6 +21,10 @@ const products = hasSupabase
       barcode: p.barcode ?? null,
     }))
   : [];
+// caixa de hoje: vendas (entradas) e cancelamentos (saídas)
+const day = hasSupabase ? await caixaDay() : null;
+const refundsCents = day?.refunds.reduce((t, r) => t + r.cents, 0) ?? 0;
+const hhmm = (d: string) => new Date(d).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 ---
 
 <AdminLayout title="Caixa">
@@ -28,6 +34,23 @@ const products = hasSupabase
         Venda de balcão: bipe os produtos, receba o pagamento e finalize — o estoque baixa na hora.
         Não emite cupom fiscal.
       </p>
+      {day && (
+        <section class="mt-4 rounded-card border border-ink/10 bg-white p-4" aria-label="Caixa de hoje">
+          <h2 class="font-sans text-sm font-semibold">Caixa de hoje</h2>
+          <dl class="mt-2 grid grid-cols-3 gap-3 text-sm">
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Entradas</dt><dd class="font-medium">{brl(day.sales.cents)} <span class="text-[12px] font-normal text-ink-muted">({day.sales.count} {day.sales.count === 1 ? 'venda' : 'vendas'})</span></dd></div>
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Saídas</dt><dd class="font-medium text-red-700">{refundsCents ? `− ${brl(refundsCents)}` : brl(0)} <span class="text-[12px] font-normal text-ink-muted">({day.refunds.length} {day.refunds.length === 1 ? 'cancelamento' : 'cancelamentos'})</span></dd></div>
+            <div><dt class="text-[11px] uppercase tracking-[0.08em] text-ink-muted">Saldo</dt><dd class="font-display text-lg">{brl(day.sales.cents - refundsCents)}</dd></div>
+          </dl>
+          {day.refunds.length > 0 && (
+            <ul class="mt-3 space-y-1 border-t border-ink/10 pt-2 text-[13px] text-ink-soft">
+              {day.refunds.map((r) => (
+                <li>{hhmm(r.at)} · <a href={`/admin/pedidos/${r.order_number}`} class="underline">{orderLabel(r.order_number)}</a> · − {brl(r.cents)} · {r.reason}</li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
       <div class="mt-6">
         <CaixaFlow client:load products={products} canCancel={can(Astro.locals.admin, 'caixa.cancelar')} />
       </div>

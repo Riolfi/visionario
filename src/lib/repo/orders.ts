@@ -42,6 +42,9 @@ function rowToOrder(row: any, items: any[]): Order {
     cancel_request_reason: row.cancel_request_reason ?? null,
     cancelled_by: row.cancelled_by ?? null,
     cancelled_at: row.cancelled_at ?? null,
+    delivered_at: row.delivered_at ?? null,
+    return_requested_at: row.return_requested_at ?? null,
+    return_reason: row.return_reason ?? null,
     mp_payment_id: row.mp_payment_id,
     tracking_code: row.tracking_code ?? null,
     source: row.source === 'caixa' ? 'caixa' : 'web',
@@ -535,4 +538,35 @@ export async function changeOrderStatus(
     }
   }
   return { order: await setOrderStatus(orderNumber, status, opts) };
+}
+
+/**
+ * Caixa do dia (fuso de São Paulo): entradas = vendas do Caixa feitas hoje
+ * (mesmo as canceladas depois); saídas = cancelamentos feitos hoje (o valor
+ * devolvido no balcão). Assim cada dia fecha certo, mesmo quando a venda é de
+ * um dia e o cancelamento de outro.
+ */
+export async function caixaDay(): Promise<{
+  sales: { count: number; cents: number };
+  refunds: { order_number: string; cents: number; at: string; reason: string }[];
+} | null> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb) return null;
+  const day = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date());
+  const start = new Date(`${day}T00:00:00-03:00`).toISOString(); // Brasil sem horário de verão desde 2019
+  const { data, error } = await sb
+    .from('orders')
+    .select('order_number, total_cents, status, created_at, cancelled_at, cancel_reason')
+    .eq('source', 'caixa')
+    .or(`created_at.gte.${start},cancelled_at.gte.${start}`);
+  if (error) return null;
+  const rows = data ?? [];
+  const today = rows.filter((r) => r.created_at >= start);
+  return {
+    sales: { count: today.length, cents: today.reduce((t, r) => t + r.total_cents, 0) },
+    refunds: rows
+      .filter((r) => r.status === 'cancelled' && r.cancelled_at && r.cancelled_at >= start)
+      .map((r) => ({ order_number: r.order_number, cents: r.total_cents, at: r.cancelled_at!, reason: r.cancel_reason ?? '' }))
+      .sort((a, b) => a.at.localeCompare(b.at)),
+  };
 }

@@ -14,7 +14,8 @@ import { createNotification } from './repo/notifications';
 import { refundPayment } from './mercadopago';
 import { sendOrderStatusEmail } from './email';
 import { orderLabel } from './format';
-import { RECEIVED_STATUSES, type Order, type OrderStatus } from './types';
+import { PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type Order, type OrderStatus } from './types';
+import { brl } from './format';
 
 export const CUSTOMER_CANCELABLE: OrderStatus[] = ['pending', 'paid', 'separating'];
 /** a equipe ainda cancela pagamento não concluído; depois de enviado, só devolução */
@@ -63,7 +64,7 @@ export async function cancelOnlineOrder(
   let refundedCents: number | null = null;
   let simulated = false;
   if (paid && order.mp_payment_id) {
-    const r = await refundPayment(order.mp_payment_id);
+    const r = await refundPayment(order.mp_payment_id, order);
     if (!r.ok) return { ok: false, error: r.error };
     refundedCents = order.total_cents;
     simulated = !!r.simulated;
@@ -110,7 +111,7 @@ export async function completeReturn(
   let refundedCents: number | null = null;
   let simulated = false;
   if (order.mp_payment_id) {
-    const r = await refundPayment(order.mp_payment_id);
+    const r = await refundPayment(order.mp_payment_id, order);
     if (!r.ok) return { ok: false, error: r.error };
     refundedCents = order.total_cents;
     simulated = !!r.simulated;
@@ -134,4 +135,56 @@ export async function completeReturn(
     console.error('[devolucao] e-mail falhou:', e),
   );
   return { ok: true, refundedCents, simulated };
+}
+
+/**
+ * Venda do Caixa cancelada: o que o Mercado Pago estorna sozinho (os Pix, pelos
+ * ids guardados em mp_payment_id, separados por vírgula no pagamento
+ * combinado) e o que a equipe devolve à mão (dinheiro no balcão, cartão na
+ * maquininha — essa baixa foi manual, não passou pela API).
+ */
+export function caixaRefundPlan(order: Order): { pixIds: string[]; pixCents: number; manual: { label: string; cents: number }[] } {
+  const pixIds = (order.mp_payment_id ?? '').split(',').map((s) => s.trim()).filter((id) => id && !id.startsWith('SIMULADO'));
+  const manualLabel = (m: string) => (m === 'cash' ? 'dinheiro, no balcão' : `${PAYMENT_METHOD_LABELS[m as keyof typeof PAYMENT_METHOD_LABELS] ?? m}, na maquininha`);
+  if (order.payment_method === 'pix') return { pixIds, pixCents: pixIds.length ? order.total_cents : 0, manual: pixIds.length ? [] : [{ label: 'Pix, pelo app do banco', cents: order.total_cents }] };
+  if (order.payment_method === 'misto' && order.payments?.length) {
+    const sum = (m: string) => order.payments!.filter((p) => p.method === m).reduce((t, p) => t + p.amount_cents, 0);
+    const pix = sum('pix');
+    const credit = sum('credit_card');
+    const debit = sum('debit_card');
+    // dinheiro: o que sobra do total (a parte em dinheiro guarda o recebido, com troco)
+    const cash = order.total_cents - pix - credit - debit;
+    const manual = [
+      { label: manualLabel('cash'), cents: cash },
+      { label: manualLabel('credit_card'), cents: credit },
+      { label: manualLabel('debit_card'), cents: debit },
+      // Pix simulado (sem Mercado Pago) não tem o que estornar pela API
+      ...(pixIds.length ? [] : [{ label: 'Pix, pelo app do banco', cents: pix }]),
+    ].filter((m) => m.cents > 0);
+    return { pixIds, pixCents: pixIds.length ? pix : 0, manual };
+  }
+  return { pixIds: [], pixCents: 0, manual: [{ label: manualLabel(order.payment_method ?? 'cash'), cents: order.total_cents }] };
+}
+
+/** Texto do que devolver à mão: "R$ 50,00 em dinheiro, no balcão e R$ 30,00 em Cartão de crédito, na maquininha". */
+export const manualRefundText = (manual: { label: string; cents: number }[]) =>
+  manual.map((m) => `${brl(m.cents)} em ${m.label}`).join(' e ');
+
+/**
+ * Estorna os Pix de uma venda do Caixa no Mercado Pago, antes de cancelar.
+ * Algum falhou = não cancela (o erro diz quais já voltaram).
+ * ponytail: Pix em partes estorna um a um; se um falhar no meio, os anteriores
+ * já voltaram — a mensagem avisa para conferir no Mercado Pago
+ */
+export async function refundCaixaPix(order: Order): Promise<{ ok: true; refundedCents: number } | { ok: false; error: string }> {
+  const { pixIds, pixCents } = caixaRefundPlan(order);
+  let done = 0;
+  for (const id of pixIds) {
+    const r = await refundPayment(id, order);
+    if (!r.ok) {
+      return { ok: false, error: done ? `${r.error} Atenção: ${done} de ${pixIds.length} Pix já foram estornados; confira no Mercado Pago.` : r.error };
+    }
+    done++;
+  }
+  return { ok: true, refundedCents: pixCents };
 }

@@ -2,7 +2,8 @@ import type { APIRoute } from 'astro';
 import { cancelCaixaSale, getOrderByNumber, recordCancellation } from '../../../../lib/repo/orders';
 import { setFlash } from '../../../../lib/flash';
 import { can } from '../../../../lib/rbac';
-import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, cancelOnlineOrder, joinReason, withdrawStock } from '../../../../lib/order-policy';
+import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, caixaRefundPlan, cancelOnlineOrder, joinReason, manualRefundText, refundCaixaPix, withdrawStock } from '../../../../lib/order-policy';
+import { brl } from '../../../../lib/format';
 import { isValidEmail } from '../../../../lib/format';
 import { RECEIVED_STATUSES } from '../../../../lib/types';
 
@@ -40,6 +41,10 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
   const notify = form.get('notify') === 'on';
 
   if (order.source === 'caixa') {
+    // Pix do Caixa: o Mercado Pago estorna antes (falhou = nada muda); dinheiro e maquininha, à mão
+    const plan = caixaRefundPlan(order);
+    const refund = order.status === 'paid' ? await refundCaixaPix(order) : { ok: true as const, refundedCents: 0 };
+    if (!refund.ok) return fail(refund.error);
     try {
       await cancelCaixaSale(number);
     } catch (e) {
@@ -47,7 +52,9 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     }
     if (!restock) await withdrawStock(order.items);
     await recordCancellation(number, by, reason);
-    setFlash(cookies, 'ok', `Venda cancelada. ${restock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia — devolva ao cliente no balcão.`);
+    const pixNote = refund.refundedCents ? ` ${brl(refund.refundedCents)} em Pix foram estornados ao cliente pelo Mercado Pago.` : '';
+    const manualNote = plan.manual.length ? ` Devolva ao cliente ${manualRefundText(plan.manual)}.` : '';
+    setFlash(cookies, 'ok', `Venda cancelada. ${restock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia.${pixNote}${manualNote}`);
     return redirect(back);
   }
 

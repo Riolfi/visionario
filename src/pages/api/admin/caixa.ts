@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { CANCEL_REASONS_CAIXA, joinReason } from '../../../lib/types';
-import { withdrawStock } from '../../../lib/order-policy';
+import { caixaRefundPlan, manualRefundText, refundCaixaPix, withdrawStock } from '../../../lib/order-policy';
 import {
   createCaixaSale,
   cancelCaixaSale,
@@ -184,6 +184,12 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const motivo = String(body.motivo || '');
     const reason = joinReason(motivo, String(body.detalhe || ''));
     if (!CANCEL_REASONS_CAIXA.includes(motivo) || reason.length < 3) return json({ error: 'Escolha o motivo do cancelamento.' }, 400);
+    // Pix pago: o Mercado Pago estorna antes de cancelar (falhou = nada muda)
+    const sale = await getOrderByNumber(orderNumber);
+    if (sale?.source === 'caixa' && sale.status === 'paid') {
+      const refund = await refundCaixaPix(sale);
+      if (!refund.ok) return json({ error: refund.error }, 502);
+    }
     try {
       const outcome = await cancelCaixaSale(orderNumber);
       if (outcome === 'cancelled') {
@@ -196,7 +202,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       }
       if (outcome === 'not_found') return json({ error: 'Venda não encontrada.' }, 404);
       if (outcome === 'not_caixa') return json({ error: 'Esse pedido não é do Caixa.' }, 400);
-      return json({ ok: true, outcome });
+      // o que devolver à mão (dinheiro/maquininha) e quanto voltou por Pix
+      const plan = sale ? caixaRefundPlan(sale) : null;
+      return json({ ok: true, outcome, pix_refunded_cents: plan?.pixCents ?? 0, manual: plan ? manualRefundText(plan.manual) : '' });
     } catch (e) {
       return json({ error: e instanceof Error ? e.message : 'Falha ao cancelar.' }, 500);
     }

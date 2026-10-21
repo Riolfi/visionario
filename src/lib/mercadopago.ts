@@ -203,19 +203,31 @@ export async function getPaymentStatus(paymentId: string): Promise<{
 }
 
 /**
- * Estorno total de um pagamento (cancelamento de compra online). Pagamento
- * simulado (sem Mercado Pago configurado) não tem o que estornar.
+ * Estorno total de um pagamento (POST /v1/payments/{id}/refunds) com as
+ * credenciais da loja. Pagamento simulado (sem Mercado Pago) não tem o que
+ * estornar. Grava no histórico: venda, status, data e o id do estorno.
  */
-export async function refundPayment(paymentId: string): Promise<{ ok: true; simulated?: boolean } | { ok: false; error: string }> {
+export async function refundPayment(
+  paymentId: string,
+  order?: Pick<Order, 'id' | 'order_number' | 'source'>,
+): Promise<{ ok: true; simulated?: boolean; refundId?: string; amountCents?: number | null } | { ok: false; error: string }> {
   const cfg = await client();
   if (!cfg || paymentId.startsWith('SIMULADO')) return { ok: true, simulated: true };
+  const ctx = { orderId: order?.id ?? null, orderNumber: order?.order_number ?? null, channel: order ? channelOf(order) : null, providerPaymentId: paymentId } as const;
   try {
     const res = await new PaymentRefund(cfg).create({ payment_id: paymentId, requestOptions: { idempotencyKey: `refund-${paymentId}` } });
-    await logPaymentAttempt({ kind: 'refund', providerPaymentId: paymentId, status: res.status ?? 'approved', amountCents: res.amount != null ? Math.round(res.amount * 100) : null });
-    return { ok: true };
+    const amountCents = res.amount != null ? Math.round(res.amount * 100) : null;
+    await logPaymentAttempt({
+      ...ctx,
+      kind: 'refund',
+      status: res.status === 'approved' ? 'refunded' : (res.status ?? 'refunded'),
+      amountCents,
+      payload: { refund_id: res.id ?? null, refund_status: res.status ?? null, date_created: res.date_created ?? null, amount: res.amount ?? null },
+    });
+    return { ok: true, refundId: res.id != null ? String(res.id) : undefined, amountCents };
   } catch (err) {
     const msg = mpErrorMessage(err);
-    await logPaymentAttempt({ kind: 'refund', providerPaymentId: paymentId, status: 'error', payload: { error: msg } });
+    await logPaymentAttempt({ ...ctx, kind: 'refund', status: 'error', payload: { error: msg } });
     return { ok: false, error: `O estorno não foi feito: ${msg} Nada foi cancelado.` };
   }
 }

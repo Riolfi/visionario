@@ -94,6 +94,8 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [cancelDetalhe, setCancelDetalhe] = useState('');
   const [cancelRestock, setCancelRestock] = useState(true);
+  // depois de cancelar: quanto voltou por Pix e o que devolver à mão
+  const [refundInfo, setRefundInfo] = useState<{ pix: number; manual: string }>({ pix: 0, manual: '' });
   const [pixWait, setPixWait] = useState<PixWait | null>(null);
 
   const scanRef = useRef<HTMLInputElement>(null);
@@ -516,11 +518,12 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'cancel', order_number: done.order_number, motivo: cancelMotivo, detalhe: cancelDetalhe, restock: cancelRestock }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean; pix_refunded_cents?: number; manual?: string };
       if (!res.ok || !data.ok) {
         setError(data.error || 'Não foi possível cancelar.');
         return;
       }
+      setRefundInfo({ pix: data.pix_refunded_cents ?? 0, manual: data.manual ?? '' });
       setCancelled(true);
     } catch {
       setError('Sem conexão com o servidor.');
@@ -571,7 +574,9 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
         {cancelled && (
           <p class="mt-4 rounded-card bg-agua-wash p-3 font-sans text-[13px] text-agua-dark">
-            {cancelRestock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia. Devolva o dinheiro ao cliente.
+            {cancelRestock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia.
+            {refundInfo.pix > 0 && ` ${brl(refundInfo.pix)} em Pix foram estornados ao cliente pelo Mercado Pago.`}
+            {refundInfo.manual && ` Devolva ao cliente ${refundInfo.manual}.`}
           </p>
         )}
         {error && <p class="mt-4 font-sans text-[13px] text-red-700">{error}</p>}

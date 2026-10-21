@@ -5,7 +5,7 @@ import { getOrderByNumber } from '../../../lib/repo/orders';
 import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../lib/format';
 import { FINAL_STATUSES, ORDER_NEXT, ORDER_STATUS_LABELS, orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
 import { RESERVE_MINUTES } from '../../../lib/repo/orders';
-import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, returnDeadline } from '../../../lib/order-policy';
+import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, caixaRefundPlan, manualRefundText, returnDeadline } from '../../../lib/order-policy';
 
 export const prerender = false;
 
@@ -63,13 +63,15 @@ const received = order.payment_method === 'cash' ? order.received_cents ?? null 
 const change = received != null ? Math.max(0, received - order.total_cents) : cashPart ? Math.max(0, (order.payments ?? []).reduce((t, p) => t + p.amount_cents, 0) - order.total_cents) : null;
 const CANCEL_REASONS = order.source === 'caixa' ? CANCEL_REASONS_CAIXA : CANCEL_REASONS_ONLINE;
 // quem cancelou: o próprio cliente ou alguém da equipe (nome e cargo)
+// venda do Caixa: o que volta por Pix (Mercado Pago) e o que a equipe devolve à mão
+const caixaPlan = caixaRefundPlan(order);
 // texto da confirmação final do cancelamento: diz se vai estornar e quanto
 const refundOnCancel = !isCaixa && RECEIVED_STATUSES.includes(order.status) && !!order.mp_payment_id;
 const cancelConfirm = `Confirmar o cancelamento da venda ${orderLabel(order.order_number)}?|${
   refundOnCancel
     ? `O valor de ${brl(order.total_cents)} será estornado agora ao cliente pelo Mercado Pago. Não dá para desfazer.`
     : isCaixa
-      ? `Devolva ${brl(order.total_cents)} ao cliente no balcão. Não dá para desfazer.`
+      ? `${caixaPlan.pixCents ? `${brl(caixaPlan.pixCents)} em Pix serão estornados agora ao cliente pelo Mercado Pago. ` : ''}${caixaPlan.manual.length ? `Devolva ao cliente ${manualRefundText(caixaPlan.manual)}. ` : ''}Não dá para desfazer.`
       : 'Não dá para desfazer.'
 }|Confirmar cancelamento|Voltar`;
 const cancelledByCustomer = !!order.cancelled_by && order.cancelled_by === order.user_id;
@@ -327,7 +329,7 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
             <p class="text-sm text-ink-soft">
               O valor sai dos totais recebidos.
               {RECEIVED_STATUSES.includes(order.status) && (order.source === 'caixa'
-                ? ' Devolva o valor ao cliente no balcão.'
+                ? ` ${caixaPlan.pixCents ? 'O Pix é estornado automaticamente pelo Mercado Pago.' : ''}${caixaPlan.manual.length ? ` Devolva ao cliente ${manualRefundText(caixaPlan.manual)}.` : ''}`
                 : ' O valor é estornado automaticamente pelo Mercado Pago e o cliente recebe um e-mail; se o estorno falhar, nada é cancelado.')}
             </p>
             <label class="block">

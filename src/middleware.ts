@@ -16,7 +16,8 @@ process.env.TZ = 'America/Sao_Paulo';
 // fotos enviadas e as APIs que o próprio painel chama (status do Pix na
 // Caixa, CEP). O resto é loja, e admin não compra como cliente.
 // /trocar-senha: a equipe também troca a senha temporária ali (sem isso, vira loop com o painel)
-const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/cep/', '/trocar-senha'];
+// /api/payments/pix (Pix do Caixa) e /api/payments/config/ (testar as chaves do Mercado Pago)
+const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/payments/pix', '/api/payments/config/', '/api/cep/', '/trocar-senha'];
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;

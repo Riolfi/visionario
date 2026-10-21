@@ -38,6 +38,8 @@ export const env = {
   mpPublicKey: read('PUBLIC_MP_PUBLIC_KEY'),
   mpAccessToken: read('MP_ACCESS_TOKEN'),
   mpWebhookSecret: read('MP_WEBHOOK_SECRET'),
+  /** Chave que criptografa os segredos guardados no banco (Meios de pagamento). */
+  credentialsKey: read('CREDENTIALS_KEY'),
 
   resendApiKey: read('RESEND_API_KEY'),
   resendFrom:

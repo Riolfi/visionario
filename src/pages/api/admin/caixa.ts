@@ -9,7 +9,7 @@ import {
   getOrderByNumber,
   setOrderStatus,
 } from '../../../lib/repo/orders';
-import { getPaymentStatus, hasMercadoPago, processPayment } from '../../../lib/mercadopago';
+import { getPaymentStatus, mpReady, processPayment } from '../../../lib/mercadopago';
 import { fulfillPaidOrder } from '../../../lib/fulfillment';
 import type { Order, PaymentMethod } from '../../../lib/types';
 import { can } from '../../../lib/rbac';
@@ -56,8 +56,9 @@ async function advancePixSplit(order: Order, paymentIds: string[]): Promise<Resp
   const ref = (i: number) => `${order.order_number}:pix${i}`;
   if (paymentIds.length > pix.length) return json({ error: 'Pix a mais.' }, 400);
 
+  const live = await mpReady();
   for (const [i, id] of paymentIds.entries()) {
-    if (!hasMercadoPago) continue; // modo demonstração: tudo aprovado
+    if (!live) continue; // modo demonstração: tudo aprovado
     const st = await getPaymentStatus(id);
     if (!st || st.externalReference !== ref(i)) return json({ error: 'Pix não confere com a venda.' }, 400);
     if (st.status === 'approved') continue;

@@ -1,14 +1,23 @@
 import type { APIRoute } from 'astro';
-import { env } from '../../../lib/env';
-import { getPaymentStatus } from '../../../lib/mercadopago';
+import { channelOf, getPaymentStatus } from '../../../lib/mercadopago';
+import { getMpCredentials } from '../../../lib/repo/payment-settings';
+import { logPaymentAttempt } from '../../../lib/repo/payment-attempts';
 import { fulfillPaidOrder } from '../../../lib/fulfillment';
-import { setOrderStatus } from '../../../lib/repo/orders';
+import { getOrderByNumber, setOrderStatus } from '../../../lib/repo/orders';
 import { sendOrderStatusEmail } from '../../../lib/email';
+import type { PaymentMethod } from '../../../lib/types';
 
 /**
  * Webhook do Mercado Pago (notificações de pagamento).
  * Configure a URL `<site>/api/webhooks/mercadopago` no painel de Webhooks
- * e cole a "assinatura secreta" em MP_WEBHOOK_SECRET.
+ * do Mercado Pago e cole a "assinatura secreta" em Configurações › Meios de
+ * pagamento (ou em MP_WEBHOOK_SECRET).
+ *  1. recebe o id do pagamento e o tipo do evento;
+ *  2. consulta o pagamento no Mercado Pago (nunca confia no corpo do aviso);
+ *  3. confere metadata { order_id, channel } com a venda da referência;
+ *  4. aprovado: Pago + baixa de estoque (site ou Caixa) — a tela do Pix, que
+ *     consulta o status, fecha sozinha; recusado/cancelado: não concluído.
+ * Cada aviso fica no histórico (payment_attempts).
  */
 export const POST: APIRoute = async ({ request, url }) => {
   const rawBody = await request.text();
@@ -22,8 +31,9 @@ export const POST: APIRoute = async ({ request, url }) => {
   const dataId = payload.data?.id || url.searchParams.get('data.id') || url.searchParams.get('id');
 
   // ---- validação de assinatura (quando configurada) ----
-  if (env.mpWebhookSecret) {
-    const valid = await verifySignature(request, url, env.mpWebhookSecret);
+  const secret = (await getMpCredentials())?.webhookSecret;
+  if (secret) {
+    const valid = await verifySignature(request, url, secret);
     if (!valid) return new Response('assinatura inválida', { status: 401 });
   }
 
@@ -38,15 +48,33 @@ export const POST: APIRoute = async ({ request, url }) => {
     if (!info || !info.externalReference) {
       return new Response('pagamento não encontrado', { status: 200 });
     }
+    // Pix em partes do Caixa (<pedido>:pixN): quem confirma é a tela do Caixa
+    const order = await getOrderByNumber(info.externalReference);
+    await logPaymentAttempt({
+      orderId: order?.id ?? info.metadata?.order_id ?? null,
+      orderNumber: info.externalReference,
+      channel: order ? channelOf(order) : ((info.metadata?.channel as 'pos' | 'ecommerce' | undefined) ?? null),
+      kind: 'webhook',
+      providerPaymentId: String(dataId),
+      status: info.status,
+      amountCents: info.amountCents,
+      payload: info.raw,
+    });
+    if (!order) return new Response('ok', { status: 200 });
+    // metadata (cobranças novas) precisa apontar para a mesma venda
+    if (info.metadata?.order_id && info.metadata.order_id !== order.id) {
+      console.error('[webhook/mercadopago] metadata não confere com a venda', info.externalReference);
+      return new Response('não confere', { status: 200 });
+    }
 
     if (info.status === 'approved') {
-      await fulfillPaidOrder(info.externalReference, {
-        paymentId: String(dataId),
-        method: 'pix',
-      });
-    } else if (info.status === 'rejected' || info.status === 'cancelled') {
-      const order = await setOrderStatus(info.externalReference, 'failed');
-      if (order) await sendOrderStatusEmail(order, 'failed').catch(() => {});
+      const method = (info.raw.payment_type_id === 'credit_card' || info.raw.payment_type_id === 'debit_card'
+        ? info.raw.payment_type_id
+        : 'pix') as PaymentMethod;
+      await fulfillPaidOrder(info.externalReference, { paymentId: String(dataId), method });
+    } else if ((info.status === 'rejected' || info.status === 'cancelled') && order.status === 'pending') {
+      const failed = await setOrderStatus(info.externalReference, 'failed');
+      if (failed && order.source !== 'caixa') await sendOrderStatusEmail(failed, 'failed').catch(() => {});
     }
     return new Response('ok', { status: 200 });
   } catch (err) {

@@ -16,9 +16,10 @@ import {
 import { productImage } from '../lib/images';
 import type { Address } from '../lib/types';
 
-const MP_PUBLIC_KEY = import.meta.env.PUBLIC_MP_PUBLIC_KEY as string | undefined;
 
 interface Props {
+  /** Public Key do Mercado Pago da loja; vazia = modo simulado */
+  mpPublicKey?: string;
   isLoggedIn?: boolean;
   userEmail?: string;
   initialProfile?: { full_name: string; phone: string; cpf: string } | null;
@@ -51,7 +52,10 @@ export default function CheckoutFlow({
   userEmail = '',
   initialProfile = null,
   savedAddresses = [],
+  mpPublicKey = '',
 }: Props) {
+  // Public Key da loja (Configurações › Meios de pagamento), vinda do servidor
+  const MP_PUBLIC_KEY = mpPublicKey;
   const lines = useStore(cartLines);
   const subtotal = useStore(cartSubtotalCents);
 
@@ -459,7 +463,7 @@ export default function CheckoutFlow({
                 <p class="mt-2 text-[14px] leading-relaxed text-ink-soft">
                   As credenciais do Mercado Pago não estão configuradas. O botão abaixo simula um
                   pagamento aprovado e roda todo o fluxo real (pedido pago, baixa de estoque e
-                  e-mail de confirmação). Configure <code>PUBLIC_MP_PUBLIC_KEY</code> e
+                  e-mail de confirmação). Configure o Mercado Pago em Configurações › Meios de pagamento ou <code>PUBLIC_MP_PUBLIC_KEY</code> e
                   <code> MP_ACCESS_TOKEN</code> para ativar Pix e cartão de verdade.
                 </p>
                 <button type="button" class="btn-primary mt-5" onClick={paySimulated} disabled={submitting}>

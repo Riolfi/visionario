@@ -1,6 +1,5 @@
 import type { APIRoute } from 'astro';
-import { createClient } from '@supabase/supabase-js';
-import { env } from '../../../lib/env';
+import { passwordMatches } from '../../../lib/password-check';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getOwnerEmail, isProprietor } from '../../../lib/repo/owner';
 import { consumeCode, issueCode } from '../../../lib/repo/email-codes';
@@ -21,15 +20,6 @@ import { consumeCode, issueCode } from '../../../lib/repo/email-codes';
 const back = (redirect: (url: string) => Response, key: 'ok' | 'erro', code: string) =>
   redirect(`/admin/perfil?${key}=${code}`);
 
-/** Confere a senha atual sem mexer na sessão do navegador. */
-async function passwordMatches(email: string, password: string): Promise<boolean> {
-  if (!email || !password) return false;
-  const sb = createClient(env.supabaseUrl, env.supabaseAnonKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const { error } = await sb.auth.signInWithPassword({ email, password });
-  if (error) return false;
-  await sb.auth.signOut({ scope: 'local' }); // descarta a sessão de conferência
-  return true;
-}
 
 export const POST: APIRoute = async ({ request, locals, redirect }) => {
   const user = locals.user;

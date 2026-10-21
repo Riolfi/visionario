@@ -1,0 +1,170 @@
+---
+import AdminLayout from '../../../layouts/AdminLayout.astro';
+import PasswordInput from '../../../components/PasswordInput.astro';
+import { getMpSettingsView } from '../../../lib/repo/payment-settings';
+import { hasCredentialsKey } from '../../../lib/secrets';
+import { isProprietor } from '../../../lib/repo/owner';
+import { env } from '../../../lib/env';
+
+export const prerender = false;
+
+/*
+ * Configurações › Meios de pagamento: as chaves do Mercado Pago da loja. O
+ * dinheiro cai direto na conta dona do Access Token. Só o Proprietário altera
+ * (com a senha atual); os outros Administradores só veem a situação.
+ * O token nunca volta para a tela: aparece mascarado.
+ */
+const [view, proprietor] = await Promise.all([getMpSettingsView(), isProprietor(Astro.locals.user?.email)]);
+const keyOk = hasCredentialsKey();
+const webhookUrl = `${env.siteUrl}/api/webhooks/mercadopago`;
+const ENV_LABEL = { test: 'Teste', production: 'Produção' } as const;
+const fmt = (d: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+---
+
+<AdminLayout title="Configurações">
+  <p class="font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted">Configurações › Meios de pagamento</p>
+
+  <div id="top-notice" role="alert" class="mt-4 hidden max-w-2xl rounded-[14px] border px-3 py-2 font-sans text-[13px]"></div>
+
+  <section class="mt-4 max-w-2xl rounded-card border border-ink/10 bg-white p-5">
+    <h2 class="font-display text-lg">Mercado Pago</h2>
+    <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 font-sans text-sm">
+      <dt class="text-ink-muted">Situação</dt>
+      <dd>
+        {view.configured ? (
+          <span class:list={['rounded-full px-2 py-0.5 text-[11px] font-medium uppercase', view.environment === 'production' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800']}>{ENV_LABEL[view.environment!]}</span>
+        ) : (
+          <span class="rounded-full bg-bone-200 px-2 py-0.5 text-[11px] font-medium uppercase text-ink-soft">Modo simulado</span>
+        )}
+      </dd>
+      <dt class="text-ink-muted">Origem</dt>
+      <dd>{view.source === 'painel' ? 'Salvas aqui no painel' : view.source === 'variaveis' ? 'Variáveis da Vercel' : 'Nenhuma chave — pagamentos são simulados'}</dd>
+      <dt class="text-ink-muted">Access Token</dt><dd class="font-mono text-[13px]">{view.accessTokenMasked || '—'}</dd>
+      <dt class="text-ink-muted">Public Key</dt><dd class="break-all font-mono text-[13px]">{view.publicKey || '—'}</dd>
+      <dt class="text-ink-muted">Webhook</dt><dd>{view.hasWebhookSecret ? 'Assinatura secreta configurada' : 'Sem assinatura secreta (avisos não são conferidos)'}</dd>
+      <dt class="text-ink-muted">Atualizado</dt><dd>{fmt(view.updatedAt)}</dd>
+    </dl>
+    {view.unreadable && (
+      <p class="mt-3 rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-700">! Há um token salvo que não dá para ler: a variável CREDENTIALS_KEY mudou ou sumiu. Salve o Access Token de novo.</p>
+    )}
+  </section>
+
+  {proprietor ? (
+    <form id="mp-form" class="mt-6 max-w-2xl space-y-4 rounded-card border border-ink/10 bg-white p-5" autocomplete="off">
+      <h2 class="font-display text-lg">Chaves da conta</h2>
+      <p class="text-[13px] text-ink-muted">
+        No Mercado Pago: <strong>Seu negócio › Configurações › Credenciais</strong> (ou "Suas integrações" › sua aplicação › Credenciais de produção).
+        O dinheiro das vendas cai direto na conta dona dessas chaves. Chaves que começam com <code>TEST-</code> são de teste.
+      </p>
+      {!keyOk && (
+        <p class="rounded-[14px] border border-amber-300 bg-amber-50 px-3 py-2 text-[13px] text-amber-800">! Para salvar o token com segurança, configure a variável <code>CREDENTIALS_KEY</code> na Vercel (um texto longo e aleatório) e faça um novo deploy. Dá para testar as chaves mesmo assim.</p>
+      )}
+      <label class="block">
+        <span class="label">Access Token {view.source === 'painel' && <span class="text-[11px] font-normal text-ink-muted/60">(vazio = mantém o salvo)</span>}</span>
+        <PasswordInput name="access_token" autocomplete="off" placeholder={view.source === 'painel' ? view.accessTokenMasked : 'APP_USR-…'} />
+      </label>
+      <label class="block">
+        <span class="label">Public Key</span>
+        <input class="field font-mono text-[13px]" name="public_key" value={view.source === 'painel' ? view.publicKey : ''} placeholder="APP_USR-…" required />
+      </label>
+      <label class="block">
+        <span class="label">Assinatura secreta do webhook <span class="text-[11px] font-normal text-ink-muted/60">(opcional; vazio = mantém)</span></span>
+        <PasswordInput name="webhook_secret" autocomplete="off" />
+      </label>
+      <div class="rounded-card bg-bone-50 p-3 text-[13px] text-ink-soft">
+        No Mercado Pago, em <strong>Webhooks</strong>, cadastre esta URL com o evento <strong>Pagamentos</strong>:
+        <span class="mt-1 flex items-center gap-2">
+          <code class="break-all">{webhookUrl}</code>
+          <button type="button" data-copy={webhookUrl} class="shrink-0 rounded-card border border-ink/20 px-2 py-0.5 text-[12px] hover:bg-bone-100">Copiar</button>
+          <span data-copy-ok class="hidden text-[12px] text-green-700">Copiado!</span>
+        </span>
+      </div>
+      <label class="block">
+        <span class="label">Senha atual <span class="text-red-600">*</span></span>
+        <PasswordInput name="senha_atual" autocomplete="current-password" />
+      </label>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <button type="button" id="mp-test" class="btn-outline w-full">Testar chaves</button>
+        <button type="submit" id="mp-save" class="btn-primary w-full">Salvar</button>
+        <button type="button" id="mp-remove" class:list={['w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50', view.source !== 'painel' && 'hidden']}>Remover chaves</button>
+      </div>
+    </form>
+  ) : (
+    <p class="mt-6 max-w-2xl rounded-card border border-ink/10 bg-white p-5 text-sm text-ink-soft">Só o Proprietário altera os meios de pagamento.</p>
+  )}
+</AdminLayout>
+
+<script>
+  import { confirmDialog } from '../../../lib/confirm-dialog';
+
+  const form = document.getElementById('mp-form') as HTMLFormElement | null;
+  const notice = document.getElementById('top-notice')!;
+  const show = (ok: boolean, text: string) => {
+    notice.textContent = `${ok ? '✓' : '!'} ${text}`;
+    notice.className = `mt-4 max-w-2xl rounded-[14px] border px-3 py-2 font-sans text-[13px] ${ok ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-200 bg-red-50 text-red-700'}`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+  const val = (name: string) => ((form?.elements.namedItem(name) as HTMLInputElement | null)?.value ?? '').trim();
+  const post = async (url: string, body: Record<string, string>) => {
+    try {
+      const res = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      return (await res.json()) as { ok?: boolean; error?: string; environment?: string; account?: string };
+    } catch {
+      return { ok: false, error: 'Sem conexão com o servidor.' };
+    }
+  };
+  const ENV: Record<string, string> = { test: 'teste', production: 'produção' };
+
+  document.getElementById('mp-test')?.addEventListener('click', async (e) => {
+    const b = e.currentTarget as HTMLButtonElement;
+    b.disabled = true;
+    const r = await post('/api/payments/config/verify', { access_token: val('access_token'), public_key: val('public_key') });
+    b.disabled = false;
+    show(!!r.ok, r.ok ? `Chaves válidas: conta ${r.account}, ambiente de ${ENV[r.environment ?? ''] ?? r.environment}.` : r.error || 'Chaves recusadas.');
+  });
+
+  form?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (!val('senha_atual')) return show(false, 'Informe a senha atual.');
+    const btn = document.getElementById('mp-save') as HTMLButtonElement;
+    btn.disabled = true;
+    const r = await post('/api/admin/payment-settings', {
+      acao: 'salvar',
+      access_token: val('access_token'),
+      public_key: val('public_key'),
+      webhook_secret: val('webhook_secret'),
+      senha_atual: val('senha_atual'),
+    });
+    btn.disabled = false;
+    if (!r.ok) return show(false, r.error || 'Não foi possível salvar.');
+    location.reload();
+  });
+
+  document.getElementById('mp-remove')?.addEventListener('click', async () => {
+    if (!val('senha_atual')) return show(false, 'Informe a senha atual para remover.');
+    const ok = await confirmDialog({
+      title: 'Remover as chaves do Mercado Pago?',
+      message: 'Sem chaves (e sem as variáveis da Vercel), os pagamentos voltam ao modo simulado e nada é cobrado de verdade.',
+      confirmLabel: 'Remover',
+    });
+    if (!ok) return;
+    const r = await post('/api/admin/payment-settings', { acao: 'remover', senha_atual: val('senha_atual') });
+    if (!r.ok) return show(false, r.error || 'Não foi possível remover.');
+    location.reload();
+  });
+
+  // copiar a URL do webhook
+  document.querySelectorAll<HTMLButtonElement>('[data-copy]').forEach((b) =>
+    b.addEventListener('click', async () => {
+      const ok = b.parentElement!.querySelector<HTMLElement>('[data-copy-ok]')!;
+      try {
+        await navigator.clipboard.writeText(b.dataset.copy ?? '');
+        ok.textContent = 'Copiado!';
+      } catch {
+        ok.textContent = 'Não deu para copiar';
+      }
+      ok.classList.remove('hidden');
+      setTimeout(() => ok.classList.add('hidden'), 2000);
+    }),
+  );
+</script>

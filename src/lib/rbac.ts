@@ -85,6 +85,8 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
   if (under('/admin/permissoes', '/api/admin/permissions')) return false;
   // Permissões e Cargos: só Administradores (já liberados no topo)
   if (under('/admin/cargos', '/api/admin/roles')) return false;
+  // Configurações (Meios de pagamento): só Administradores; quem altera é o Proprietário (a tela confere)
+  if (under('/admin/configuracoes', '/api/admin/payment-settings')) return false;
   if (under('/admin/notificacoes')) return can(a, 'notificacoes.ver');
   if (under('/admin/usuarios/clientes')) return can(a, 'clientes.ver');
   if (under('/admin/usuarios')) return can(a, 'equipe.ver') || can(a, 'clientes.ver');

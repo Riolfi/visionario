@@ -19,7 +19,7 @@ const nav: { href: string; label: string }[] = access
       .filter((s) => s.key !== 'notificacoes') // fica no sino do cabeçalho
       .map(({ href, label }) => ({ href, label }))
   : [];
-if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' }, { href: '/admin/cargos', label: 'Cargos' });
+if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' }, { href: '/admin/cargos', label: 'Cargos' }, { href: '/admin/configuracoes/pagamentos', label: 'Configurações' });
 // Registro de Caixa: logo abaixo do Caixa, para quem abre o Caixa
 const caixaAt = nav.findIndex((n) => n.href === '/admin/caixa');
 if (caixaAt >= 0) nav.splice(caixaAt + 1, 0, { href: '/admin/caixa/registro', label: 'Registro de Caixa' });

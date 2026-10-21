@@ -63,6 +63,15 @@ const received = order.payment_method === 'cash' ? order.received_cents ?? null 
 const change = received != null ? Math.max(0, received - order.total_cents) : cashPart ? Math.max(0, (order.payments ?? []).reduce((t, p) => t + p.amount_cents, 0) - order.total_cents) : null;
 const CANCEL_REASONS = order.source === 'caixa' ? CANCEL_REASONS_CAIXA : CANCEL_REASONS_ONLINE;
 // quem cancelou: o próprio cliente ou alguém da equipe (nome e cargo)
+// texto da confirmação final do cancelamento: diz se vai estornar e quanto
+const refundOnCancel = !isCaixa && RECEIVED_STATUSES.includes(order.status) && !!order.mp_payment_id;
+const cancelConfirm = `Confirmar o cancelamento da venda ${orderLabel(order.order_number)}?|${
+  refundOnCancel
+    ? `O valor de ${brl(order.total_cents)} será estornado agora ao cliente pelo Mercado Pago. Não dá para desfazer.`
+    : isCaixa
+      ? `Devolva ${brl(order.total_cents)} ao cliente no balcão. Não dá para desfazer.`
+      : 'Não dá para desfazer.'
+}|Confirmar cancelamento|Voltar`;
 const cancelledByCustomer = !!order.cancelled_by && order.cancelled_by === order.user_id;
 // concluir devolução: quem pode cancelar, com a devolução pedida e ainda aberta
 const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status === 'delivered' && !order.return_completed_at;
@@ -311,7 +320,8 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
       </div>
       {canCancel && (
         <dialog id="cancel-dialog" class="m-auto w-[min(92vw,28rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
-          <form method="POST" action="/api/admin/orders/cancel" class="space-y-4 p-6">
+          {/* segunda confirmação antes de cancelar (e estornar): o botão vermelho sozinho não basta */}
+          <form method="POST" action="/api/admin/orders/cancel" class="space-y-4 p-6" data-confirm={cancelConfirm}>
             <input type="hidden" name="order_number" value={order.order_number} />
             <h2 class="font-display text-xl">Cancelar a venda {orderLabel(order.order_number)}?</h2>
             <p class="text-sm text-ink-soft">

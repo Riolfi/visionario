@@ -1,0 +1,98 @@
+---
+import { verifyReceiptToken } from '../../lib/receipt';
+import { getOrderById } from '../../lib/repo/orders';
+import { brl, orderLabel } from '../../lib/format';
+import { PAYMENT_METHOD_LABELS } from '../../lib/types';
+import { env } from '../../lib/env';
+
+export const prerender = false;
+
+/*
+ * Comprovante de venda (bobina térmica 80 mm): link assinado, vale 90 dias.
+ * Abre no celular do cliente (WhatsApp) e no caixa; "Baixar PDF" e
+ * "Imprimir" usam a impressão do navegador. ?imprimir=1 imprime ao abrir
+ * (botão do Caixa) e fecha a janela depois. Não é documento fiscal.
+ */
+const id = verifyReceiptToken(Astro.params.token ?? '');
+const order = id ? await getOrderById(id) : null;
+if (!order || order.status === 'pending' || order.status === 'failed') {
+  return new Response('Comprovante não encontrado ou link vencido.', { status: 404, headers: { 'content-type': 'text/plain; charset=utf-8' } });
+}
+const autoPrint = Astro.url.searchParams.get('imprimir') === '1';
+const when = new Date(order.created_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' });
+// CNPJ de exemplo (00.000.000/0001-00) não aparece
+const cnpj = env.brandCnpj && !/^0{2}\.0{3}/.test(env.brandCnpj) ? env.brandCnpj : '';
+const received = order.payment_method === 'cash' ? order.received_cents ?? null : null;
+const paid = (order.payments ?? []).reduce((t, p) => t + p.amount_cents, 0);
+const change = received != null ? Math.max(0, received - order.total_cents) : order.payments?.some((p) => p.method === 'cash') ? Math.max(0, paid - order.total_cents) : null;
+---
+
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Comprovante {orderLabel(order.order_number)} — {env.brandName}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #eee; color: #000; font: 13px/1.35 ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace; }
+      .paper { width: 80mm; max-width: 100%; margin: 16px auto; padding: 4mm 4mm 6mm; background: #fff; }
+      h1 { margin: 0; font-size: 16px; text-align: center; letter-spacing: 0.04em; }
+      .c { text-align: center; }
+      .muted { color: #444; font-size: 11px; }
+      hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+      .row { display: flex; justify-content: space-between; gap: 8px; }
+      .item { margin: 4px 0; }
+      .total { font-size: 16px; font-weight: 700; }
+      .actions { display: flex; gap: 8px; justify-content: center; margin: 0 auto 24px; width: 80mm; max-width: 100%; }
+      .actions button { flex: 1; padding: 10px; border: 1px solid #000; border-radius: 8px; background: #fff; font: inherit; cursor: pointer; }
+      .actions button.primary { background: #000; color: #fff; }
+      @page { size: 80mm auto; margin: 0; }
+      @media print {
+        body { background: #fff; }
+        .paper { margin: 0; width: 80mm; padding: 2mm 3mm; }
+        .actions { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="paper">
+      <h1>{env.brandName.toUpperCase()}</h1>
+      {(env.brandLegalName || cnpj) && <p class="c muted">{env.brandLegalName}{cnpj && <><br />CNPJ {cnpj}</>}</p>}
+      <hr />
+      <p class="c"><strong>COMPROVANTE DE VENDA</strong><br />Não é documento fiscal</p>
+      <div class="row muted"><span>Venda {orderLabel(order.order_number)}</span><span>{when}</span></div>
+      {order.status === 'cancelled' && <p class="c"><strong>*** VENDA CANCELADA ***</strong></p>}
+      <hr />
+      {order.items.map((i) => (
+        <div class="item">
+          <div>{i.product_name}</div>
+          <div class="row muted"><span>{i.quantity} x {brl(i.unit_price_cents)}</span><span>{brl(i.unit_price_cents * i.quantity)}</span></div>
+        </div>
+      ))}
+      <hr />
+      {order.shipping_cents > 0 && <div class="row"><span>Frete</span><span>{brl(order.shipping_cents)}</span></div>}
+      <div class="row total"><span>TOTAL</span><span>{brl(order.total_cents)}</span></div>
+      <hr />
+      {order.payment_method && <div class="row"><span>Pagamento</span><span>{PAYMENT_METHOD_LABELS[order.payment_method]}</span></div>}
+      {order.payments?.map((p) => <div class="row muted"><span>{PAYMENT_METHOD_LABELS[p.method]}</span><span>{brl(p.amount_cents)}</span></div>)}
+      {received != null && <div class="row"><span>Valor recebido</span><span>{brl(received)}</span></div>}
+      {change != null && <div class="row"><span>Troco</span><span>{brl(change)}</span></div>}
+      <hr />
+      <p class="c muted">Obrigado pela compra!<br />{env.siteUrl.replace(/^https?:\/\//, '')}</p>
+    </main>
+    <div class="actions">
+      <button type="button" class="primary" data-print>Imprimir</button>
+      <button type="button" data-print>Baixar PDF</button>
+    </div>
+    <script is:inline define:vars={{ autoPrint }}>
+      // "Baixar PDF" e "Imprimir": a impressão do navegador (em "Destino", escolha Salvar como PDF)
+      document.querySelectorAll('[data-print]').forEach((b) => b.addEventListener('click', () => window.print()));
+      if (autoPrint) {
+        window.addEventListener('afterprint', () => window.close());
+        window.addEventListener('load', () => window.print());
+      }
+    </script>
+  </body>
+</html>

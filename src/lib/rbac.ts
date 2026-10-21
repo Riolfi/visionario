@@ -94,6 +94,7 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
   if (under('/api/admin/customers')) return can(a, 'clientes.estado');
   if (pathname === '/admin' || pathname === '/admin/') return can(a, 'painel.ver');
   if (under('/admin/caixa', '/api/admin/caixa')) return can(a, 'caixa.vender');
+  if (under('/api/admin/receipt')) return can(a, 'caixa.vender') || can(a, 'pedidos.ver');
   if (under('/api/admin/products/by-barcode')) return can(a, 'caixa.vender') || can(a, 'produtos.ver');
   if (under('/admin/produtos/novo', '/api/admin/products/lookup')) return can(a, 'produtos.editar');
   if (under('/api/admin/products')) return method === 'DELETE' ? can(a, 'produtos.excluir') : pick('produtos.ver', 'produtos.editar');

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import CameraScanner from './CameraScanner';
 import { SCAN_BTN, SCAN_ICON_PATH, useHasCamera } from './CameraScanButton';
-import { brl, maskMoney, moneyToCents, orderLabel } from '../lib/format';
+import { brl, formatPhone, maskMoney, moneyToCents, orderLabel, whatsappUrl } from '../lib/format';
 import { CANCEL_REASONS_CAIXA, PAYMENT_METHOD_LABELS, type PaymentMethod, type PaymentPart } from '../lib/types';
 import { SINGLE_METHODS, SPLIT_METHODS, splitChange, splitError } from '../lib/payments';
 import { confirmDialog } from '../lib/confirm-dialog';
@@ -94,6 +94,10 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
   const [cancelMotivo, setCancelMotivo] = useState('');
   const [cancelDetalhe, setCancelDetalhe] = useState('');
   const [cancelRestock, setCancelRestock] = useState(true);
+  // comprovante da venda concluída: link assinado (imprimir / WhatsApp) e telefone do cliente
+  const [receipt, setReceipt] = useState<{ url: string; phone: string } | null>(null);
+  const [waOpen, setWaOpen] = useState(false);
+  const [waPhone, setWaPhone] = useState('');
   // depois de cancelar: quanto voltou por Pix e o que devolver à mão
   const [refundInfo, setRefundInfo] = useState<{ pix: number; manual: string }>({ pix: 0, manual: '' });
   const [pixWait, setPixWait] = useState<PixWait | null>(null);
@@ -372,6 +376,9 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     );
 
   function resetSale() {
+    setReceipt(null);
+    setWaOpen(false);
+    setWaPhone('');
     setLines([]);
     setReceived('');
     setSplit(false);
@@ -532,6 +539,41 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
     }
   }
 
+  // ---- comprovante ----------------------------------------------------------
+  async function loadReceipt(): Promise<{ url: string; phone: string } | null> {
+    if (receipt) return receipt;
+    if (!done) return null;
+    const res = await fetch(`/api/admin/receipt?order=${encodeURIComponent(done.order_number)}`).catch(() => null);
+    const data = res?.ok ? ((await res.json()) as { url: string; phone: string }) : null;
+    if (data) setReceipt(data);
+    return data;
+  }
+  // imprime pela impressão do navegador, no formato da bobina (80 mm); com o Chrome
+  // do caixa em --kiosk-printing e a térmica como padrão, sai direto, sem janela
+  async function printReceipt() {
+    const win = window.open('', '_blank'); // abre já no clique (senão o navegador bloqueia)
+    const r = await loadReceipt();
+    if (!r) {
+      win?.close();
+      setError('Não foi possível gerar o comprovante. Tente de novo.');
+      return;
+    }
+    if (win) win.location.href = `${r.url}?imprimir=1`;
+    else window.open(`${r.url}?imprimir=1`, '_blank');
+  }
+  async function openWhatsApp() {
+    const r = await loadReceipt();
+    if (!r) return setError('Não foi possível gerar o comprovante. Tente de novo.');
+    setWaPhone((p) => p || (r.phone ? formatPhone(r.phone) : ''));
+    setWaOpen(true);
+  }
+  function sendWhatsApp() {
+    const wa = whatsappUrl(waPhone);
+    if (!wa || !receipt || !done) return setError('Informe o celular com DDD, ex.: (11) 99999-8888.');
+    const text = `Olá! Segue o comprovante da sua compra ${orderLabel(done.order_number)} (${brl(done.total_cents)}): ${receipt.url}`;
+    window.open(`${wa}?text=${encodeURIComponent(text)}`, '_blank');
+  }
+
   // ---- tela de venda concluída ----------------------------------------------
   if (done) {
     return (
@@ -582,7 +624,39 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
         {error && <p class="mt-4 font-sans text-[13px] text-red-700">{error}</p>}
 
         <div class="mt-6 flex flex-col gap-2">
-          <button type="button" class="btn-primary w-full" onClick={resetSale}>
+          {!cancelled && (
+            <>
+              <button type="button" class="btn-primary w-full" onClick={printReceipt}>
+                Imprimir comprovante
+              </button>
+              {!waOpen ? (
+                <button type="button" class="btn-outline w-full" onClick={openWhatsApp}>
+                  Enviar por WhatsApp
+                </button>
+              ) : (
+                <div class="space-y-2 rounded-card border border-ink/15 p-3 text-left font-sans text-sm">
+                  <label class="block">
+                    <span class="label">Celular do cliente (com DDD)</span>
+                    <input
+                      class="field"
+                      inputMode="tel"
+                      autoFocus
+                      placeholder="(11) 99999-8888"
+                      value={waPhone}
+                      onInput={(e) => setWaPhone(formatPhone((e.target as HTMLInputElement).value))}
+                      onKeyDown={(e) => e.key === 'Enter' && sendWhatsApp()}
+                    />
+                  </label>
+                  <p class="text-[12px] text-ink-muted">Abre o WhatsApp do caixa com a mensagem e o link do comprovante prontos; é só tocar em enviar.</p>
+                  <div class="flex gap-2">
+                    <button type="button" class="flex-1 rounded-card border border-ink/20 px-3 py-2 text-[13px]" onClick={() => setWaOpen(false)}>Voltar</button>
+                    <button type="button" class="flex-1 rounded-card bg-[#25D366] px-3 py-2 text-[13px] font-semibold text-white" onClick={sendWhatsApp}>Abrir WhatsApp</button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          <button type="button" class={cancelled ? 'btn-primary w-full' : 'mt-2 w-full rounded-card border border-ink/20 px-4 py-2.5 font-sans text-sm hover:bg-bone-100'} onClick={resetSale}>
             Nova venda
           </button>
           {!cancelled && canCancel && !cancelOpen && (

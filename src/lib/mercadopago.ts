@@ -42,6 +42,26 @@ export function mpErrorMessage(err: unknown): string {
   return 'O Mercado Pago não aceitou o pagamento. Confira os dados e tente de novo.';
 }
 
+/** Motivo da recusa (status_detail do Mercado Pago) em texto para o cliente. */
+const REJECTIONS: Record<string, string> = {
+  cc_rejected_bad_filled_card_number: 'Confira o número do cartão.',
+  cc_rejected_bad_filled_date: 'Confira a validade do cartão.',
+  cc_rejected_bad_filled_security_code: 'Confira o código de segurança (CVV) do cartão.',
+  cc_rejected_bad_filled_other: 'Confira os dados do cartão.',
+  cc_rejected_insufficient_amount: 'O cartão não tem limite suficiente para esta compra.',
+  cc_rejected_invalid_installments: 'O cartão não aceita esse número de parcelas.',
+  cc_rejected_call_for_authorize: 'O banco pediu autorização: libere o pagamento com o emissor do cartão e tente de novo.',
+  cc_rejected_card_disabled: 'O cartão está bloqueado. Ative-o com o banco ou use outro.',
+  cc_rejected_duplicated_payment: 'Já existe um pagamento igual feito há pouco. Use outro cartão ou aguarde alguns minutos.',
+  cc_rejected_max_attempts: 'Você atingiu o limite de tentativas com este cartão. Use outro cartão ou o Pix.',
+  cc_rejected_high_risk: 'O pagamento foi recusado por segurança. Use outro cartão ou o Pix.',
+  cc_rejected_blacklist: 'O pagamento foi recusado por segurança. Use outro cartão ou o Pix.',
+  cc_rejected_card_type_not_allowed: 'Esse tipo de cartão não é aceito. Use outro cartão ou o Pix.',
+  cc_rejected_other_reason: 'O banco emissor recusou o pagamento. Use outro cartão ou o Pix.',
+};
+export const rejectionMessage = (detail?: string | null) =>
+  (detail && REJECTIONS[detail]) || 'O pagamento foi recusado. Tente outro cartão ou o Pix.';
+
 export interface BrickFormData {
   // Vem do Payment Brick (onSubmit -> formData)
   token?: string;

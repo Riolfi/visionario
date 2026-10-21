@@ -1,5 +1,5 @@
 import { setOrderStatus } from './repo/orders';
-import { MpError, processPayment, type BrickFormData } from './mercadopago';
+import { MpError, processPayment, rejectionMessage, type BrickFormData } from './mercadopago';
 import { fulfillPaidOrder } from './fulfillment';
 import type { Order, PaymentMethod } from './types';
 
@@ -28,7 +28,8 @@ export async function chargeOrder(order: Order, form: BrickFormData): Promise<Ch
     }
     if (result.status === 'rejected') {
       await setOrderStatus(order.order_number, 'failed');
-      return { status: 'rejected', detail: result.detail ?? 'Pagamento recusado.', paymentId: result.paymentId };
+      // texto para o cliente; o código cru (status_detail) fica no histórico de pagamentos
+      return { status: 'rejected', detail: rejectionMessage(result.detail), paymentId: result.paymentId };
     }
     // pending / in_process (típico do Pix aguardando o cliente pagar)
     return { status: 'pending', paymentId: result.paymentId, pix: result.pix ?? null };

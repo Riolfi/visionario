@@ -9,7 +9,7 @@ import {
   getOrderByNumber,
   setOrderStatus,
 } from '../../../lib/repo/orders';
-import { getPaymentStatus, mpReady, processPayment } from '../../../lib/mercadopago';
+import { getPaymentStatus, mpReady, processPayment, rejectionMessage } from '../../../lib/mercadopago';
 import { fulfillPaidOrder } from '../../../lib/fulfillment';
 import type { Order, PaymentMethod } from '../../../lib/types';
 import { can } from '../../../lib/rbac';
@@ -133,7 +133,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
       if (result.status === 'rejected') {
         await setOrderStatus(order.order_number, 'failed');
-        return json({ error: result.detail || 'Pix recusado. Tente novamente.' }, 502);
+        return json({ error: result.detail ? rejectionMessage(result.detail) : 'Pix recusado. Tente novamente.' }, 502);
       }
 
       // pending: aguardando o cliente pagar — webhook/polling confirmam depois

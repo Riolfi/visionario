@@ -143,6 +143,14 @@ export interface ShippingAddress {
   state: string;
 }
 
+/** Cancelamento: por item, quantas unidades voltaram ao estoque (o resto é perda). */
+export interface StockLine {
+  product_id: string;
+  product_name: string;
+  quantity: number;
+  restocked: number;
+}
+
 export interface Order {
   id: string;
   order_number: string;
@@ -175,6 +183,13 @@ export interface Order {
   return_requested_at?: string | null;
   return_reason?: string | null;
   return_completed_at?: string | null;
+  /** análise do pedido de cancelamento e decisão de estoque (0028) */
+  cancel_request_response?: string | null;
+  cancel_request_resolved_at?: string | null;
+  stock_resolution?: StockLine[] | null;
+  stock_pending?: boolean;
+  stock_resolved_at?: string | null;
+  stock_resolved_by?: string | null;
   mp_payment_id: string | null;
   tracking_code: string | null;
   /** origem do pedido: 'web' (loja online) ou 'caixa' (venda de balcão). */

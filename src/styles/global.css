@@ -648,7 +648,8 @@ html.tema-escuro .text-red-800 { color: rgb(252 165 165); }
 html.tema-escuro .text-green-700,
 html.tema-escuro .text-green-800 { color: rgb(134 239 172); }
 html.tema-escuro .text-amber-700,
-html.tema-escuro .text-amber-800 { color: rgb(252 211 77); }
+html.tema-escuro .text-amber-800,
+html.tema-escuro .text-amber-900 { color: rgb(252 211 77); }
 html.tema-escuro .border-red-200,
 html.tema-escuro .border-red-300 { border-color: rgb(248 113 113 / 0.45); }
 html.tema-escuro .border-green-200 { border-color: rgb(74 222 128 / 0.4); }

@@ -12,12 +12,13 @@ import { changeOrderStatus, recordCancellation } from './repo/orders';
 import { supabaseAdmin } from './supabase';
 import { createNotification } from './repo/notifications';
 import { refundPayment } from './mercadopago';
-import { sendOrderStatusEmail } from './email';
+import { sendCancelRequestAnswer, sendOrderStatusEmail } from './email';
 import { orderLabel } from './format';
-import { PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type Order, type OrderStatus } from './types';
+import { PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type Order, type OrderStatus, type StockLine } from './types';
 import { brl } from './format';
 
-export const CUSTOMER_CANCELABLE: OrderStatus[] = ['pending', 'paid', 'separating'];
+// cliente só PEDE o cancelamento (a equipe analisa); depois de Pago, só pela loja / trocas
+export const CUSTOMER_CANCELABLE: OrderStatus[] = ['pending', 'paid'];
 /** a equipe ainda cancela pagamento não concluído; depois de enviado, só devolução */
 export const STAFF_CANCELABLE_ONLINE: OrderStatus[] = ['pending', 'paid', 'separating', 'failed'];
 export const RETURN_DAYS = 7;
@@ -36,13 +37,89 @@ export function returnDeadline(order: Order): Date | null {
  * danificado que não pode voltar à venda.
  * ponytail: ler e gravar por produto (ação rara, de uma pessoa só); se virar gargalo, RPC
  */
-export async function withdrawStock(items: Order['items']) {
+export async function withdrawStock(items: Pick<Order['items'][number], 'product_id' | 'quantity'>[]) {
+  for (const it of items) await adjustStock(it.product_id, -it.quantity);
+}
+
+/** Soma (ou tira, com delta negativo) unidades do estoque de um produto. */
+async function adjustStock(productId: string, delta: number) {
   const sb = supabaseAdmin();
-  if (!sb) return;
-  for (const it of items) {
-    const { data } = await sb.from('products').select('stock').eq('id', it.product_id).maybeSingle();
-    if (data) await sb.from('products').update({ stock: Math.max(0, data.stock - it.quantity) }).eq('id', it.product_id);
+  if (!sb || !delta) return;
+  const { data } = await sb.from('products').select('stock').eq('id', productId).maybeSingle();
+  if (data) await sb.from('products').update({ stock: Math.max(0, data.stock + delta) }).eq('id', productId);
+}
+
+/** O estoque já tinha saído? (venda do Caixa concluída ou compra online paga) */
+export const stockWasOut = (order: Order) => (order.source === 'caixa' ? order.status === 'paid' : RECEIVED_STATUSES.includes(order.status));
+
+/**
+ * Decisão de estoque no cancelamento, por item e quantidade:
+ *  - now:   restock[product_id] unidades voltam ao estoque; o resto é perda
+ *           (avaria, produto violado ou quebrado);
+ *  - later: tudo fica fora do estoque (stock_pending) até a equipe decidir —
+ *           ex.: o cliente ainda vai devolver os itens.
+ * Chamada DEPOIS do cancelamento, que devolve tudo ao estoque (RPC): aqui só
+ * se tira de novo o que não volta.
+ */
+export type StockDecision = { mode: 'now'; restock: Record<string, number> } | { mode: 'later' };
+
+export function stockLines(order: Order, restock: Record<string, number>): StockLine[] {
+  const by = new Map<string, StockLine>();
+  for (const it of order.items) {
+    const l = by.get(it.product_id) ?? { product_id: it.product_id, product_name: it.product_name, quantity: 0, restocked: 0 };
+    l.quantity += it.quantity;
+    by.set(it.product_id, l);
   }
+  for (const l of by.values()) l.restocked = Math.max(0, Math.min(l.quantity, Math.floor(Number(restock[l.product_id] ?? l.quantity) || 0)));
+  return [...by.values()];
+}
+
+async function saveStock(orderId: string, patch: Record<string, unknown>) {
+  await supabaseAdmin()?.from('orders').update(patch).eq('id', orderId);
+}
+
+export async function applyStockDecision(order: Order, decision: StockDecision, by: string | null) {
+  if (decision.mode === 'later') {
+    await withdrawStock(order.items);
+    await saveStock(order.id, { stock_pending: true, stock_resolution: null });
+    return;
+  }
+  const lines = stockLines(order, decision.restock);
+  for (const l of lines) await adjustStock(l.product_id, -(l.quantity - l.restocked));
+  await saveStock(order.id, { stock_pending: false, stock_resolution: lines, stock_resolved_at: new Date().toISOString(), stock_resolved_by: by });
+}
+
+/** Estoque pendente de um cancelamento: devolve as unidades escolhidas; o resto vira perda. */
+export async function resolvePendingStock(order: Order, restock: Record<string, number>, by: string | null): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (order.status !== 'cancelled' || !order.stock_pending) return { ok: false, error: 'Esta venda não tem estoque pendente.' };
+  const lines = stockLines(order, restock);
+  for (const l of lines) await adjustStock(l.product_id, l.restocked);
+  await saveStock(order.id, { stock_pending: false, stock_resolution: lines, stock_resolved_at: new Date().toISOString(), stock_resolved_by: by });
+  return { ok: true };
+}
+
+/** Lê "restock_<product_id>" do formulário. */
+export function restockFromForm(form: FormData): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [k, v] of form.entries()) if (k.startsWith('restock_')) out[k.slice(8)] = Number(v);
+  return out;
+}
+
+/** Pedido de cancelamento do cliente esperando análise? */
+export const cancelRequestPending = (order: Order) => !!order.cancel_requested_at && !order.cancel_request_resolved_at && order.status !== 'cancelled';
+
+/** Recusa o pedido de cancelamento com uma resposta (vai por e-mail e aparece em Minha conta). */
+export async function rejectCancelRequest(order: Order, by: string | null, response: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!cancelRequestPending(order)) return { ok: false, error: 'Não há pedido de cancelamento em análise.' };
+  const sb = supabaseAdmin();
+  if (!sb) return { ok: false, error: 'Supabase não configurado.' };
+  const { error } = await sb
+    .from('orders')
+    .update({ cancel_request_resolved_at: new Date().toISOString(), cancel_request_resolved_by: by, cancel_request_response: response.slice(0, 500) })
+    .eq('id', order.id);
+  if (error) return { ok: false, error: /cancel_request_response/.test(error.message) ? 'Rode a migration 0028 no Supabase.' : error.message };
+  await sendCancelRequestAnswer(order, response).catch((e) => console.error('[cancel] e-mail da recusa falhou:', e));
+  return { ok: true };
 }
 
 /**
@@ -55,7 +132,7 @@ export async function cancelOnlineOrder(
   order: Order,
   by: string | null,
   reason: string,
-  opts: { notify?: boolean; restock?: boolean } = {},
+  opts: { notify?: boolean; stock?: StockDecision } = {},
 ): Promise<{ ok: true; refundedCents: number | null; simulated?: boolean } | { ok: false; error: string }> {
   if (!STAFF_CANCELABLE_ONLINE.includes(order.status)) {
     return { ok: false, error: 'Venda já enviada ou finalizada: não dá para cancelar. Para devolver, use a solicitação de devolução.' };
@@ -81,8 +158,12 @@ export async function cancelOnlineOrder(
     }
     return { ok: false, error: error || 'Não foi possível cancelar.' };
   }
-  // já tinha dado baixa (pago) e o produto não volta à venda: tira de novo
-  if (paid && opts.restock === false) await withdrawStock(order.items);
+  // estoque já tinha saído (pago): o que não volta (perda) ou o que espera decisão sai de novo
+  if (paid) await applyStockDecision(order, opts.stock ?? { mode: 'now', restock: {} }, by);
+  // pedido do cliente em análise: fica aprovado junto com o cancelamento
+  if (cancelRequestPending(order)) {
+    await supabaseAdmin()?.from('orders').update({ cancel_request_resolved_at: new Date().toISOString(), cancel_request_resolved_by: by, cancel_request_response: 'Cancelamento aprovado.' }).eq('id', order.id);
+  }
   await recordCancellation(order.order_number, by, reason);
   if (opts.notify !== false) {
     await sendOrderStatusEmail(updated, 'cancelled', { refundCents: refundedCents }).catch((e) =>

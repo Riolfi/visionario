@@ -516,7 +516,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
       const res = await fetch('/api/admin/caixa', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ action: 'cancel', order_number: done.order_number, motivo: cancelMotivo, detalhe: cancelDetalhe, restock: cancelRestock }),
+        body: JSON.stringify({ action: 'cancel', order_number: done.order_number, motivo: cancelMotivo, detalhe: cancelDetalhe, stock_mode: cancelRestock ? 'now' : 'later' }),
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean; pix_refunded_cents?: number; manual?: string };
       if (!res.ok || !data.ok) {
@@ -574,7 +574,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
 
         {cancelled && (
           <p class="mt-4 rounded-card bg-agua-wash p-3 font-sans text-[13px] text-agua-dark">
-            {cancelRestock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia.
+            {cancelRestock ? 'Os itens voltaram ao estoque' : 'Estoque pendente: decida o que volta e o que é perda na tela da venda (Vendas)'} e o valor saiu do caixa do dia.
             {refundInfo.pix > 0 && ` ${brl(refundInfo.pix)} em Pix foram estornados ao cliente pelo Mercado Pago.`}
             {refundInfo.manual && ` Devolva ao cliente ${refundInfo.manual}.`}
           </p>
@@ -607,7 +607,7 @@ export default function CaixaFlow({ products = [], canCancel = true }: { product
               )}
               <label class="flex items-start gap-2 text-[13px] text-ink-soft">
                 <input type="checkbox" class="mt-0.5" checked={cancelRestock} onChange={(e) => setCancelRestock((e.target as HTMLInputElement).checked)} />
-                Devolver os itens ao estoque (desmarque se o produto está danificado)
+                Os itens voltaram em perfeito estado: devolver todos ao estoque (desmarcado: decida item a item, e o que for perda, na tela da venda)
               </label>
               <div class="flex gap-2">
                 <button type="button" class="flex-1 rounded-card border border-ink/20 px-3 py-2 text-[13px]" onClick={() => setCancelOpen(false)}>Voltar</button>

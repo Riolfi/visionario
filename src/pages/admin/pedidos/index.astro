@@ -2,23 +2,104 @@
 import AdminLayout from '../../../layouts/AdminLayout.astro';
 import OrdersTable, { type OrderRow } from '../../../components/OrdersTable';
 import { listOrders } from '../../../lib/repo/orders';
+import { listTeam } from '../../../lib/repo/team';
+import { orderLabel } from '../../../lib/format';
 import { orderStatusLabel } from '../../../lib/types';
+import { cancelRequestPending } from '../../../lib/order-policy';
 
 export const prerender = false;
 
-// busca e filtros rodam no navegador (OrdersTable)
-const orders: OrderRow[] = (await listOrders(500)).map((o) => ({
+// abas: Vendas (busca e filtros no navegador, OrdersTable) e Cancelamentos
+const aba = Astro.url.searchParams.get('aba') === 'cancelamentos' ? 'cancelamentos' : 'vendas';
+const all = await listOrders(500);
+const pendingRequests = all.filter(cancelRequestPending).length;
+const customerOf = (o: (typeof all)[number]) =>
+  // venda sem cadastro no Caixa: "Não identificado" (como na tela da compra)
+  !o.user_id && (!o.customer_name || o.customer_name === 'Consumidor') ? 'Não identificado' : o.customer_name || o.customer_email || 'Não identificado';
+
+const orders: OrderRow[] = all.map((o) => ({
   number: o.order_number,
   created_at: o.created_at,
   source: o.source,
   status: o.status,
   status_label: orderStatusLabel(o.status, o.source),
   total_cents: o.total_cents,
-  // venda sem cadastro no Caixa: "Não identificado" (como na tela da compra)
-  customer: !o.user_id && (!o.customer_name || o.customer_name === 'Consumidor') ? 'Não identificado' : o.customer_name || o.customer_email || 'Não identificado',
+  customer: customerOf(o),
+  cancel_pending: cancelRequestPending(o),
 }));
+
+// Cancelamentos: quem validou, motivo, o que voltou ao estoque e o que virou perda
+const cancelled = aba === 'cancelamentos' ? all.filter((o) => o.status === 'cancelled') : [];
+const team = aba === 'cancelamentos' ? await listTeam().catch(() => []) : [];
+const who = (o: (typeof all)[number]) =>
+  !o.cancelled_by ? '—' : o.cancelled_by === o.user_id ? 'Cliente' : (team.find((m) => m.id === o.cancelled_by)?.name || 'Equipe');
+const sum = (o: (typeof all)[number], k: 'back' | 'lost') =>
+  (o.stock_resolution ?? []).reduce((t, l) => t + (k === 'back' ? l.restocked : l.quantity - l.restocked), 0);
+const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const TH = 'whitespace-nowrap px-3 py-3';
 ---
 
 <AdminLayout title="Vendas">
-  <OrdersTable client:load orders={orders} />
+  <nav class="mb-4 flex gap-1 border-b border-ink/10" aria-label="Abas de Vendas">
+    {[['vendas', 'Vendas'], ['cancelamentos', 'Cancelamentos']].map(([key, label]) => (
+      <a
+        href={`/admin/pedidos${key === 'vendas' ? '' : '?aba=cancelamentos'}`}
+        aria-current={aba === key ? 'page' : undefined}
+        class:list={['-mb-px border-b-2 px-4 py-2 font-sans text-sm', aba === key ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-muted hover:text-ink']}
+      >
+        {label}
+      </a>
+    ))}
+  </nav>
+
+  {pendingRequests > 0 && (
+    <p role="alert" class="mb-4 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      ! {pendingRequests === 1 ? '1 Solicitação de Cancelamento Pendente' : `${pendingRequests} Solicitações de Cancelamento Pendentes`} — marcadas na coluna Status.
+    </p>
+  )}
+
+  {aba === 'vendas' ? (
+    <OrdersTable client:load orders={orders} />
+  ) : (
+    <>
+      <p class="mb-3 font-sans text-sm text-ink-muted">{cancelled.length} {cancelled.length === 1 ? 'venda cancelada' : 'vendas canceladas'}</p>
+      <div data-table class="data-table-box rounded-card border border-ink/10 bg-white">
+        <table class="w-full min-w-[56rem] text-left text-sm">
+          <thead class="border-b border-ink/10 text-[11px] uppercase tracking-[0.1em] text-ink-muted">
+            <tr>
+              <th class={TH} data-sort="text">Venda</th>
+              <th class={TH} data-sort="date">Cancelada em</th>
+              <th class={TH} data-sort="text">Origem</th>
+              <th class={TH} data-sort="text">Validado por</th>
+              <th class={TH}>Motivo</th>
+              <th class={`${TH} text-right`} data-sort="number">Ao estoque</th>
+              <th class={`${TH} text-right`} data-sort="number">Perda</th>
+              <th class={TH} data-sort="text">Estoque</th>
+            </tr>
+          </thead>
+          <tbody>
+            {cancelled.map((o) => (
+              <tr class="border-t border-ink/10 hover:bg-bone-50">
+                <td class="whitespace-nowrap px-3 py-2" data-sort={o.order_number}><a href={`/admin/pedidos/${o.order_number}`} class="text-agua-dark underline">{orderLabel(o.order_number)}</a></td>
+                <td class="whitespace-nowrap px-3 py-2 text-ink-muted" data-sort={o.cancelled_at ?? ''}>{fmt(o.cancelled_at)}</td>
+                <td class="whitespace-nowrap px-3 py-2">{o.source === 'caixa' ? 'Caixa' : 'Online'}</td>
+                <td class="whitespace-nowrap px-3 py-2">{who(o)}</td>
+                <td class="max-w-[18rem] px-3 py-2 text-ink-soft"><span class="line-clamp-2" title={o.cancel_reason ?? ''}>{o.cancel_reason || '—'}</span></td>
+                <td class="px-3 py-2 text-right text-green-700" data-sort={sum(o, 'back')}>{o.stock_resolution ? sum(o, 'back') : '—'}</td>
+                <td class:list={['px-3 py-2 text-right', sum(o, 'lost') ? 'font-medium text-red-700' : 'text-ink-muted']} data-sort={sum(o, 'lost')}>{o.stock_resolution ? sum(o, 'lost') : '—'}</td>
+                <td class="whitespace-nowrap px-3 py-2">
+                  {o.stock_pending ? (
+                    <span class="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium uppercase text-amber-800">Pendente</span>
+                  ) : o.stock_resolution ? (
+                    <span class="rounded-full bg-green-100 px-2 py-0.5 text-[11px] font-medium uppercase text-green-800">Decidido</span>
+                  ) : <span class="text-[12px] text-ink-muted">Nada saiu</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!cancelled.length && <p class="p-4 text-sm text-ink-muted">Nenhuma venda cancelada.</p>}
+      </div>
+    </>
+  )}
 </AdminLayout>

@@ -2,20 +2,31 @@ import type { APIRoute } from 'astro';
 import { cancelCaixaSale, getOrderByNumber, recordCancellation } from '../../../../lib/repo/orders';
 import { setFlash } from '../../../../lib/flash';
 import { can } from '../../../../lib/rbac';
-import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, caixaRefundPlan, cancelOnlineOrder, joinReason, manualRefundText, refundCaixaPix, withdrawStock } from '../../../../lib/order-policy';
-import { brl } from '../../../../lib/format';
-import { isValidEmail } from '../../../../lib/format';
-import { RECEIVED_STATUSES } from '../../../../lib/types';
+import {
+  CANCEL_REASONS_CAIXA,
+  CANCEL_REASONS_ONLINE,
+  applyStockDecision,
+  caixaRefundPlan,
+  cancelOnlineOrder,
+  cancelRequestPending,
+  joinReason,
+  manualRefundText,
+  refundCaixaPix,
+  restockFromForm,
+  stockWasOut,
+  type StockDecision,
+} from '../../../../lib/order-policy';
+import { brl, isValidEmail } from '../../../../lib/format';
 
 /**
- * POST /api/admin/orders/cancel — order_number, motivo (da lista do canal;
- * "Outro" pede detalhe). Regra pedidos.cancelar.
- *  - Caixa: devolve os itens ao estoque; o valor sai do caixa do dia.
- *  - Online: antes do envio; estorna no Mercado Pago (falhou = nada muda),
- *    devolve ao estoque e avisa o cliente com o reembolso.
- * restock=on devolve os itens ao estoque (desmarcado: produto danificado);
- * notify=on avisa o cliente (e-mail inválido com aviso marcado = não cancela).
- * Grava quem cancelou, quando e o motivo.
+ * POST /api/admin/orders/cancel — Janela de Confirmação de Cancelamento
+ * (regra pedidos.cancelar). Campos: order_number, motivo/detalhe (no pedido
+ * do cliente em análise, o motivo é o dele), stock_mode=now|later e
+ * restock_<product_id>=unidades que voltam ao estoque (o resto vira perda),
+ * notify=on (e-mail ao cliente, compra online).
+ *  - Caixa: Pix estornado no Mercado Pago; dinheiro/maquininha à mão.
+ *  - Online: antes do envio; estorna se pago (falhou = nada muda).
+ * Grava quem validou, quando, o motivo e a decisão de estoque.
  */
 export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => {
   const form = await request.formData();
@@ -31,14 +42,24 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
   if (!order) return redirect('/admin/pedidos');
   if (order.status === 'cancelled') return fail('Esta venda já está cancelada.');
 
-  const motivo = String(form.get('motivo') || '').trim();
-  const reasons = order.source === 'caixa' ? CANCEL_REASONS_CAIXA : CANCEL_REASONS_ONLINE;
-  if (!reasons.includes(motivo)) return fail('Escolha o motivo do cancelamento.');
-  const reason = joinReason(motivo, String(form.get('detalhe') || ''));
-  if (reason.length < 3) return fail('Informe o motivo do cancelamento.');
+  // motivo: o do cliente (pedido em análise) ou um da lista do canal
+  let reason: string;
+  if (cancelRequestPending(order)) {
+    reason = `Solicitação do cliente: ${order.cancel_request_reason ?? ''}`.slice(0, 500);
+  } else {
+    const motivo = String(form.get('motivo') || '').trim();
+    const reasons = order.source === 'caixa' ? CANCEL_REASONS_CAIXA : CANCEL_REASONS_ONLINE;
+    if (!reasons.includes(motivo)) return fail('Escolha o motivo do cancelamento.');
+    reason = joinReason(motivo, String(form.get('detalhe') || ''));
+    if (reason.length < 3) return fail('Informe o motivo do cancelamento.');
+  }
   const by = locals.user?.id ?? null;
-  const restock = form.get('restock') === 'on';
-  const notify = form.get('notify') === 'on';
+  const stock: StockDecision = form.get('stock_mode') === 'later' ? { mode: 'later' } : { mode: 'now', restock: restockFromForm(form) };
+  const stockNote = !stockWasOut(order)
+    ? ''
+    : stock.mode === 'later'
+      ? ' Os itens ficaram com estoque pendente: decida o que volta ao estoque quando forem devolvidos.'
+      : ' O estoque foi atualizado conforme você definiu (o que não voltou ficou como perda).';
 
   if (order.source === 'caixa') {
     // Pix do Caixa: o Mercado Pago estorna antes (falhou = nada muda); dinheiro e maquininha, à mão
@@ -50,25 +71,24 @@ export const POST: APIRoute = async ({ request, cookies, redirect, locals }) => 
     } catch (e) {
       return fail(e instanceof Error ? e.message : 'Não foi possível cancelar a venda.');
     }
-    if (!restock) await withdrawStock(order.items);
+    if (stockWasOut(order)) await applyStockDecision(order, stock, by);
     await recordCancellation(number, by, reason);
     const pixNote = refund.refundedCents ? ` ${brl(refund.refundedCents)} em Pix foram estornados ao cliente pelo Mercado Pago.` : '';
     const manualNote = plan.manual.length ? ` Devolva ao cliente ${manualRefundText(plan.manual)}.` : '';
-    setFlash(cookies, 'ok', `Venda cancelada. ${restock ? 'Os itens voltaram ao estoque' : 'Os itens não voltaram ao estoque'} e o valor saiu do caixa do dia.${pixNote}${manualNote}`);
+    setFlash(cookies, 'ok', `Venda cancelada e retirada do caixa do dia.${stockNote}${pixNote}${manualNote}`);
     return redirect(back);
   }
 
   // aviso marcado exige e-mail válido (desmarcado, cancela sem e-mail)
+  const notify = form.get('notify') === 'on';
   if (notify && !isValidEmail(order.customer_email ?? '')) return fail('E-mail do cliente inválido: desmarque "Enviar e-mail ao cliente" para cancelar sem avisar.');
-  const r = await cancelOnlineOrder(order, by, reason, { notify, restock });
+  const r = await cancelOnlineOrder(order, by, reason, { notify, stock });
   if (!r.ok) return fail(r.error);
   const refund = r.refundedCents
     ? r.simulated
       ? ' (pagamento de teste: nada a estornar)'
       : ' O valor foi estornado ao cliente pelo Mercado Pago.'
     : '';
-  // só faz diferença se o estoque já tinha baixado (compra paga)
-  const stock = RECEIVED_STATUSES.includes(order.status) ? (restock ? ' Os itens voltaram ao estoque.' : ' Os itens não voltaram ao estoque.') : '';
-  setFlash(cookies, 'ok', `Venda cancelada.${stock}${notify ? ' O cliente foi avisado por e-mail.' : ''}${refund}`);
+  setFlash(cookies, 'ok', `Venda cancelada.${stockNote}${notify ? ' O cliente foi avisado por e-mail.' : ''}${refund}`);
   return redirect(back);
 };

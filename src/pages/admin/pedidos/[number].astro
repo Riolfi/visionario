@@ -5,7 +5,7 @@ import { getOrderByNumber } from '../../../lib/repo/orders';
 import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../../../lib/format';
 import { FINAL_STATUSES, ORDER_NEXT, ORDER_STATUS_LABELS, orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
 import { RESERVE_MINUTES } from '../../../lib/repo/orders';
-import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, caixaRefundPlan, manualRefundText, returnDeadline } from '../../../lib/order-policy';
+import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, caixaRefundPlan, cancelRequestPending, manualRefundText, returnDeadline, stockLines, stockWasOut } from '../../../lib/order-policy';
 
 export const prerender = false;
 
@@ -36,7 +36,13 @@ const TRACKING_STATUSES = ['shipped', 'delivered'];
 const trackingOn = TRACKING_STATUSES.includes(order.status);
 const COPY_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2" /><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1" /></svg>';
 // estoque já baixou (pago ou Caixa): no cancelamento, escolher se os itens voltam
-const stockOut = order.source === 'caixa' || RECEIVED_STATUSES.includes(order.status);
+// estoque já saiu (Caixa concluído ou online pago): o cancelamento decide o que volta e o que é perda
+const stockOut = stockWasOut(order);
+const lines = stockLines(order, {});
+// pedido do cliente esperando análise (aprovar = cancelar; recusar = responder)
+const requestPending = cancelRequestPending(order);
+// Caixa: o cliente leva os itens (decide quando devolver); online pago: os itens estão na loja
+const stockDefault = order.source === 'caixa' ? 'later' : 'now';
 const statuses = [order.status, ...ORDER_NEXT[order.status]].map((s) => [s, ORDER_STATUS_LABELS[s]]) as [OrderStatus, string][];
 // aguardando pagamento: estoque reservado até a hora limite (a baixa é no pagamento)
 const reservedUntil = order.status === 'pending' ? new Date(new Date(order.created_at).getTime() + RESERVE_MINUTES * 60_000) : null;
@@ -50,7 +56,9 @@ const flash = takeFlash(Astro.cookies);
 import { getPersonSummary } from '../../../lib/repo/team';
 const isCaixa = order.source === 'caixa';
 // quem vendeu (Caixa) e quem cancelou — nome e cargo (0023)
-const [operator, canceller] = await Promise.all([getPersonSummary(order.operator_id), getPersonSummary(order.cancelled_by)]);
+const [operator, canceller, stockDecider] = await Promise.all([getPersonSummary(order.operator_id), getPersonSummary(order.cancelled_by), getPersonSummary(order.stock_resolved_by)]);
+// estoque pendente de um cancelamento: quem pode cancelar decide
+const canDecideStock = can(Astro.locals.admin, 'pedidos.cancelar');
 const created = new Date(order.created_at);
 const fmtDate = (d: Date) => d.toLocaleDateString('pt-BR');
 const fmtTime = (d: Date) => d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -94,6 +102,19 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
     <p role="alert" class="mt-4 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">
       {ERROS[motivo ?? ''] ?? 'Não foi possível atualizar o status. Tente de novo.'}
     </p>
+  )}
+  {/* pedido de cancelamento do cliente esperando análise */}
+  {requestPending && (
+    <div role="alert" class="mt-4 rounded-card border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+      <p class="font-semibold">! Solicitação de Cancelamento Pendente</p>
+      <p class="mt-1">Em {new Date(order.cancel_requested_at!).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}, o cliente pediu: <strong>{order.cancel_request_reason}</strong></p>
+      {canCancel ? (
+        <div class="mt-3 flex flex-wrap gap-2">
+          <button type="button" data-open-cancel class="rounded-card bg-red-700 px-3 py-1.5 text-[13px] text-white hover:bg-red-800">Aprovar e cancelar</button>
+          <button type="button" id="reject-open" class="rounded-card border border-amber-400 bg-white px-3 py-1.5 text-[13px] text-amber-900 hover:bg-amber-100">Recusar</button>
+        </div>
+      ) : <p class="mt-2 text-[12px]">Quem pode cancelar vendas analisa este pedido.</p>}
+    </div>
   )}
 
   <div class="mt-4 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
@@ -253,10 +274,10 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
             {cancelBlocked
               ? 'Venda já enviada: não dá para cancelar. Se o cliente quiser devolver, ele pede em Minha conta › Pedidos (até 7 dias depois da entrega).'
               : isCaixa
-                ? 'Cancela a venda, devolve os itens ao estoque e registra a saída do valor no caixa de hoje.'
-                : 'Cancela a venda, estorna o valor pelo Mercado Pago (se já foi pago), devolve os itens ao estoque e avisa o cliente.'}
+                ? 'Cancela a venda, registra a saída do valor no caixa e você decide o que volta ao estoque e o que é perda.'
+                : 'Cancela a venda, estorna o valor pelo Mercado Pago (se já foi pago) e você decide o que volta ao estoque e o que é perda.'}
           </p>
-          <button type="button" id="cancel-open" disabled={cancelBlocked} class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">Cancelar venda</button>
+          <button type="button" data-open-cancel disabled={cancelBlocked} class="mt-3 w-full rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40">Cancelar venda</button>
         </div>
       )}
 
@@ -285,6 +306,46 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
       )}
       {order.status === 'delivered' && !order.return_requested_at && returnDeadline(order) && (
         <p class="text-[12px] text-ink-muted">Prazo de devolução do cliente: até {returnDeadline(order)!.toLocaleDateString('pt-BR')}.</p>
+      )}
+
+      {/* estoque do cancelamento: pendente (decidir agora) ou o que voltou e o que virou perda */}
+      {order.status === 'cancelled' && order.stock_pending && (
+        <div class="rounded-card border border-amber-300 bg-white p-5 text-sm">
+          <h2 class="font-display text-lg">Estoque pendente</h2>
+          <p class="mt-1 text-[13px] text-ink-soft">Os itens deste cancelamento estão fora do estoque, aguardando a devolução. Quando chegarem, informe quantos voltam à venda; o resto fica como perda.</p>
+          {canDecideStock ? (
+            <form method="POST" action="/api/admin/orders/stock" class="mt-3 space-y-2" data-confirm="Confirmar o estoque deste cancelamento?|As unidades informadas voltam ao estoque; o resto fica registrado como perda. Não dá para desfazer.|Confirmar|Voltar|primary">
+              <input type="hidden" name="order_number" value={order.order_number} />
+              {lines.map((l) => (
+                <div data-stock-line data-qty={l.quantity}>
+                  <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[13px]">
+                    <span class="min-w-[9rem] flex-1">{l.product_name}</span>
+                    <span class="flex shrink-0 items-center gap-1.5">
+                      <input type="number" name={`restock_${l.product_id}`} min="0" max={l.quantity} value={l.quantity} class="field w-16 px-2 py-1 text-center" aria-label={`Unidades de ${l.product_name} que voltam ao estoque`} />
+                      <span class="text-ink-muted">de {l.quantity} ao estoque</span>
+                    </span>
+                  </div>
+                  <p data-loss class="hidden text-right text-[12px] font-medium text-red-700"></p>
+                </div>
+              ))}
+              <button class="btn-primary mt-2 w-full">Confirmar estoque</button>
+            </form>
+          ) : <p class="mt-2 text-[12px] text-ink-muted">Quem pode cancelar vendas decide o estoque.</p>}
+        </div>
+      )}
+      {order.status === 'cancelled' && order.stock_resolution && (
+        <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
+          <h2 class="font-display text-lg">Estoque do cancelamento</h2>
+          <table class="mt-2 w-full text-left text-[13px]">
+            <thead class="text-[11px] uppercase tracking-[0.08em] text-ink-muted"><tr><th class="py-1">Produto</th><th class="py-1 text-right">Ao estoque</th><th class="py-1 text-right">Perda</th></tr></thead>
+            <tbody>
+              {order.stock_resolution.map((l) => (
+                <tr><td class="py-1">{l.product_name}</td><td class="py-1 text-right text-green-700">{l.restocked}</td><td class:list={['py-1 text-right', l.quantity - l.restocked > 0 ? 'font-medium text-red-700' : 'text-ink-muted']}>{l.quantity - l.restocked}</td></tr>
+              ))}
+            </tbody>
+          </table>
+          {order.stock_resolved_at && <p class="mt-2 text-[12px] text-ink-muted">Decidido em {new Date(order.stock_resolved_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}{stockDecider ? ` por ${stockDecider.name}` : ''}.</p>}
+        </div>
       )}
 
       {/* auditoria do cancelamento */}
@@ -351,22 +412,50 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
                 ? ` ${caixaPlan.pixCents ? 'O Pix é estornado automaticamente pelo Mercado Pago.' : ''}${caixaPlan.manual.length ? ` Devolva ao cliente ${manualRefundText(caixaPlan.manual)}.` : ''}`
                 : ' O valor é estornado automaticamente pelo Mercado Pago e o cliente recebe um e-mail; se o estorno falhar, nada é cancelado.')}
             </p>
-            <label class="block">
-              <span class="label">Motivo <span class="text-red-600">*</span></span>
-              <select id="cancel-motivo" name="motivo" class="field" required>
-                <option value="" disabled selected>Selecione o motivo</option>
-                {CANCEL_REASONS.map((r) => <option value={r}>{r}</option>)}
-              </select>
-            </label>
-            <label id="cancel-detalhe-wrap" class="block hidden">
-              <span class="label">Detalhes <span class="text-red-600">*</span></span>
-              <textarea id="cancel-detalhe" name="detalhe" rows="3" maxlength="400" class="field" disabled></textarea>
-            </label>
-            {stockOut && (
-              <label class="flex items-start gap-2 text-[13px] text-ink-soft">
-                <input type="checkbox" name="restock" class="mt-0.5" checked />
-                Devolver os itens ao estoque (desmarque se o produto está danificado e não volta à venda)
-              </label>
+            {requestPending ? (
+              <div>
+                <span class="label">Motivo (pedido do cliente)</span>
+                <p class="rounded-card bg-bone-50 px-3 py-2 text-sm">{order.cancel_request_reason}</p>
+              </div>
+            ) : (
+              <>
+                <label class="block">
+                  <span class="label">Motivo <span class="text-red-600">*</span></span>
+                  <select id="cancel-motivo" name="motivo" class="field" required>
+                    <option value="" disabled selected>Selecione o motivo</option>
+                    {CANCEL_REASONS.map((r) => <option value={r}>{r}</option>)}
+                  </select>
+                </label>
+                <label id="cancel-detalhe-wrap" class="block hidden">
+                  <span class="label">Detalhes <span class="text-red-600">*</span></span>
+                  <textarea id="cancel-detalhe" name="detalhe" rows="3" maxlength="400" class="field" disabled></textarea>
+                </label>
+              </>
+            )}
+            {/* estoque por item e quantidade: o que não volta vira perda (avaria) */}
+            {stockOut ? (
+              <fieldset class="min-w-0 space-y-2" data-stock-box>
+                <legend class="label">Estoque</legend>
+                <label class="flex items-start gap-2 text-[13px]"><input type="radio" name="stock_mode" value="now" class="mt-0.5" checked={stockDefault === 'now'} /> <span><strong>Decidir agora</strong> — os itens estão na loja</span></label>
+                <label class="flex items-start gap-2 text-[13px]"><input type="radio" name="stock_mode" value="later" class="mt-0.5" checked={stockDefault === 'later'} /> <span><strong>Decidir depois</strong> — aguardando o cliente devolver os itens (ficam fora do estoque até lá)</span></label>
+                <div data-stock-now class:list={['space-y-2 rounded-card bg-bone-50 p-3', stockDefault === 'later' && 'hidden']}>
+                  {lines.map((l) => (
+                    <div data-stock-line data-qty={l.quantity}>
+                      <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[13px]">
+                        <span class="min-w-[9rem] flex-1">{l.product_name}</span>
+                        <span class="flex shrink-0 items-center gap-1.5">
+                          <input type="number" name={`restock_${l.product_id}`} min="0" max={l.quantity} value={l.quantity} class="field w-16 px-2 py-1 text-center" aria-label={`Unidades de ${l.product_name} que voltam ao estoque`} />
+                          <span class="text-ink-muted">de {l.quantity} ao estoque</span>
+                        </span>
+                      </div>
+                      <p data-loss class="hidden text-right text-[12px] font-medium text-red-700"></p>
+                    </div>
+                  ))}
+                  <p class="text-[11px] text-ink-muted">O que não voltar ao estoque fica registrado como perda (produto quebrado, violado ou danificado).</p>
+                </div>
+              </fieldset>
+            ) : (
+              <p class="text-[12px] text-ink-muted">Nada saiu do estoque (pagamento não confirmado): não há o que devolver.</p>
             )}
             {!isCaixa && (
               <label class="flex items-center gap-2 text-[13px] text-ink-soft">
@@ -377,6 +466,23 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
             <div class="flex justify-end gap-2">
               <button type="button" id="cancel-close" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Voltar</button>
               <button class="rounded-card bg-red-700 px-4 py-2 font-sans text-sm text-white hover:bg-red-800">Cancelar venda</button>
+            </div>
+          </form>
+        </dialog>
+      )}
+      {requestPending && canCancel && (
+        <dialog id="reject-dialog" class="m-auto w-[min(92vw,28rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
+          <form method="POST" action="/api/admin/orders/cancel-request" class="space-y-4 p-6">
+            <input type="hidden" name="order_number" value={order.order_number} />
+            <h2 class="font-display text-xl">Recusar o cancelamento?</h2>
+            <p class="text-sm text-ink-soft">O pedido segue normalmente. A resposta vai por e-mail ao cliente e aparece em Minha conta.</p>
+            <label class="block">
+              <span class="label">Resposta ao cliente <span class="text-red-600">*</span></span>
+              <textarea name="resposta" rows="4" minlength="5" maxlength="500" required class="field" placeholder="Ex.: o pedido já foi separado e sai hoje; se não quiser recebê-lo, recuse a entrega ou peça a devolução em até 7 dias."></textarea>
+            </label>
+            <div class="flex justify-end gap-2">
+              <button type="button" id="reject-close" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Voltar</button>
+              <button class="rounded-card bg-ink px-4 py-2 font-sans text-sm text-bone">Recusar e responder</button>
             </div>
           </form>
         </dialog>
@@ -397,8 +503,36 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
   const dlg = document.getElementById('cancel-dialog') as HTMLDialogElement | null;
   const motivo = document.getElementById('cancel-motivo') as HTMLSelectElement | null;
   const detalhe = document.getElementById('cancel-detalhe') as HTMLTextAreaElement | null;
-  document.getElementById('cancel-open')?.addEventListener('click', () => dlg?.showModal());
+  document.querySelectorAll<HTMLButtonElement>('[data-open-cancel]').forEach((b) => b.addEventListener('click', () => dlg?.showModal()));
   document.getElementById('cancel-close')?.addEventListener('click', () => dlg?.close());
+  const rejectDlg = document.getElementById('reject-dialog') as HTMLDialogElement | null;
+  document.getElementById('reject-open')?.addEventListener('click', () => rejectDlg?.showModal());
+  document.getElementById('reject-close')?.addEventListener('click', () => rejectDlg?.close());
+
+  // estoque: "Decidir agora" mostra os itens; cada item mostra quantas unidades viram perda
+  document.querySelectorAll<HTMLInputElement>('input[name=stock_mode]').forEach((r) =>
+    r.addEventListener('change', () => {
+      const now = (document.querySelector('input[name=stock_mode]:checked') as HTMLInputElement | null)?.value === 'now';
+      const box = document.querySelector<HTMLElement>('[data-stock-now]');
+      box?.classList.toggle('hidden', !now);
+      box?.querySelectorAll('input').forEach((i) => (i.disabled = !now));
+    }),
+  );
+  document.querySelector<HTMLInputElement>('input[name=stock_mode]:checked')?.dispatchEvent(new Event('change'));
+  document.querySelectorAll<HTMLElement>('[data-stock-line]').forEach((line) => {
+    const qty = Number(line.dataset.qty);
+    const input = line.querySelector('input')!;
+    const loss = line.querySelector<HTMLElement>('[data-loss]')!;
+    const sync = () => {
+      const back = Math.max(0, Math.min(qty, Math.floor(Number(input.value) || 0)));
+      const lost = qty - back;
+      loss.textContent = lost ? `→ ${lost} ${lost === 1 ? 'unidade vai' : 'unidades vão'} para perda (avaria)` : '';
+      loss.classList.toggle('hidden', !lost);
+      input.classList.toggle('border-red-400', lost > 0);
+    };
+    input.addEventListener('input', sync);
+    sync();
+  });
   // Detalhes só aparece (e é obrigatório) em "Outro"
   motivo?.addEventListener('change', () => {
     const other = motivo.value === 'Outro';

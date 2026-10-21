@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { CANCEL_REASONS_CAIXA, joinReason } from '../../../lib/types';
-import { caixaRefundPlan, manualRefundText, refundCaixaPix, withdrawStock } from '../../../lib/order-policy';
+import { applyStockDecision, caixaRefundPlan, manualRefundText, refundCaixaPix } from '../../../lib/order-policy';
 import {
   createCaixaSale,
   cancelCaixaSale,
@@ -193,11 +193,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
     try {
       const outcome = await cancelCaixaSale(orderNumber);
       if (outcome === 'cancelled') {
-        // desmarcado: produto danificado, não volta à venda
-        if (body.restock === false) {
-          const order = await getOrderByNumber(orderNumber);
-          if (order) await withdrawStock(order.items);
-        }
+        // estoque: todos voltam agora, ou ficam pendentes (perda/reposição decididas na tela da venda)
+        if (sale) await applyStockDecision(sale, body.stock_mode === 'later' ? { mode: 'later' } : { mode: 'now', restock: {} }, locals.user?.id ?? null);
         await recordCancellation(orderNumber, locals.user?.id ?? null, reason);
       }
       if (outcome === 'not_found') return json({ error: 'Venda não encontrada.' }, 404);

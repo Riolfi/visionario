@@ -330,6 +330,16 @@ export async function sendAccountExistsEmail(opts: { to: string }): Promise<Mail
   return { delivered: 'none' };
 }
 
+/** Resposta da loja a um pedido de cancelamento recusado (o pedido segue normalmente). */
+export async function sendCancelRequestAnswer(order: Order, response: string): Promise<MailResult> {
+  const n = orderLabel(order.order_number);
+  const html = `<p>Olá, ${escapeHtml(firstName(order.customer_name))}.</p>
+    <p>Analisamos o seu pedido de cancelamento do pedido <strong>${n}</strong> e ele não pôde ser aprovado.</p>
+    <p><strong>Resposta da loja:</strong> ${escapeHtml(response)}</p>
+    <p>O pedido segue normalmente. Você também vê esta resposta em Minha conta › Pedidos. Dúvidas? Responda este e-mail.</p>`;
+  return deliver(order.customer_email, `Sobre o cancelamento do pedido ${n} — ${env.brandName}`, html, `${order.order_number}-cancelamento-recusado-${Date.now()}`);
+}
+
 /** Aviso ao endereço novo quando um Administrador troca o e-mail de acesso de alguém da equipe. */
 export async function sendTeamEmailChanged(opts: { to: string; name: string }): Promise<MailResult> {
   const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>

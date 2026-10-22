@@ -17,7 +17,7 @@ process.env.TZ = 'America/Sao_Paulo';
 // Caixa, CEP). O resto é loja, e admin não compra como cliente.
 // /trocar-senha: a equipe também troca a senha temporária ali (sem isso, vira loop com o painel)
 // /api/payments/pix (Pix do Caixa) e /api/payments/config/ (testar as chaves do Mercado Pago)
-const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/payments/pix', '/api/payments/config/', '/api/cep/', '/trocar-senha', '/comprovante/'];
+const ADMIN_ALLOWED = ['/auth/', '/api/auth/', '/uploads/', '/api/payments/status', '/api/payments/pix', '/api/payments/config/', '/api/cep/', '/trocar-senha', '/comprovante/', '/criar-senha'];
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const { pathname } = context.url;
@@ -84,7 +84,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
       context.locals.user = user;
 
       // senha temporária (definida por um administrador): troca obrigatória antes de qualquer outra tela
-      const passwordFree = ['/trocar-senha', '/api/auth/trocar-senha', '/auth/sair'];
+      const passwordFree = ['/trocar-senha', '/api/auth/trocar-senha', '/auth/sair', '/criar-senha', '/api/auth/criar-senha'];
       if (user?.app_metadata?.must_change_password && !passwordFree.includes(pathname)) {
         if (pathname.startsWith('/api/')) {
           return new Response(JSON.stringify({ error: 'Crie uma senha nova antes de continuar.' }), {

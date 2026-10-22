@@ -261,12 +261,16 @@ export async function sendTeamPasswordEmail(opts: {
   name: string;
   password: string;
   kind: 'welcome' | 'reset';
+  /** link "Criar senha" (e-mail preenchido; pede a temporária e a nova) */
+  setupUrl?: string;
 }): Promise<MailResult> {
   const welcome = opts.kind === 'welcome';
   const html = `<p>Olá, ${escapeHtml(firstName(opts.name))}.</p>
     <p>${welcome ? `Você foi adicionado(a) à equipe da ${escapeHtml(env.brandName)}.` : 'A sua senha de acesso foi redefinida por um administrador.'}</p>
     <p>E-mail: <strong>${escapeHtml(opts.to)}</strong><br>Senha temporária: <strong>${escapeHtml(opts.password)}</strong></p>
-    <p>Ao entrar, você vai criar uma senha nova. A temporária deixa de valer e ninguém da equipe vê a nova.</p>`;
+    <p>Ao entrar, você vai criar uma senha nova. A temporária deixa de valer e ninguém da equipe vê a nova.</p>${
+      opts.setupUrl ? `<p><a href="${opts.setupUrl}">Criar minha senha</a> (o link vale 7 dias)</p>` : ''
+    }`;
   if (!hasResend) return { delivered: (await writeEmailFile(`equipe-${Date.now()}`, html)) ? 'file' : 'none' };
   try {
     const { data, error } = await new Resend(env.resendApiKey).emails.send({

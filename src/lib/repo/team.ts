@@ -1,4 +1,5 @@
 import { hasSupabase } from '../env';
+import { passwordSetupUrl } from '../password-link';
 import { supabaseAdmin } from '../supabase';
 import { can, type AdminAccess } from '../rbac';
 import { listAuthUsers } from './customers';
@@ -175,7 +176,7 @@ export async function createMember(
         : 'Usuário criado sem cargo, mas o e-mail não foi enviado. Ele pode criar a senha em "Esqueci minha senha".',
     };
   }
-  const mail = await sendTeamPasswordEmail({ to: email, name: input.name, password: input.password, kind: 'welcome' });
+  const mail = await sendTeamPasswordEmail({ to: email, name: input.name, password: input.password, kind: 'welcome', setupUrl: passwordSetupUrl(email) });
   await markEmailSent(userId, mail.delivered === 'resend');
   return {
     ok: true,
@@ -274,7 +275,7 @@ export async function updateMember(
   // aviso da senha por e-mail só se o Administrador marcou a caixa
   if (input.password && input.notify) {
     const { data: u } = await sb.auth.admin.getUserById(userId);
-    const mail = await sendTeamPasswordEmail({ to: u.user?.email ?? email, name: input.name, password: input.password, kind: 'reset' });
+    const mail = await sendTeamPasswordEmail({ to: u.user?.email ?? email, name: input.name, password: input.password, kind: 'reset', setupUrl: passwordSetupUrl(u.user?.email ?? email) });
     if (mail.delivered !== 'resend') return { ok: true, id: userId, message: `Usuário salvo, mas o e-mail com a nova senha não foi enviado. Passe a senha para a pessoa.${emailNote}` };
     return { ok: true, id: userId, message: `Usuário salvo! Enviamos a nova senha para o e-mail dele.${emailNote}` };
   }

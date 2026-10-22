@@ -1,0 +1,60 @@
+---
+import PasswordInput from '../components/PasswordInput.astro';
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { verifyPasswordSetupToken } from '../lib/password-link';
+
+export const prerender = false;
+
+/*
+ * Criar senha (link do e-mail de boas-vindas da equipe ou de senha
+ * redefinida): e-mail já preenchido pelo link assinado; pede a senha
+ * temporária, a nova e a confirmação. Se houver alguém logado neste
+ * navegador, a sessão é encerrada antes (o link não abre a conta de outro).
+ */
+const token = Astro.url.searchParams.get('t') ?? '';
+const email = verifyPasswordSetupToken(token);
+if (Astro.locals.user && Astro.locals.supabase) {
+  await Astro.locals.supabase.auth.signOut({ scope: 'local' });
+  return Astro.redirect(Astro.url.pathname + Astro.url.search);
+}
+const ERRO: Record<string, string> = {
+  curta: 'A nova senha precisa ter pelo menos 8 caracteres.',
+  diferente: 'A confirmação não bate com a nova senha.',
+  igual: 'Escolha uma senha diferente da temporária.',
+  atual: 'A senha temporária não confere. Confira no e-mail que você recebeu.',
+  ja: 'Esta conta já tem senha criada. Entre com o seu e-mail e senha.',
+  falha: 'Não foi possível salvar. Tente de novo.',
+};
+const erro = ERRO[Astro.url.searchParams.get('erro') ?? ''];
+---
+
+<BaseLayout title="Criar senha" description="Crie a senha da sua conta." noindex bare>
+  <section class="container-x flex justify-center py-16 md:py-24">
+    <div class="w-full max-w-sm">
+      <h1 class="font-display text-3xl">Criar senha</h1>
+      {!email ? (
+        <>
+          <p class="mt-3 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">Este link é inválido ou venceu (vale 7 dias). Peça um novo a um Administrador ou entre com a senha temporária.</p>
+          <a href="/entrar" class="btn-primary mt-6 w-full">Ir para o login</a>
+        </>
+      ) : (
+        <>
+          <p class="mt-2 text-sm text-ink-soft">Informe a senha temporária que você recebeu e crie a sua — só você vai saber qual é.</p>
+          {erro && <p class="mt-5 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{erro}</p>}
+          <form method="POST" action="/api/auth/criar-senha" class="mt-6 space-y-4">
+            <input type="hidden" name="t" value={token} />
+            <label class="block">
+              <span class="label">E-mail</span>
+              <input class="field bg-bone-50" type="email" value={email} autocomplete="username" readonly />
+            </label>
+            <label class="block"><span class="label">Senha temporária</span><PasswordInput name="atual" required autocomplete="current-password" autofocus /></label>
+            <label class="block"><span class="label">Nova senha</span><PasswordInput name="nova" required minlength="8" autocomplete="new-password" /></label>
+            <label class="block"><span class="label">Confirmar nova senha</span><PasswordInput name="confirmar" required minlength="8" autocomplete="new-password" /></label>
+            <p class="text-[12px] text-ink-muted">Mínimo de 8 caracteres.</p>
+            <button class="btn-primary w-full">Criar senha e entrar</button>
+          </form>
+        </>
+      )}
+    </div>
+  </section>
+</BaseLayout>

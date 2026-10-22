@@ -24,11 +24,7 @@ const products = hasSupabase
 <AdminLayout title="Caixa">
   {hasSupabase ? (
     <>
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <p class="font-sans text-sm text-ink-muted">
-          Venda de balcão: bipe os produtos, receba o pagamento e finalize — o estoque baixa na hora.
-          Não emite cupom fiscal.
-        </p>
+      <div class="flex justify-end">
         <a href="/admin/caixa/registro" class="btn-primary">Registro de Caixa</a>
       </div>
       <div class="mt-6">

@@ -1,5 +1,6 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ContentTabs from '../../../components/ContentTabs.astro';
 import { getSiteContent } from '../../../lib/repo/site';
 import type { SiteSectionKey } from '../../../lib/types';
 
@@ -20,6 +21,7 @@ const SECTIONS: { key: SiteSectionKey; label: string; hint: string; toggle: bool
 ---
 
 <AdminLayout title="Conteúdo">
+  <ContentTabs />
   <div class="flex items-center justify-between gap-3">
     <p id="section-count" class="font-sans text-sm text-ink-muted">{SECTIONS.length} seções</p>
   </div>

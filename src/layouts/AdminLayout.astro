@@ -19,6 +19,15 @@ const nav: { href: string; label: string }[] = access
       .filter((s) => s.key !== 'notificacoes') // fica no sino do cabeçalho
       .map(({ href, label }) => ({ href, label }))
   : [];
+// Conteúdo, Categorias e Ofertas viram um item só ("Conteúdo", com abas na tela);
+// aponta para a primeira aba que a pessoa pode ver
+const CONTENT = ['/admin/site', '/admin/categorias', '/admin/ofertas'];
+const contentAt = nav.findIndex((n) => CONTENT.includes(n.href));
+if (contentAt >= 0) {
+  const first = nav.find((n) => CONTENT.includes(n.href))!;
+  for (let i = nav.length - 1; i >= 0; i--) if (CONTENT.includes(nav[i]!.href)) nav.splice(i, 1);
+  nav.splice(contentAt, 0, { href: first.href, label: 'Conteúdo' });
+}
 if (access?.isOwner) nav.push({ href: '/admin/permissoes', label: 'Permissões' }, { href: '/admin/cargos', label: 'Cargos' }, { href: '/admin/configuracoes/pagamentos', label: 'Configurações' });
 // Registro de Caixa: logo abaixo do Caixa, para quem abre o Caixa
 const caixaAt = nav.findIndex((n) => n.href === '/admin/caixa');
@@ -28,7 +37,8 @@ const showBell = can(access, 'notificacoes.ver');
 const unread = showBell ? await unreadNotificationCount() : 0;
 
 // marca só o item mais específico (em /admin/caixa/registro, não acende o Caixa)
-const matches = (href: string) => path === href || (href !== '/admin' && path.startsWith(href));
+const matches = (href: string) =>
+  path === href || (href !== '/admin' && path.startsWith(href)) || (CONTENT.includes(href) && CONTENT.some((c) => path.startsWith(c)));
 const activeHref = [...nav.map((n) => n.href), '/admin/perfil'].filter(matches).sort((a, b) => b.length - a.length)[0];
 const isActive = (href: string) => href === activeHref;
 

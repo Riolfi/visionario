@@ -1,0 +1,29 @@
+---
+/**
+ * Abas da tela Conteúdo: Identidade visual (/admin/site), Categorias e
+ * Ofertas — cada aba só aparece para quem pode vê-la. Usada no topo das
+ * três listas (o menu tem um item só, "Conteúdo").
+ */
+import { can } from '../lib/rbac';
+
+const a = Astro.locals.admin;
+const path = Astro.url.pathname;
+const tabs = [
+  { href: '/admin/site', label: 'Identidade visual', rule: 'conteudo.ver' },
+  { href: '/admin/categorias', label: 'Categorias', rule: 'categorias.ver' },
+  { href: '/admin/ofertas', label: 'Ofertas', rule: 'ofertas.ver' },
+] as const;
+const visible = tabs.filter((t) => can(a, t.rule));
+---
+
+<nav class="mb-4 flex gap-1 overflow-x-auto border-b border-ink/10 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" aria-label="Abas de Conteúdo">
+  {visible.map((t) => (
+    <a
+      href={t.href}
+      aria-current={path.startsWith(t.href) ? 'page' : undefined}
+      class:list={['-mb-px whitespace-nowrap border-b-2 px-4 py-2 font-sans text-sm', path.startsWith(t.href) ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-muted hover:text-ink']}
+    >
+      {t.label}
+    </a>
+  ))}
+</nav>

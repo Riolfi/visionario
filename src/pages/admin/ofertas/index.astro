@@ -1,5 +1,6 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ContentTabs from '../../../components/ContentTabs.astro';
 import { getOffers } from '../../../lib/repo/site';
 
 export const prerender = false;
@@ -7,7 +8,8 @@ export const prerender = false;
 const offers = await getOffers();
 ---
 
-<AdminLayout title="Ofertas">
+<AdminLayout title="Conteúdo">
+  <ContentTabs />
   <div class="flex items-center justify-between gap-3">
     <p id="offer-count" class="font-sans text-sm text-ink-muted">{offers.length} {offers.length === 1 ? 'oferta' : 'ofertas'}</p>
     <a href="/admin/ofertas/nova" class="btn-primary">Nova oferta</a>

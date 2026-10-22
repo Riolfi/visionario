@@ -1,5 +1,6 @@
 ---
 import AdminLayout from '../../../layouts/AdminLayout.astro';
+import ContentTabs from '../../../components/ContentTabs.astro';
 import CategoryTree from '../../../components/CategoryTree.tsx';
 import { getCategoryTree, getProducts } from '../../../lib/repo/catalog';
 
@@ -27,6 +28,7 @@ const toNode = (c: (typeof tree)[number] | (typeof tree)[number]['children'][num
 const nodes = tree.map(toNode);
 ---
 
-<AdminLayout title="Categorias">
+<AdminLayout title="Conteúdo">
+  <ContentTabs />
   <CategoryTree client:load tree={nodes} />
 </AdminLayout>

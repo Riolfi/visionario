@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { uploadImage } from '../../../lib/storage';
 import { passwordMatches } from '../../../lib/password-check';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { getOwnerEmail, isProprietor } from '../../../lib/repo/owner';
@@ -136,6 +137,21 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     }
     const { error } = await admin.auth.admin.updateUserById(user.id, { password: nova });
     return error ? back(redirect, 'erro', 'falha') : back(redirect, 'ok', 'senha');
+  }
+
+  // foto do perfil (aparece no cabeçalho do painel); fica em user_metadata.avatar_url
+  if (acao === 'foto' || acao === 'remover-foto') {
+    let avatar = '';
+    if (acao === 'foto') {
+      const file = form.get('foto');
+      if (!(file instanceof File) || !file.size) return back(redirect, 'erro', 'foto');
+      const up = await uploadImage(file, 'avatars', { maxBytes: 2 * 1024 * 1024, allowedTypes: ['image/jpeg', 'image/png', 'image/webp'] });
+      if ('error' in up) return back(redirect, 'erro', 'foto');
+      avatar = up.url;
+    }
+    const { data: u } = await admin.auth.admin.getUserById(user.id);
+    const { error } = await admin.auth.admin.updateUserById(user.id, { user_metadata: { ...(u.user?.user_metadata ?? {}), avatar_url: avatar || null } });
+    return error ? back(redirect, 'erro', 'foto') : back(redirect, 'ok', acao === 'foto' ? 'foto' : 'sem-foto');
   }
 
   if (acao === 'sair-todos') {

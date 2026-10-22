@@ -34,7 +34,7 @@ if (user?.email) {
 const next = safeNextPath(url.searchParams.get('next'), '/');
 const dest = !user
   ? '/entrar?erro=callback'
-  : next === '/' && (await isAdmin(user.id))
+  : (await isAdmin(user.id)) // equipe: sempre o Painel ao entrar
     ? '/admin'
     : withLoginFlag(next);
 

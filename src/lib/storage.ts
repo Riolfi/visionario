@@ -36,7 +36,8 @@ async function ensureBucket(): Promise<void> {
   bucketReady = true;
 }
 
-export type UploadFolder = 'products' | 'offers' | 'categorias' | 'site';
+export type UploadFolder = 'products' | 'offers' | 'categorias' | 'site' | 'avatars';
+// avatars: só pela foto do Meu perfil (a rota de upload genérica não aceita)
 const FOLDERS: UploadFolder[] = ['products', 'offers', 'categorias', 'site'];
 
 export function isAllowedFolder(v: string): v is UploadFolder {

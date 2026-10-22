@@ -34,6 +34,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   }
   // admin sem destino explícito vai pro painel; cliente volta pra onde
   // estava (padrão: página inicial) com o aviso de "você entrou"
-  if (next === '/' && data.user?.id && (await isAdmin(data.user.id))) return redirect('/admin');
+  // equipe: sempre o Painel ao entrar
+  if (data.user?.id && (await isAdmin(data.user.id))) return redirect('/admin');
   return redirect(withLoginFlag(next));
 };

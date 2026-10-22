@@ -3,6 +3,7 @@ import '../styles/global.css';
 import ThemeVars from '../components/ThemeVars.astro';
 import { can, visibleScreens } from '../lib/rbac';
 import { unreadNotificationCount } from '../lib/repo/notifications';
+import { supabaseAdmin } from '../lib/supabase';
 
 interface Props {
   title: string;
@@ -34,7 +35,15 @@ const caixaAt = nav.findIndex((n) => n.href === '/admin/caixa');
 if (caixaAt >= 0) nav.splice(caixaAt + 1, 0, { href: '/admin/caixa/registro', label: 'Registro de Caixa' });
 const showBell = can(access, 'notificacoes.ver');
 
-const unread = showBell ? await unreadNotificationCount() : 0;
+// nome e foto de quem está logado (canto direito do cabeçalho)
+const me = Astro.locals.user;
+const [unread, myProfile] = await Promise.all([
+  showBell ? unreadNotificationCount() : Promise.resolve(0),
+  me && supabaseAdmin() ? supabaseAdmin()!.from('profiles').select('full_name').eq('id', me.id).maybeSingle().then((r) => r.data) : Promise.resolve(null),
+]);
+const myName: string = (myProfile?.full_name || String(me?.user_metadata?.full_name ?? '') || me?.email || '').trim();
+const myAvatar = String(me?.user_metadata?.avatar_url ?? me?.user_metadata?.picture ?? '');
+const initials = myName.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w: string) => w[0]!.toUpperCase()).join('');
 
 // marca só o item mais específico (em /admin/caixa/registro, não acende o Caixa)
 const matches = (href: string) =>
@@ -57,11 +66,13 @@ const isActive = (href: string) => href === activeHref;
   </head>
   <body class="bg-bone-50">
     <div id="admin-shell" class="group flex min-h-screen">
-      <!-- menu recolhido no desktop (escolha guardada): aplica antes de pintar -->
+      <!-- menu começa recolhido; fica aberto só se a pessoa abriu (escolha guardada) — aplica antes de pintar -->
       <script is:inline>
         try {
-          if (localStorage.getItem('admin-menu') === 'fechado') document.getElementById('admin-shell').classList.add('is-collapsed');
-        } catch (e) {}
+          if (localStorage.getItem('admin-menu') !== 'aberto') document.getElementById('admin-shell').classList.add('is-collapsed');
+        } catch (e) {
+          document.getElementById('admin-shell').classList.add('is-collapsed');
+        }
       </script>
       <!-- Celular: o menu lateral vira gaveta (abre no ☰); a partir de sm fica fixo -->
       <div data-admin-close class="fixed inset-0 z-30 hidden bg-ink/40 group-[.is-open]:block sm:!hidden" aria-hidden="true"></div>
@@ -153,6 +164,17 @@ const isActive = (href: string) => href === activeHref;
               </span>
             )}
           </a>)}
+          {/* quem está logado: nome e foto (sem foto, as iniciais); abre Meu perfil */}
+          {me && (
+            <a href="/admin/perfil" class="ml-1 flex items-center gap-2 rounded-full py-1 pl-2 pr-1 hover:bg-bone-200" title="Meu perfil">
+              <span class="hidden max-w-[12rem] truncate font-sans text-sm font-medium text-ink sm:block">{myName}</span>
+              {myAvatar ? (
+                <img src={myAvatar} alt="" class="h-8 w-8 rounded-full object-cover" referrerpolicy="no-referrer" />
+              ) : (
+                <span class="grid h-8 w-8 place-items-center rounded-full bg-ink font-sans text-[12px] font-semibold text-bone" aria-hidden="true">{initials}</span>
+              )}
+            </a>
+          )}
           </div>
         </header>
         <main class="p-4 sm:p-6">

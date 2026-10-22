@@ -1,85 +1,172 @@
 ---
-import { orderLabel } from '../../lib/format';
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { getProducts } from '../../lib/repo/catalog';
-import { listOrders } from '../../lib/repo/orders';
-import { brl } from '../../lib/format';
-import { orderStatusLabel } from '../../lib/types';
+import { listOrders, reservedStock, todaySP } from '../../lib/repo/orders';
+import { cancelRequestPending } from '../../lib/order-policy';
+import { brl, orderLabel } from '../../lib/format';
+import { RECEIVED_STATUSES } from '../../lib/types';
+import { can } from '../../lib/rbac';
+import { supabaseAdmin } from '../../lib/supabase';
 
 export const prerender = false;
 
-const [products, orders] = await Promise.all([
-  getProducts({ includeInactive: true }),
-  listOrders(500),
+/*
+ * Painel: tela de entrada de toda a equipe. Saudação pelo horário, avisos e
+ * pendências (só do que a pessoa pode resolver), resumo de hoje (painel.ver)
+ * e os 4 atalhos principais (só os que o cargo abre).
+ */
+const access = Astro.locals.admin!;
+const user = Astro.locals.user!;
+const canSales = can(access, 'pedidos.ver');
+const canProducts = can(access, 'produtos.ver');
+const canSummary = can(access, 'painel.ver');
+
+const [products, orders, reserved, profile] = await Promise.all([
+  canProducts ? getProducts({ includeInactive: true }) : Promise.resolve([]),
+  canSales || canSummary ? listOrders(500) : Promise.resolve([]),
+  canProducts ? reservedStock() : Promise.resolve(new Map<string, number>()),
+  supabaseAdmin()?.from('profiles').select('full_name').eq('id', user.id).maybeSingle().then((r) => r.data) ?? Promise.resolve(null),
 ]);
 
-// receita: pago, enviado ou entregue (cancelada sai da conta)
-const paid = orders.filter((o) => ['paid', 'separating', 'shipped', 'delivered'].includes(o.status));
-const revenue = paid.reduce((sum, o) => sum + o.total_cents, 0);
-const pending = orders.filter((o) => o.status === 'pending').length;
+// saudação pelo horário de São Paulo + primeiro nome
+const hour = Number(new Intl.DateTimeFormat('pt-BR', { hour: 'numeric', hour12: false, timeZone: 'America/Sao_Paulo' }).format(new Date()));
+const greeting = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+const firstName = ((profile?.full_name || String(user.user_metadata?.full_name ?? '') || user.email || '').trim().split(/\s+/)[0] ?? '').split('@')[0];
+const dateLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'America/Sao_Paulo' });
+
+// avisos e pendências
+const cancelReqs = canSales ? orders.filter(cancelRequestPending) : [];
+const stockPending = canSales ? orders.filter((o) => o.status === 'cancelled' && o.stock_pending) : [];
+const toSeparate = canSales ? orders.filter((o) => o.source !== 'caixa' && o.status === 'paid') : [];
 const lowStock = products.filter((p) => p.is_active && p.stock <= 5);
-
-const stats = [
-  { label: 'Produtos ativos', value: String(products.filter((p) => p.is_active).length) },
-  { label: 'Vendas pagas', value: String(paid.length) },
-  { label: 'Receita confirmada', value: brl(revenue) },
-  { label: 'Vendas pendentes', value: String(pending) },
+const zeroStock = lowStock.filter((p) => p.stock <= 0).length;
+type Alert = { tone: 'amber' | 'red' | 'blue'; title: string; text: string; href: string; cta: string };
+const alerts: Alert[] = [
+  ...(cancelReqs.length
+    ? [{ tone: 'amber' as const, title: 'Solicitação de Cancelamento Pendente', text: cancelReqs.length === 1 ? `O cliente da venda ${orderLabel(cancelReqs[0]!.order_number)} pediu o cancelamento.` : `${cancelReqs.length} clientes pediram o cancelamento.`, href: cancelReqs.length === 1 ? `/admin/pedidos/${cancelReqs[0]!.order_number}` : '/admin/pedidos', cta: 'Analisar' }]
+    : []),
+  ...(stockPending.length
+    ? [{ tone: 'amber' as const, title: 'Estoque pendente de cancelamento', text: `${stockPending.length} ${stockPending.length === 1 ? 'venda cancelada espera' : 'vendas canceladas esperam'} a decisão do que volta ao estoque.`, href: '/admin/pedidos?aba=cancelamentos', cta: 'Decidir' }]
+    : []),
+  ...(lowStock.length
+    ? [{ tone: 'red' as const, title: 'Alerta de Estoque Mínimo', text: `${lowStock.length} ${lowStock.length === 1 ? 'produto' : 'produtos'} com 5 unidades ou menos${zeroStock ? ` (${zeroStock} zerado${zeroStock > 1 ? 's' : ''})` : ''}.`, href: '/admin/produtos', cta: 'Ver itens' }]
+    : []),
+  ...(toSeparate.length
+    ? [{ tone: 'blue' as const, title: 'Vendas online para separar', text: `${toSeparate.length} ${toSeparate.length === 1 ? 'venda paga aguarda' : 'vendas pagas aguardam'} separação.`, href: '/admin/pedidos', cta: 'Ver vendas' }]
+    : []),
 ];
+const TONE = {
+  amber: { box: 'border-amber-300/60 bg-amber-50', icon: 'bg-amber-100 text-amber-800', cta: 'border-amber-400 text-amber-800 hover:bg-amber-100' },
+  red: { box: 'border-red-200 bg-red-50', icon: 'bg-red-100 text-red-800', cta: 'border-red-300 text-red-700 hover:bg-red-100' },
+  blue: { box: 'border-blue-200 bg-blue-50', icon: 'bg-blue-100 text-blue-800', cta: 'border-blue-300 text-blue-800 hover:bg-blue-100' },
+};
 
-const recent = orders.slice(0, 8);
+// resumo de hoje (dia de São Paulo)
+const today = todaySP();
+const dayOf = (iso: string) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(iso));
+const todays = orders.filter((o) => dayOf(o.created_at) === today);
+const caixaToday = todays.filter((o) => o.source === 'caixa' && o.status === 'paid').reduce((t, o) => t + o.total_cents, 0);
+const onlineToday = todays.filter((o) => o.source !== 'caixa' && RECEIVED_STATUSES.includes(o.status)).reduce((t, o) => t + o.total_cents, 0);
+const deliveries = orders.filter((o) => o.source !== 'caixa' && ['paid', 'separating', 'shipped'].includes(o.status)).length;
+const reservedUnits = [...reserved.values()].reduce((t, n) => t + n, 0);
+
+// atalhos principais (só os que o cargo abre)
+const ICON = {
+  caixa: '<path d="M3 4h2l2.4 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.5L21 8H6" /><circle cx="10" cy="20" r="1.4" /><circle cx="17" cy="20" r="1.4" />',
+  produtos: '<path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="m3 8 9 5 9-5M12 13v8" />',
+  vendas: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7" /><circle cx="7" cy="18" r="1.6" /><circle cx="17" cy="18" r="1.6" />',
+  config: '<circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />',
+};
+const shortcuts = [
+  can(access, 'caixa.vender') && { href: '/admin/caixa', title: 'Caixa', text: 'Vendas presenciais e comprovantes', icon: ICON.caixa, color: 'text-violet-600 bg-violet-100' },
+  canProducts && { href: '/admin/produtos', title: 'Produtos', text: reservedUnits ? `Consulta, estoque e reservas — ${reservedUnits} un. reservada${reservedUnits > 1 ? 's' : ''} agora` : 'Consulta, estoque e reservas temporárias', icon: ICON.produtos, color: 'text-green-700 bg-green-100' },
+  canSales && { href: '/admin/pedidos', title: 'Vendas', text: cancelReqs.length ? `Vendas online e ${cancelReqs.length} pedido${cancelReqs.length > 1 ? 's' : ''} de cancelamento` : 'Vendas online e solicitações de cancelamento', icon: ICON.vendas, color: 'text-blue-700 bg-blue-100' },
+  access.isOwner && { href: '/admin/configuracoes/pagamentos', title: 'Configurações', text: 'Chaves do Mercado Pago e dados da loja', icon: ICON.config, color: 'text-fuchsia-700 bg-fuchsia-100' },
+].filter(Boolean) as { href: string; title: string; text: string; icon: string; color: string }[];
+const SVG = (paths: string, size = 22) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
+const ALERT_ICON = { amber: '<path d="M12 9v4M12 17h.01" /><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />', red: '<path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M12 9v4M12 16h.01" />', blue: '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7" />' };
 ---
 
 <AdminLayout title="Painel">
-  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-    {stats.map((s) => (
-      <div class="rounded-card border border-ink/10 bg-white p-5">
-        <p class="font-sans text-[12px] uppercase tracking-[0.12em] text-ink-muted">{s.label}</p>
-        <p class="mt-2 font-display text-2xl text-ink">{s.value}</p>
-      </div>
-    ))}
+  {/* saudação */}
+  <div class="flex flex-wrap items-start justify-between gap-3 border-b border-ink/10 pb-4">
+    <div>
+      <p class="font-display text-2xl sm:text-3xl">{greeting}{firstName && `, ${firstName}`}!</p>
+      <p class="mt-1 font-sans text-sm text-ink-muted">Aqui está o resumo das atividades da loja.</p>
+    </div>
+    <p class="flex items-center gap-2 rounded-card border border-ink/10 bg-white px-3 py-2 font-sans text-[13px] text-ink-soft first-letter:uppercase">
+      <span set:html={SVG('<rect x="3" y="5" width="18" height="16" rx="2" /><path d="M16 3v4M8 3v4M3 10h18" />', 16)} />
+      <span class="first-letter:uppercase">{dateLabel}</span>
+    </p>
   </div>
 
-  <div class="mt-8 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
+  <div class:list={['mt-6 grid gap-6', canSummary && 'lg:grid-cols-[1.6fr_1fr]']}>
+    {/* avisos e pendências */}
     <section class="rounded-card border border-ink/10 bg-white p-5">
-      <div class="flex items-center justify-between">
-        <h2 class="font-display text-lg">Vendas recentes</h2>
-        <a href="/admin/pedidos" class="font-sans text-[12px] uppercase tracking-[0.12em] text-agua-dark">Ver todos</a>
+      <div class="flex items-start justify-between gap-3">
+        <div class="flex items-center gap-3">
+          <span class="grid h-10 w-10 place-items-center rounded-card bg-bone-100 text-ink-soft" set:html={SVG('<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />', 20)} />
+          <div>
+            <h2 class="font-display text-lg leading-tight">Avisos e Pendências</h2>
+            <p class="font-sans text-[12px] text-ink-muted">O que precisa da sua atenção</p>
+          </div>
+        </div>
+        {alerts.length > 0 && <span class="whitespace-nowrap rounded-full bg-amber-100 px-2.5 py-1 font-sans text-[12px] font-medium text-amber-800">{alerts.length} {alerts.length === 1 ? 'pendência' : 'pendências'}</span>}
       </div>
-      {recent.length === 0 ? (
-        <p class="mt-4 font-sans text-sm text-ink-muted">Nenhuma venda ainda.</p>
-      ) : (
-        <table class="mt-4 w-full text-left text-sm">
-          <thead class="text-[12px] uppercase tracking-[0.1em] text-ink-muted">
-            <tr><th class="pb-2">Venda</th><th class="pb-2">Cliente</th><th class="pb-2">Status</th><th class="pb-2 text-right">Total</th></tr>
-          </thead>
-          <tbody>
-            {recent.map((o) => (
-              <tr class="border-t border-ink/10">
-                <td class="py-2"><a href={`/admin/pedidos/${o.order_number}`} class="text-agua-dark">{orderLabel(o.order_number)}</a></td>
-                <td class="py-2 text-ink-soft">{o.customer_name}</td>
-                <td class="py-2"><span class="rounded-full bg-bone-200 px-2 py-0.5 text-[11px] uppercase">{orderStatusLabel(o.status, o.source)}</span></td>
-                <td class="py-2 text-right">{brl(o.total_cents)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </section>
-
-    <section class="rounded-card border border-ink/10 bg-white p-5">
-      <h2 class="font-display text-lg">Estoque baixo</h2>
-      {lowStock.length === 0 ? (
-        <p class="mt-4 font-sans text-sm text-ink-muted">Tudo com folga.</p>
-      ) : (
-        <ul class="mt-4 space-y-2">
-          {lowStock.map((p) => (
-            <li class="flex items-center justify-between text-sm">
-              <a href={`/admin/produtos/${p.id}`} class="text-agua-dark">{p.name}</a>
-              <span class="font-sans text-ink-muted">{p.stock} un.</span>
+      {alerts.length ? (
+        <ul class="mt-4 space-y-3">
+          {alerts.map((a) => (
+            <li class:list={['flex items-center gap-3 rounded-card border p-3', TONE[a.tone].box]}>
+              <span class:list={['grid h-9 w-9 shrink-0 place-items-center rounded-card', TONE[a.tone].icon]} set:html={SVG(ALERT_ICON[a.tone], 18)} />
+              <span class="min-w-0 flex-1">
+                <span class="block font-sans text-sm font-semibold">{a.title}</span>
+                <span class="block font-sans text-[13px] text-ink-soft">{a.text}</span>
+              </span>
+              <a href={a.href} class:list={['shrink-0 rounded-card border bg-transparent px-3 py-1.5 font-sans text-[13px] font-medium', TONE[a.tone].cta]}>{a.cta}</a>
             </li>
           ))}
         </ul>
+      ) : (
+        <p class="mt-4 rounded-card bg-bone-50 p-4 font-sans text-sm text-ink-muted">Nada pendente por aqui. ✓</p>
       )}
     </section>
+
+    {/* resumo de hoje */}
+    {canSummary && (
+      <section class="rounded-card border border-ink/10 bg-white p-5">
+        <h2 class="font-display text-lg">Resumo de Hoje</h2>
+        <dl class="mt-4 space-y-3 font-sans text-sm">
+          <div class="flex items-center justify-between gap-3"><dt class="text-ink-muted">Vendas do dia (Caixa)</dt><dd class="font-semibold">{brl(caixaToday)}</dd></div>
+          <div class="flex items-center justify-between gap-3"><dt class="text-ink-muted">Vendas online</dt><dd class="font-semibold">{brl(onlineToday)}</dd></div>
+          <div class="flex items-center justify-between gap-3"><dt class="text-ink-muted">Entregas pendentes</dt><dd><span class="rounded-full bg-blue-100 px-2.5 py-0.5 text-[12px] font-medium text-blue-800">{deliveries} {deliveries === 1 ? 'entrega' : 'entregas'}</span></dd></div>
+        </dl>
+        {can(access, 'caixa.vender') && (
+          <a href="/admin/caixa/registro" class="mt-5 flex w-full items-center justify-center gap-2 rounded-card border border-ink/15 bg-bone-50 px-4 py-2.5 font-sans text-sm hover:bg-bone-100">
+            Registro de Caixa <span aria-hidden="true">→</span>
+          </a>
+        )}
+      </section>
+    )}
   </div>
+
+  {/* atalhos principais */}
+  {shortcuts.length > 0 && (
+    <section class="mt-8" aria-label="Atalhos principais">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="font-display text-lg">Atalhos Principais</h2>
+        <p class="font-sans text-[12px] text-ink-muted">Acesso direto às operações mais usadas</p>
+      </div>
+      <div class="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {shortcuts.map((s) => (
+          <a href={s.href} class="group/atalho relative rounded-card border border-ink/10 bg-white p-5 transition duration-200 hover:-translate-y-0.5 hover:border-ink/30 hover:shadow-lg motion-reduce:transition-none motion-reduce:hover:translate-y-0">
+            <span class:list={['grid h-11 w-11 place-items-center rounded-card transition-transform duration-200 group-hover/atalho:scale-105', s.color]} set:html={SVG(s.icon)} />
+            <span class="absolute right-4 top-4 text-ink-muted transition-transform duration-200 group-hover/atalho:-translate-y-0.5 group-hover/atalho:translate-x-0.5 group-hover/atalho:text-ink" set:html={SVG('<path d="M7 17 17 7M9 7h8v8" />', 16)} />
+            <span class="mt-4 block font-display text-lg">{s.title}</span>
+            <span class="mt-1 block font-sans text-[13px] text-ink-muted">{s.text}</span>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
 </AdminLayout>

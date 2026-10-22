@@ -65,7 +65,8 @@ export const can = (a: AdminAccess | null | undefined, rule: RuleKey) => !!a && 
 /** Telas do menu que essa pessoa enxerga, na ordem. */
 export function visibleScreens(a: AdminAccess) {
   return SCREENS.filter((s) =>
-    s.key === 'usuarios' ? can(a, 'equipe.ver') || can(a, 'clientes.ver') : can(a, s.view as RuleKey),
+    // Painel: toda a equipe (é a tela de entrada); os números dependem de painel.ver
+    s.key === 'painel' ? true : s.key === 'usuarios' ? can(a, 'equipe.ver') || can(a, 'clientes.ver') : can(a, s.view as RuleKey),
   );
 }
 
@@ -92,7 +93,7 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
   if (under('/admin/usuarios')) return can(a, 'equipe.ver') || can(a, 'clientes.ver');
   if (under('/api/admin/users')) return can(a, 'equipe.gerenciar');
   if (under('/api/admin/customers')) return can(a, 'clientes.estado');
-  if (pathname === '/admin' || pathname === '/admin/') return can(a, 'painel.ver');
+  if (pathname === '/admin' || pathname === '/admin/') return true; // Painel: entrada de toda a equipe
   if (under('/admin/caixa', '/api/admin/caixa')) return can(a, 'caixa.vender');
   if (under('/api/admin/receipt')) return can(a, 'caixa.vender') || can(a, 'pedidos.ver');
   if (under('/api/admin/products/by-barcode')) return can(a, 'caixa.vender') || can(a, 'produtos.ver');

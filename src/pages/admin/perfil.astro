@@ -22,6 +22,7 @@ const [{ data: profile }, proprietor] = await Promise.all([
 ]);
 const flash = takeFlash(Astro.cookies);
 const ok = Astro.url.searchParams.get('ok');
+const avatar = String(user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? '');
 const fmt = (d?: string | null) => (d ? new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 const allowed = access.isOwner ? null : RULES.filter((r) => access.rules.includes(r.key));
 // veio da lista de Usuários (Editar na própria linha): mostra voltar, Cancelar e Excluir;
@@ -41,8 +42,34 @@ const lastName = rest.join(' ');
     <p role="status" class:list={['max-w-2xl rounded-card border px-3 py-2 text-sm', flash.type === 'ok' ? 'border-green-200 bg-green-50 text-green-800' : 'border-red-300 bg-red-50 text-red-800']}>{flash.text}</p>
   )}
   <p id="ok-notice" role="status" class:list={['notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800', ok !== 'salvo' && 'hidden']}>✓ Perfil salvo com sucesso!</p>
+  {ok === 'foto' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ Foto atualizada.</p>}
+  {ok === 'sem-foto' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ Foto removida.</p>}
+  {Astro.url.searchParams.get('erro') === 'foto' && <p role="alert" class="max-w-2xl rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700">! Não foi possível salvar a foto. Use JPG, PNG ou WebP de até 2 MB.</p>}
   {ok === 'email' && <p role="status" class="notice-in max-w-2xl rounded-[14px] border border-green-200 bg-green-50 px-3 py-2 font-sans text-[13px] text-green-800">✓ E-mail alterado. Use o novo e-mail no próximo login.</p>}
   <div id="top-notice" role="alert" class="notice-in hidden max-w-2xl rounded-[14px] border border-red-200 bg-red-50 px-3 py-2 font-sans text-[13px] text-red-700"></div>
+
+  {/* foto do perfil: aparece no cabeçalho do painel (sem foto, as iniciais) */}
+  <div class="mt-4 flex max-w-2xl items-center gap-4">
+    {avatar ? (
+      <img src={avatar} alt="Sua foto" class="h-16 w-16 rounded-full object-cover" referrerpolicy="no-referrer" />
+    ) : (
+      <span class="grid h-16 w-16 place-items-center rounded-full bg-ink font-sans text-lg font-semibold text-bone" aria-hidden="true">{(profile?.full_name || user.email || '?').trim()[0]?.toUpperCase()}</span>
+    )}
+    <form method="POST" action="/api/admin/profile" enctype="multipart/form-data" class="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="acao" value="foto" />
+      <label class="btn-outline cursor-pointer">
+        {avatar ? 'Trocar foto' : 'Enviar foto'}
+        <input type="file" name="foto" accept="image/jpeg,image/png,image/webp" class="sr-only" onchange="this.form.requestSubmit()" />
+      </label>
+      <span class="w-full text-[12px] text-ink-muted">JPG, PNG ou WebP, até 2 MB.</span>
+    </form>
+    {avatar && (
+      <form method="POST" action="/api/admin/profile">
+        <input type="hidden" name="acao" value="remover-foto" />
+        <button class="font-sans text-[13px] text-red-700 underline">Remover</button>
+      </form>
+    )}
+  </div>
 
   <form id="profile-form" method="POST" action="/api/admin/profile" class="mt-4 max-w-2xl space-y-5">
     <input type="hidden" name="acao" value="perfil" />

@@ -1,41 +1,179 @@
 ---
 import AdminLayout from '../../layouts/AdminLayout.astro';
-import { listNotifications, markAllNotificationsRead } from '../../lib/repo/notifications';
+import { kindInfo, listNotifications, type NotificationCategory } from '../../lib/repo/notifications';
 
 export const prerender = false;
 
-const items = await listNotifications();
-// abriu a tela = viu: marca tudo como lido (as não lidas seguem destacadas agora)
-await markAllNotificationsRead();
+/*
+ * Central de notificações: abas Todas / Não lidas / Arquivadas e filtro por
+ * tipo (Cancelamentos, Estoque, Financeiro). Abrir o link marca como lida;
+ * no card (ao passar o mouse): lida/não lida, arquivar e excluir (com
+ * "Desfazer"). Lida, arquivada e excluída valem para toda a equipe.
+ */
+const params = Astro.url.searchParams;
+const aba = (['todas', 'nao-lidas', 'arquivadas'] as const).find((a) => a === params.get('aba')) ?? 'todas';
+const tipo = (['cancelamentos', 'estoque', 'financeiro'] as const).find((t) => t === params.get('tipo')) ?? '';
+const all = await listNotifications({ archived: aba === 'arquivadas' });
+const inTab = aba === 'nao-lidas' ? all.filter((n) => !n.read_at) : all;
+const countOf = (c: NotificationCategory) => inTab.filter((n) => kindInfo(n.kind).category === c).length;
+const items = tipo ? inTab.filter((n) => kindInfo(n.kind).category === tipo) : inTab;
+const unreadTotal = aba === 'arquivadas' ? 0 : all.filter((n) => !n.read_at).length;
+
+const href = (a: string, t: string) => `/admin/notificacoes?aba=${a}${t ? `&tipo=${t}` : ''}`;
 const fmt = (d: string) => new Date(d).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-const ICON: Record<string, string> = {
-  estoque_esgotado: '📦',
-  pagamento_sem_estoque: '⚠️',
-  pagamento_pedido_cancelado: '⚠️',
+// a etiqueta já diz o tipo: tira o mesmo texto do começo da mensagem
+const clean = (m: string) => m.replace(/^!\s*Solicitação de Cancelamento Pendente\s*—\s*/i, '').replace(/^./, (c) => c.toUpperCase());
+const BADGE = { red: 'bg-red-100 text-red-800', orange: 'bg-orange-100 text-orange-800', amber: 'bg-amber-100 text-amber-800', green: 'bg-green-100 text-green-800', gray: 'bg-bone-200 text-ink-soft' };
+const EDGE = { red: 'border-l-red-500', orange: 'border-l-orange-500', amber: 'border-l-amber-500', green: 'border-l-green-600', gray: 'border-l-ink/40' };
+const ICON = {
+  check: '<path d="m5 12 5 5 9-10" />',
+  dot: '<circle cx="12" cy="12" r="4" />',
+  archive: '<rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M10 13h4" />',
+  unarchive: '<rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M12 17v-5m-2.5 2.5L12 12l2.5 2.5" />',
+  trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3" />',
 };
+const svg = (p: string) => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p}</svg>`;
+const ACT = 'grid h-8 w-8 place-items-center rounded-card text-ink-muted hover:bg-bone-100 hover:text-ink';
 ---
 
 <AdminLayout title="Notificações">
-  {items.length === 0 ? (
-    <p class="rounded-card border border-ink/10 bg-white p-6 text-center text-sm text-ink-muted">Nenhuma notificação por enquanto.</p>
-  ) : (
-    <ul class="max-w-3xl divide-y divide-ink/10 rounded-card border border-ink/10 bg-white">
-      {items.map((n) => (
-        <li class:list={['flex gap-3 p-4', !n.read_at && 'bg-blush-light/40']}>
-          <span class="text-lg leading-none" aria-hidden="true">{ICON[n.kind] ?? '🔔'}</span>
-          <div class="min-w-0 flex-1">
-            <p class="text-sm text-ink">{n.message}</p>
-            <p class="mt-1 text-[12px] text-ink-muted">
-              {fmt(n.created_at)}
-              {!n.read_at && <span class="ml-2 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">nova</span>}
-            </p>
-            <p class="mt-1 text-[12px]">
-              {n.product_id && <a href={`/admin/produtos/${n.product_id}`} class="text-agua-dark underline">Abrir produto</a>}
-              {n.order_number && <a href={`/admin/pedidos/${n.order_number}`} class="text-agua-dark underline">Abrir pedido</a>}
-            </p>
-          </div>
-        </li>
+  <div class="max-w-3xl">
+    {/* abas */}
+    <div class="flex flex-wrap items-end justify-between gap-3 border-b border-ink/10">
+      <nav class="flex gap-1" aria-label="Abas de notificações">
+        {[['todas', 'Todas'], ['nao-lidas', 'Não lidas'], ['arquivadas', 'Arquivadas']].map(([k, l]) => (
+          <a href={href(k!, tipo)} aria-current={aba === k ? 'page' : undefined} class:list={['-mb-px border-b-2 px-4 py-2 font-sans text-sm', aba === k ? 'border-ink font-semibold text-ink' : 'border-transparent text-ink-muted hover:text-ink']}>
+            {l}{k === 'nao-lidas' && unreadTotal > 0 && <span class="ml-1.5 rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{unreadTotal}</span>}
+          </a>
+        ))}
+      </nav>
+      {aba !== 'arquivadas' && unreadTotal > 0 && (
+        <button type="button" id="read-all" class="mb-2 rounded-card border border-ink/15 px-3 py-1.5 font-sans text-[13px] hover:bg-bone-100">Marcar todas como lidas</button>
+      )}
+    </div>
+
+    {/* filtro por tipo */}
+    <div class="mt-3 flex flex-wrap gap-2" aria-label="Filtrar por tipo">
+      {[['', 'Todos os tipos'], ['cancelamentos', 'Cancelamentos'], ['estoque', 'Estoque'], ['financeiro', 'Financeiro']].map(([k, l]) => (
+        <a href={href(aba, k!)} aria-current={tipo === k ? 'true' : undefined} class:list={['rounded-full border px-3 py-1 font-sans text-[13px]', tipo === k ? 'border-ink bg-ink text-bone' : 'border-ink/15 text-ink-soft hover:border-ink']}>
+          {l}{k && <span class="ml-1 opacity-70">{countOf(k as NotificationCategory)}</span>}
+        </a>
       ))}
-    </ul>
-  )}
+    </div>
+
+    {items.length === 0 ? (
+      <p class="mt-4 rounded-card border border-ink/10 bg-white p-6 text-center text-sm text-ink-muted">
+        {aba === 'arquivadas' ? 'Nenhuma notificação arquivada.' : aba === 'nao-lidas' ? 'Tudo lido por aqui. ✓' : 'Nenhuma notificação por enquanto.'}
+      </p>
+    ) : (
+      <ul class="mt-4 space-y-2" id="notif-list">
+        {items.map((n) => {
+          const k = kindInfo(n.kind);
+          const unread = !n.read_at && aba !== 'arquivadas';
+          return (
+            <li
+              data-id={n.id}
+              data-unread={unread ? '1' : undefined}
+              class:list={['group relative rounded-card border border-ink/10 bg-white p-4 pr-28 transition', unread ? ['border-l-4', EDGE[k.tone], 'bg-bone-50'] : 'opacity-75 hover:opacity-100']}
+            >
+              <div class="flex flex-wrap items-center gap-2">
+                {unread && <span class="h-2 w-2 rounded-full bg-blue-600" title="Não lida" aria-label="Não lida" data-dot />}
+                <span class:list={['rounded-full px-2 py-0.5 font-sans text-[11px] font-semibold uppercase tracking-[0.04em]', BADGE[k.tone]]}>{k.label}</span>
+                <span class="font-sans text-[12px] text-ink-muted">{fmt(n.created_at)}</span>
+              </div>
+              <p class:list={['mt-1.5 text-sm', unread ? 'font-medium text-ink' : 'text-ink-soft']}>{clean(n.message)}</p>
+              {(n.order_number || n.product_id) && (
+                <a href={`/api/admin/notifications/open?id=${n.id}`} class="mt-1.5 inline-block font-sans text-[13px] text-agua-dark underline">
+                  {n.order_number ? `Abrir venda #${n.order_number}` : 'Abrir produto'}
+                </a>
+              )}
+              {/* ações rápidas: aparecem ao passar o mouse (no celular, sempre) */}
+              <div class="absolute right-2 top-2 flex gap-0.5 transition-opacity sm:opacity-0 sm:focus-within:opacity-100 sm:group-hover:opacity-100">
+                {aba !== 'arquivadas' && (
+                  <button type="button" data-act={unread ? 'read' : 'unread'} class={ACT} title={unread ? 'Marcar como lida' : 'Marcar como não lida'} aria-label={unread ? 'Marcar como lida' : 'Marcar como não lida'} set:html={svg(unread ? ICON.check : ICON.dot)} />
+                )}
+                <button type="button" data-act={aba === 'arquivadas' ? 'unarchive' : 'archive'} class={ACT} title={aba === 'arquivadas' ? 'Desarquivar' : 'Arquivar'} aria-label={aba === 'arquivadas' ? 'Desarquivar' : 'Arquivar'} set:html={svg(aba === 'arquivadas' ? ICON.unarchive : ICON.archive)} />
+                <button type="button" data-act="delete" class={`${ACT} hover:text-red-700`} title="Excluir" aria-label="Excluir" set:html={svg(ICON.trash)} />
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    )}
+  </div>
+
+  {/* aviso com "Desfazer" (excluir/arquivar) */}
+  <div id="notif-toast" role="status" aria-live="polite" hidden class="fixed bottom-5 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-4 rounded-full bg-ink px-5 py-3 font-sans text-sm text-bone shadow-lg [&[hidden]]:hidden">
+    <span data-msg></span>
+    <button type="button" data-undo class="font-semibold text-agua-light underline">Desfazer</button>
+  </div>
+  <p id="notif-error" role="alert" hidden class="fixed bottom-5 left-1/2 z-[60] max-w-[90vw] -translate-x-1/2 rounded-card bg-red-700 px-4 py-3 font-sans text-sm text-white shadow-lg [&[hidden]]:hidden"></p>
 </AdminLayout>
+
+<script>
+  type Res = { ok?: boolean; error?: string; unread?: number };
+  const post = async (body: Record<string, string>): Promise<Res> => {
+    try {
+      const r = await fetch('/api/admin/notifications', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      return (await r.json()) as Res;
+    } catch {
+      return { ok: false, error: 'Sem conexão com o servidor.' };
+    }
+  };
+  // sino do cabeçalho acompanha
+  const setBell = (n?: number) => {
+    const b = document.querySelector<HTMLElement>('[data-bell-count]');
+    if (!b || n == null) return;
+    b.textContent = n > 99 ? '99+' : String(n);
+    b.hidden = !n;
+  };
+  const errorBox = document.getElementById('notif-error')!;
+  const showError = (msg: string) => {
+    errorBox.textContent = msg;
+    errorBox.hidden = false;
+    setTimeout(() => (errorBox.hidden = true), 5000);
+  };
+  const toast = document.getElementById('notif-toast')!;
+  let undo: (() => void) | null = null;
+  let toastTimer = 0;
+  const showToast = (msg: string, onUndo: () => void) => {
+    toast.querySelector('[data-msg]')!.textContent = msg;
+    undo = onUndo;
+    toast.hidden = false;
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => ((toast.hidden = true), (undo = null)), 6000);
+  };
+  toast.querySelector('[data-undo]')!.addEventListener('click', () => {
+    toast.hidden = true;
+    undo?.();
+    undo = null;
+  });
+
+  document.getElementById('read-all')?.addEventListener('click', async () => {
+    const r = await post({ acao: 'read-all' });
+    if (!r.ok) return showError(r.error || 'Não foi possível marcar.');
+    location.reload();
+  });
+
+  document.querySelectorAll<HTMLButtonElement>('[data-act]').forEach((btn) =>
+    btn.addEventListener('click', async () => {
+      const li = btn.closest<HTMLElement>('li[data-id]')!;
+      const id = li.dataset.id!;
+      const act = btn.dataset.act!;
+      const r = await post({ acao: act, id });
+      if (!r.ok) return showError(r.error || 'Não foi possível concluir.');
+      setBell(r.unread);
+      if (act === 'read' || act === 'unread') return location.reload();
+      // some da lista; "Desfazer" volta como estava
+      li.hidden = true;
+      const back = { delete: 'undelete', archive: 'unarchive', unarchive: 'archive' }[act]!;
+      const msg = { delete: 'Notificação excluída.', archive: 'Notificação arquivada.', unarchive: 'Notificação desarquivada.' }[act]!;
+      showToast(msg, async () => {
+        const u = await post({ acao: back, id });
+        if (!u.ok) return showError(u.error || 'Não foi possível desfazer.');
+        setBell(u.unread);
+        li.hidden = false;
+      });
+    }),
+  );
+</script>

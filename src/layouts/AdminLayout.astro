@@ -158,11 +158,10 @@ const isActive = (href: string) => href === activeHref;
             title="Notificações"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg>
-            {unread > 0 && (
-              <span class="absolute -bottom-0.5 -left-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-600 px-1 font-sans text-[10px] font-bold leading-none text-white ring-2 ring-bone">
-                {unread > 99 ? '99+' : unread}
-              </span>
-            )}
+            {/* data-bell-count: a tela de Notificações atualiza sem recarregar */}
+            <span data-bell-count hidden={!unread} class="absolute -bottom-0.5 -left-0.5 grid h-[18px] min-w-[18px] place-items-center rounded-full bg-red-600 px-1 font-sans text-[10px] font-bold leading-none text-white ring-2 ring-bone [&[hidden]]:hidden">
+              {unread > 99 ? '99+' : unread}
+            </span>
           </a>)}
           {/* quem está logado: nome e foto (sem foto, as iniciais); abre Meu perfil */}
           {me && (

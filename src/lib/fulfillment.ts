@@ -1,4 +1,5 @@
 import { confirmOrderPayment } from './repo/orders';
+import { brl, orderLabel } from './format';
 import { createNotification } from './repo/notifications';
 import { sendOrderConfirmation } from './email';
 import type { PaymentMethod } from './types';
@@ -33,6 +34,12 @@ export async function fulfillPaidOrder(
   // venda de balcão não tem e-mail de cliente (fica "Consumidor" / vazio) —
   // não faz sentido tentar enviar confirmação
   if (outcome === 'confirmed' && order && order.source !== 'caixa') {
+    // venda online paga: aviso na central (Caixa não, seria uma por venda de balcão)
+    await createNotification({
+      kind: 'pagamento_aprovado',
+      message: `Venda ${orderLabel(orderNumber)} paga: ${brl(order.total_cents)}${order.customer_name ? ` — ${order.customer_name}` : ''}.`,
+      order_number: orderNumber,
+    });
     try {
       await sendOrderConfirmation(order);
     } catch (err) {

@@ -334,6 +334,21 @@ export async function sendAccountExistsEmail(opts: { to: string }): Promise<Mail
   return { delivered: 'none' };
 }
 
+/**
+ * Aviso de segurança ao e-mail ANTERIOR / atual quando o e-mail ou a senha
+ * da conta muda — quem é dono do endereço fica sabendo, mesmo que a troca
+ * não tenha sido feita por ele. O e-mail novo aparece mascarado.
+ */
+export async function sendAccountChangeNotice(opts: { to: string; name?: string; kind: 'email' | 'senha'; newEmail?: string }): Promise<MailResult> {
+  const when = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short', timeZone: 'America/Sao_Paulo' });
+  const masked = (opts.newEmail ?? '').replace(/^(.{2}).*(@.*)$/, '$1***$2');
+  const what = opts.kind === 'email' ? `o e-mail da sua conta na ${escapeHtml(env.brandName)} foi trocado para <strong>${escapeHtml(masked)}</strong>` : `a senha da sua conta na ${escapeHtml(env.brandName)} foi alterada`;
+  const html = `<p>Olá${opts.name ? `, ${escapeHtml(firstName(opts.name))}` : ''}.</p>
+    <p>Em ${when}, ${what}.</p>
+    <p>Se foi você, pode ignorar este aviso. <strong>Se não foi você</strong>, fale com a loja respondendo este e-mail${opts.kind === 'senha' ? ` e crie uma senha nova em <a href="${env.siteUrl}/esqueci-senha?email=${encodeURIComponent(opts.to)}">Esqueci minha senha</a>` : ''}.</p>`;
+  return deliver(opts.to, opts.kind === 'email' ? `O e-mail da sua conta foi alterado — ${env.brandName}` : `A senha da sua conta foi alterada — ${env.brandName}`, html, `aviso-${opts.kind}-${Date.now()}`);
+}
+
 /** Resposta da loja a um pedido de cancelamento recusado (o pedido segue normalmente). */
 export async function sendCancelRequestAnswer(order: Order, response: string): Promise<MailResult> {
   const n = orderLabel(order.order_number);

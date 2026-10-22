@@ -1,6 +1,7 @@
 ---
 import AccountLayout from '../../layouts/AccountLayout.astro';
 import ProfileForm from '../../components/ProfileForm.tsx';
+import PasswordInput from '../../components/PasswordInput.astro';
 import { getProfile } from '../../lib/repo/account';
 
 export const prerender = false;
@@ -8,6 +9,21 @@ export const prerender = false;
 const user = Astro.locals.user!;
 const sb = Astro.locals.supabase!;
 const profile = await getProfile(sb, user.id);
+// troca de e-mail: senha atual (quem entrou só pelo Google não tem) + código no e-mail atual
+const hasPassword = ((user.app_metadata?.providers as string[] | undefined) ?? [user.app_metadata?.provider]).includes('email');
+const step = Astro.url.searchParams.get('email');
+const motivo = Astro.url.searchParams.get('motivo') ?? '';
+const MSG: Record<string, string> = {
+  invalido: 'E-mail inválido. Confira o endereço.',
+  confirmacao: 'Os e-mails não conferem.',
+  igual: 'Esse já é o e-mail da sua conta.',
+  'em-uso': 'Esse e-mail já é usado por outra conta.',
+  senha: 'Senha atual incorreta.',
+  envio: 'Não foi possível enviar o código agora. Tente de novo em alguns minutos.',
+  codigo: 'Código incorreto.',
+  'codigo-novo': 'O código expirou ou teve tentativas demais. Peça a troca de novo.',
+  falha: 'Não foi possível trocar o e-mail. Tente de novo.',
+};
 ---
 
 <AccountLayout title="Meus dados" active="perfil">
@@ -15,4 +31,33 @@ const profile = await getProfile(sb, user.id);
     Esses dados são usados para agilizar o checkout. E-mail da conta: <strong>{user.email}</strong>.
   </p>
   <ProfileForm client:load profile={profile} />
+
+  {/* e-mail da conta: mesma regra da equipe (senha atual + código no e-mail atual) */}
+  <section class="mt-10 max-w-md">
+    <h2 class="font-display text-xl">E-mail da conta</h2>
+    {step === 'ok' && <p role="status" class="mt-3 rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">E-mail trocado. Use o novo e-mail no próximo login. Avisamos o endereço anterior.</p>}
+    {MSG[motivo] && <p role="alert" class="mt-3 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{MSG[motivo]}</p>}
+    {step === 'codigo' && motivo !== 'codigo-novo' ? (
+      <form method="POST" action="/api/account/email" class="mt-4 space-y-3">
+        <input type="hidden" name="acao" value="codigo" />
+        <p class="text-sm text-ink-soft">Enviamos um código de 6 dígitos para <strong>{user.email}</strong>. Ele vale por 15 minutos.</p>
+        <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de 6 dígitos" autofocus />
+        <div class="flex gap-2">
+          <a href="/conta/perfil" class="btn-outline">Cancelar</a>
+          <button class="btn-primary">Confirmar troca</button>
+        </div>
+      </form>
+    ) : (
+      <form method="POST" action="/api/account/email" class="mt-4 space-y-3">
+        <input type="hidden" name="acao" value="pedir" />
+        <label class="block"><span class="label">Novo e-mail</span><input class="field" type="email" name="email" required autocomplete="email" /></label>
+        <label class="block"><span class="label">Confirmar novo e-mail</span><input class="field" type="email" name="confirmar" required autocomplete="off" /></label>
+        {hasPassword && (
+          <label class="block"><span class="label">Senha atual</span><PasswordInput name="senha_atual" required autocomplete="current-password" /></label>
+        )}
+        <p class="text-[12px] text-ink-muted">Para confirmar, enviamos um código ao e-mail atual ({user.email}). Depois da troca, avisamos o endereço anterior.</p>
+        <button class="btn-outline">Trocar e-mail</button>
+      </form>
+    )}
+  </section>
 </AccountLayout>

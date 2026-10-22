@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { sendAccountChangeNotice } from '../../../lib/email';
 import { supabaseAdmin } from '../../../lib/supabase';
 import { listAuthUsers } from '../../../lib/repo/customers';
 import { consumeCode, issueCode } from '../../../lib/repo/email-codes';
@@ -58,6 +59,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
         })
       : { error: new Error('sem supabase') };
     if (error) return back('etapa=codigo&erro=falha');
+    // aviso ao dono do e-mail (se não foi ele, sabe na hora)
+    await sendAccountChangeNotice({ to: email, kind: 'senha' }).catch(() => {});
     return redirect('/entrar?ok=senha');
   }
 

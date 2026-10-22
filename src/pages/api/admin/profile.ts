@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { sendAccountChangeNotice } from '../../../lib/email';
 import { uploadImage } from '../../../lib/storage';
 import { passwordMatches } from '../../../lib/password-check';
 import { supabaseAdmin } from '../../../lib/supabase';
@@ -61,6 +62,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     if (nova) {
       const { error } = await admin.auth.admin.updateUserById(user.id, { password: nova });
       if (error) return json({ ok: false, error: 'Dados salvos, mas a senha não foi trocada. Tente de novo.' }, 500);
+      await sendAccountChangeNotice({ to: user.email ?? '', name: full_name, kind: 'senha' }).catch(() => {});
     }
     if (emailChanged) {
       // a troca só vale com o código enviado ao e-mail atual (sessão roubada não troca o e-mail)
@@ -125,6 +127,8 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     }
     // o Proprietário que troca o próprio e-mail continua Proprietário (com o e-mail novo)
     if (proprietor) await admin.from('admin_roles').update({ owner_email: r.newEmail }).eq('is_owner', true);
+    // aviso ao e-mail antigo
+    await sendAccountChangeNotice({ to: user.email ?? '', kind: 'email', newEmail: r.newEmail }).catch(() => {});
     return wantsJson ? json({ ok: true }) : back(redirect, 'ok', 'email');
   }
 
@@ -136,6 +140,7 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
       return back(redirect, 'erro', 'senha-atual');
     }
     const { error } = await admin.auth.admin.updateUserById(user.id, { password: nova });
+    if (!error) await sendAccountChangeNotice({ to: user.email ?? '', kind: 'senha' }).catch(() => {});
     return error ? back(redirect, 'erro', 'falha') : back(redirect, 'ok', 'senha');
   }
 

@@ -157,7 +157,7 @@ const lastName = rest.join(' ');
   <dialog id="code-dialog" class="w-[min(92vw,26rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
     <form id="code-form" class="p-6">
       <h2 class="font-display text-xl">Confirme a troca de e-mail</h2>
-      <p class="mt-2 font-sans text-sm text-ink-soft">Enviamos um código de 6 dígitos para o seu e-mail atual. Ele vale por 15 minutos.</p>
+      <p id="code-text" class="mt-2 font-sans text-sm text-ink-soft">Passo 1 de 2: enviamos um código de 6 dígitos para o seu e-mail atual. Ele vale por 15 minutos.</p>
       <input id="code-input" class="field mt-4 text-center text-xl tracking-[0.4em]" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de 6 dígitos" />
       <p id="code-error" class="mt-2 hidden font-sans text-[13px] text-red-700"></p>
       <div class="mt-6 flex justify-end gap-2">
@@ -269,13 +269,23 @@ const lastName = rest.join(' ');
     // o resto foi salvo; o e-mail continua o mesmo
     reloadWith('salvo');
   });
+  // dois códigos: o do e-mail atual e depois o do e-mail novo
+  let codeStep: 'email-codigo' | 'email-codigo-novo' = 'email-codigo';
   document.getElementById('code-form')!.addEventListener('submit', async (e) => {
     e.preventDefault();
     const body = new FormData();
-    body.set('acao', 'email-codigo');
+    body.set('acao', codeStep);
     body.set('code', codeInput.value);
     try {
-      const r = await post(body);
+      const r = (await post(body)) as { ok?: boolean; error?: string; needsNewCode?: boolean; newEmail?: string };
+      if (r.ok && r.needsNewCode) {
+        codeStep = 'email-codigo-novo';
+        document.getElementById('code-text')!.textContent = `Passo 2 de 2: enviamos outro código para o novo e-mail (${r.newEmail}). Ele confirma que o endereço é seu.`;
+        codeInput.value = '';
+        codeError.classList.add('hidden');
+        codeInput.focus();
+        return;
+      }
       if (r.ok) return reloadWith('email');
       codeError.textContent = r.error || 'Código incorreto.';
     } catch {

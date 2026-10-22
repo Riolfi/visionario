@@ -4,13 +4,15 @@ import { consumeCode, issueCode } from '../../../lib/repo/email-codes';
 import { getOwnerEmail } from '../../../lib/repo/owner';
 import { passwordMatches } from '../../../lib/password-check';
 import { sendAccountChangeNotice } from '../../../lib/email';
+import { sendNewEmailCode } from '../../../lib/email-change';
 
 /**
  * POST /api/account/email — cliente troca o e-mail da conta, com a mesma
  * regra da equipe:
  *   acao=pedir   email, confirmar, senha_atual → código de 6 dígitos ao
  *                e-mail ATUAL (quem entrou só pelo Google não tem senha: só o código)
- *   acao=codigo  code → troca o e-mail e avisa o endereço antigo
+ *   acao=codigo       code do e-mail atual → manda o 2º código ao e-mail NOVO
+ *   acao=codigo-novo  code do e-mail novo → troca o e-mail e avisa o endereço antigo
  */
 const isEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
 
@@ -44,6 +46,13 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
   if (form.get('acao') === 'codigo') {
     const r = await consumeCode(user.id, 'email', String(form.get('code') || ''));
     if (!r.ok) return back(`email=codigo&motivo=${/expirou|Nenhum|tentativas/.test(r.error) ? 'codigo-novo' : 'codigo'}`);
+    const sent = await sendNewEmailCode(user.id, r.newEmail);
+    return sent.ok ? back('email=codigo-novo') : back('email=erro&motivo=envio');
+  }
+
+  if (form.get('acao') === 'codigo-novo') {
+    const r = await consumeCode(user.id, 'email-new', String(form.get('code') || ''));
+    if (!r.ok) return back(`email=codigo-novo&motivo=${/expirou|Nenhum|tentativas/.test(r.error) ? 'codigo-novo' : 'codigo'}`);
     const old = user.email ?? '';
     const { error } = await admin.auth.admin.updateUserById(user.id, { email: r.newEmail, email_confirm: true });
     if (error) return back(`email=erro&motivo=${/already|registered|exists/i.test(error.message) ? 'em-uso' : 'falha'}`);

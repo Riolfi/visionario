@@ -37,10 +37,14 @@ const MSG: Record<string, string> = {
     <h2 class="font-display text-xl">E-mail da conta</h2>
     {step === 'ok' && <p role="status" class="mt-3 rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">E-mail trocado. Use o novo e-mail no próximo login. Avisamos o endereço anterior.</p>}
     {MSG[motivo] && <p role="alert" class="mt-3 rounded-card border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-800">{MSG[motivo]}</p>}
-    {step === 'codigo' && motivo !== 'codigo-novo' ? (
+    {(step === 'codigo' || step === 'codigo-novo') && motivo !== 'codigo-novo' ? (
       <form method="POST" action="/api/account/email" class="mt-4 space-y-3">
-        <input type="hidden" name="acao" value="codigo" />
-        <p class="text-sm text-ink-soft">Enviamos um código de 6 dígitos para <strong>{user.email}</strong>. Ele vale por 15 minutos.</p>
+        <input type="hidden" name="acao" value={step} />
+        <p class="text-sm text-ink-soft">
+          {step === 'codigo'
+            ? <>Passo 1 de 2: enviamos um código de 6 dígitos para <strong>{user.email}</strong> (e-mail atual). Ele vale por 15 minutos.</>
+            : <>Passo 2 de 2: enviamos outro código para o <strong>novo e-mail</strong>. Ele confirma que o endereço é seu.</>}
+        </p>
         <input class="field text-center text-xl tracking-[0.4em]" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required aria-label="Código de 6 dígitos" autofocus />
         <div class="flex gap-2">
           <a href="/conta/perfil" class="btn-outline">Cancelar</a>
@@ -55,7 +59,7 @@ const MSG: Record<string, string> = {
         {hasPassword && (
           <label class="block"><span class="label">Senha atual</span><PasswordInput name="senha_atual" required autocomplete="current-password" /></label>
         )}
-        <p class="text-[12px] text-ink-muted">Para confirmar, enviamos um código ao e-mail atual ({user.email}). Depois da troca, avisamos o endereço anterior.</p>
+        <p class="text-[12px] text-ink-muted">Para confirmar, enviamos um código ao e-mail atual ({user.email}) e outro ao novo. Depois da troca, avisamos o endereço anterior.</p>
         <button class="btn-outline">Trocar e-mail</button>
       </form>
     )}

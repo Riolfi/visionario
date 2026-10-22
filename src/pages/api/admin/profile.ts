@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { sendNewEmailCode } from '../../../lib/email-change';
 import { sendAccountChangeNotice } from '../../../lib/email';
 import { uploadImage } from '../../../lib/storage';
 import { passwordMatches } from '../../../lib/password-check';
@@ -109,8 +110,21 @@ export const POST: APIRoute = async ({ request, locals, redirect }) => {
     return back(redirect, 'ok', 'codigo-email');
   }
 
+  // 1º código (e-mail atual) confere: manda o 2º ao e-mail novo
   if (acao === 'email-codigo') {
     const r = await consumeCode(user.id, 'email', String(form.get('code') || ''));
+    if (!r.ok) {
+      if (wantsJson) return json(r, 400);
+      return back(redirect, 'erro', /expirou/.test(r.error) ? 'codigo-expirou' : /Nenhum|tentativas/.test(r.error) ? 'codigo-novo' : 'codigo');
+    }
+    const sent = await sendNewEmailCode(user.id, r.newEmail);
+    if (!sent.ok) return wantsJson ? json({ ok: false, error: sent.error }, 400) : back(redirect, 'erro', 'envio');
+    return wantsJson ? json({ ok: true, needsNewCode: true, newEmail: r.newEmail }) : back(redirect, 'ok', 'codigo-email-novo');
+  }
+
+  // 2º código (e-mail novo) confere: aí sim troca
+  if (acao === 'email-codigo-novo') {
+    const r = await consumeCode(user.id, 'email-new', String(form.get('code') || ''));
     if (!r.ok) {
       if (wantsJson) return json(r, 400);
       return back(redirect, 'erro', /expirou/.test(r.error) ? 'codigo-expirou' : /Nenhum|tentativas/.test(r.error) ? 'codigo-novo' : 'codigo');

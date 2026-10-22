@@ -8,7 +8,8 @@ import { supabaseAdmin } from '../supabase';
  * hash (tabela owner_transfer_tokens, migrations 0019 e 0021). Um código
  * novo do mesmo tipo invalida o anterior.
  */
-export type CodePurpose = 'owner' | 'email' | 'reset';
+// email: código no e-mail ATUAL (dono da conta); email-new: no e-mail NOVO (dono do endereço)
+export type CodePurpose = 'owner' | 'email' | 'email-new' | 'reset';
 
 const TTL_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;

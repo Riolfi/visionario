@@ -9,56 +9,64 @@ const brandName = Astro.locals.brand.name;
 <LegalLayout
   title="Política de Trocas e Devoluções"
   description={`Como cancelar, devolver ou trocar produtos comprados na ${brandName}, conforme o Código de Defesa do Consumidor.`}
-  updated="21 de outubro de 2026"
+  updated="22 de outubro de 2026"
 >
   <h2>1. Cancelamento antes da separação</h2>
   <p>
-    Enquanto o pedido estiver <strong>Aguardando pagamento</strong> ou <strong>Pago</strong>, você pede o
-    cancelamento em <a href="/conta/pedidos">Minha conta › Pedidos</a>, informando o motivo. A loja verifica o
-    pedido e responde por e-mail e na própria página do pedido. Aprovado o cancelamento, se o pagamento já
-    tiver sido feito, o valor é estornado para o mesmo meio de pagamento.
+    Enquanto o pedido estiver <strong>Aguardando pagamento</strong> ou <strong>Pago</strong>, você mesmo cancela
+    em <a href="/conta/pedidos">Minha conta › Pedidos</a>, informando o motivo. O cancelamento é imediato e, se o
+    pagamento já tiver sido feito, o valor é estornado automaticamente para o mesmo meio de pagamento.
   </p>
 
-  <h2>2. Em separação ou depois do envio</h2>
+  <h2>2. Pedido em separação</h2>
   <p>
-    Com o pedido <strong>Em separação</strong> ou <strong>Enviado</strong>, não é mais possível pedir o cancelamento pelo site. Se não quiser receber,
-    você pode recusar a entrega ou falar com a gente; quando o pacote voltar, devolvemos o valor. Depois de
-    <strong>Entregue</strong>, vale a devolução descrita abaixo.
+    Com o pedido <strong>Em separação</strong>, use <strong>Desistir da compra</strong> na página do pedido. A loja é
+    avisada, interrompe a separação e confirma o cancelamento; o valor é estornado para o mesmo meio de pagamento
+    e você recebe a confirmação por e-mail.
   </p>
 
-  <h2>3. Direito de arrependimento (7 dias)</h2>
+  <h2>3. Pedido enviado</h2>
+  <p>
+    Depois de <strong>Enviado</strong>, não é mais possível cancelar. Se não quiser receber, você pode recusar a
+    entrega; quando o pacote voltar, devolvemos o valor. Depois de <strong>Entregue</strong>, vale a troca ou
+    devolução descrita abaixo.
+  </p>
+
+  <h2>4. Direito de arrependimento (7 dias)</h2>
   <p>
     Conforme o art. 49 do Código de Defesa do Consumidor, você pode desistir da compra feita pelo site em até
     <strong>7 (sete) dias corridos</strong> a partir do recebimento, sem precisar justificar. Peça em
-    <a href="/conta/pedidos">Minha conta › Pedidos</a>, no botão <strong>Solicitar devolução</strong>
-    (ele aparece no pedido entregue enquanto o prazo estiver valendo). Devolvemos o valor integral, incluindo o
-    frete, e a postagem de volta é por nossa conta.
+    <a href="/conta/pedidos">Minha conta › Pedidos</a>, no botão <strong>Solicitar troca ou devolução</strong>
+    (ele aparece no pedido entregue enquanto o prazo estiver valendo), escolhendo devolução (reembolso) ou troca.
+    Na devolução, devolvemos o valor integral, incluindo o frete; na troca, enviamos o novo item sem custo. A
+    postagem de volta é por nossa conta.
   </p>
 
-  <h2>4. Produto com defeito ou diferente do pedido</h2>
+  <h2>5. Produto com defeito ou diferente do pedido</h2>
   <p>
     Defeito de fabricação, avaria no transporte ou produto diferente do anunciado: nos primeiros 7 dias, use o
-    <strong>Solicitar devolução</strong> com o motivo correspondente; depois disso, fale com a gente em até
+    <strong>Solicitar troca ou devolução</strong> com o motivo correspondente; depois disso, fale com a gente em até
     <strong>30 dias</strong> (produtos não duráveis) ou <strong>90 dias</strong> (produtos duráveis) do
     recebimento, com fotos do item e da embalagem. Você escolhe entre troca, outro produto de mesmo valor ou o
     reembolso.
   </p>
 
-  <h2>5. Condições do produto devolvido</h2>
+  <h2>6. Condições do produto devolvido</h2>
   <ul>
     <li>Pode abrir a embalagem e experimentar para conferir — isso não impede a devolução;</li>
     <li>O produto deve voltar sem sinais de uso além dessa conferência, com etiquetas e acessórios;</li>
     <li>Sempre que possível, na embalagem original.</li>
   </ul>
 
-  <h2>6. Como acompanhar</h2>
+  <h2>7. Como acompanhar</h2>
   <ul>
-    <li>Depois do pedido de devolução, combinamos a coleta ou o código de postagem reversa;</li>
+    <li>Depois do pedido de troca ou devolução, a loja analisa e envia por e-mail o código de postagem reversa dos Correios;</li>
+    <li>Quando os itens chegam e são conferidos, o valor é estornado (devolução) ou os itens novos são enviados (troca);</li>
     <li>O status e as mensagens ficam em <a href="/conta/pedidos">Minha conta › Pedidos</a>;</li>
     <li>Dúvidas: <a href={`mailto:${email}`}>{email}</a> ou WhatsApp, informando o número do pedido.</li>
   </ul>
 
-  <h2>7. Prazos de reembolso</h2>
+  <h2>8. Prazos de reembolso</h2>
   <p>
     <strong>Cancelamento aprovado:</strong> o estorno é pedido na hora da aprovação.
     <strong>Devolução:</strong> o estorno é feito assim que o produto chega e é conferido, em até 10 dias úteis.
@@ -66,7 +74,7 @@ const brandName = Astro.locals.brand.name;
     duas faturas, conforme a operadora.
   </p>
 
-  <h2>8. Compras na loja física</h2>
+  <h2>9. Compras na loja física</h2>
   <p>
     O direito de arrependimento do art. 49 vale para compras fora do estabelecimento (site, telefone). Compras
     feitas no balcão podem ser trocadas ou devolvidas na própria loja, com o comprovante, em caso de defeito ou

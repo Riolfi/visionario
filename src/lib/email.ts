@@ -21,6 +21,8 @@ export interface StatusExtra {
   refundCents?: number | null;
   /** cancelado por devolução concluída (o cliente devolveu o produto) */
   returned?: boolean;
+  /** pedido de reenvio de uma troca: número do pedido original */
+  exchangeOf?: string;
 }
 
 function statusCopy(order: Order, status: OrderStatus, extra: StatusExtra = {}): StatusCopy {
@@ -34,6 +36,13 @@ function statusCopy(order: Order, status: OrderStatus, extra: StatusExtra = {}):
         body: `Olá, ${first}. Seu pedido <strong>${n}</strong> foi registrado e está aguardando a confirmação do pagamento. Assim que ele for aprovado, avisamos por aqui.`,
       };
     case 'paid':
+      if (extra.exchangeOf) {
+        return {
+          subject: `Troca confirmada — pedido ${n} — ${env.brandName}`,
+          headline: 'Sua troca foi confirmada',
+          body: `Olá, ${first}. Recebemos os itens devolvidos do pedido <strong>${orderLabel(extra.exchangeOf)}</strong> e a troca foi aprovada. Os itens novos seguem no pedido <strong>${n}</strong>, sem custo. Avisamos quando ele for postado.`,
+        };
+      }
       return {
         subject: `Pagamento confirmado — pedido ${n} — ${env.brandName}`,
         headline: 'Pagamento confirmado',
@@ -349,14 +358,23 @@ export async function sendAccountChangeNotice(opts: { to: string; name?: string;
   return deliver(opts.to, opts.kind === 'email' ? `O e-mail da sua conta foi alterado — ${env.brandName}` : `A senha da sua conta foi alterada — ${env.brandName}`, html, `aviso-${opts.kind}-${Date.now()}`);
 }
 
-/** Resposta da loja a um pedido de cancelamento recusado (o pedido segue normalmente). */
-export async function sendCancelRequestAnswer(order: Order, response: string): Promise<MailResult> {
+/**
+ * Resposta da loja a um pedido de troca/devolução: aprovado (com a forma de
+ * devolver e o código de postagem reversa) ou recusado (com o motivo).
+ */
+export async function sendReturnAnswer(order: Order, answer: { approved: true; postCode: string | null; instructions: string } | { approved: false; response: string }): Promise<MailResult> {
   const n = orderLabel(order.order_number);
-  const html = `<p>Olá, ${escapeHtml(firstName(order.customer_name))}.</p>
-    <p>Analisamos o seu pedido de cancelamento do pedido <strong>${n}</strong> e ele não pôde ser aprovado.</p>
-    <p><strong>Resposta da loja:</strong> ${escapeHtml(response)}</p>
-    <p>O pedido segue normalmente. Você também vê esta resposta em Minha conta › Pedidos. Dúvidas? Responda este e-mail.</p>`;
-  return deliver(order.customer_email, `Sobre o cancelamento do pedido ${n} — ${env.brandName}`, html, `${order.order_number}-cancelamento-recusado-${Date.now()}`);
+  const what = order.return_kind === 'troca' ? 'troca' : 'devolução';
+  const body = answer.approved
+    ? `<p>O seu pedido de ${what} do pedido <strong>${n}</strong> foi aprovado. Envie os itens pelos Correios:</p>
+    ${answer.postCode ? `<p><strong>Código de postagem reversa:</strong> ${escapeHtml(answer.postCode)} (a postagem é por nossa conta)</p>` : ''}
+    <p>${escapeHtml(answer.instructions).replace(/\n/g, '<br>')}</p>
+    <p>Quando os itens chegarem e forem conferidos, ${order.return_kind === 'troca' ? 'enviamos os itens novos' : 'o valor é estornado para o mesmo meio de pagamento'}.</p>`
+    : `<p>Analisamos o seu pedido de ${what} do pedido <strong>${n}</strong> e ele não pôde ser aprovado.</p>
+    <p><strong>Resposta da loja:</strong> ${escapeHtml(answer.response)}</p>`;
+  const html = `<p>Olá, ${escapeHtml(firstName(order.customer_name))}.</p>${body}
+    <p>Você também vê isso em Minha conta › Pedidos. Dúvidas? Responda este e-mail.</p>`;
+  return deliver(order.customer_email, `Sobre a ${what} do pedido ${n} — ${env.brandName}`, html, `${order.order_number}-${what}-${answer.approved ? 'aprovada' : 'recusada'}-${Date.now()}`);
 }
 
 /** Aviso ao endereço novo quando um Administrador troca o e-mail de acesso de alguém da equipe. */

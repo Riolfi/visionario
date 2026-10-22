@@ -3,6 +3,7 @@ import { changeOrderStatus, getOrderByNumber } from '../../../lib/repo/orders';
 import { sendOrderStatusEmail } from '../../../lib/email';
 import { hasResend } from '../../../lib/env';
 import { isValidEmail } from '../../../lib/format';
+import { cancelRequestPending } from '../../../lib/order-policy';
 import { FINAL_STATUSES, ORDER_NEXT, ORDER_STATUS_LABELS, isValidTracking, normalizeTracking, type OrderStatus } from '../../../lib/types';
 
 const VALID = Object.keys(ORDER_STATUS_LABELS) as OrderStatus[];
@@ -32,6 +33,8 @@ export const POST: APIRoute = async ({ request, redirect }) => {
   // só para frente (o mesmo status vale para trocar o rastreio de um Enviado)
   if (status !== current.status && !ORDER_NEXT[current.status].includes(status)) return back('erro=update&motivo=retrocesso');
   if (status === current.status && status !== 'shipped') return back('erro=update&motivo=igual');
+  // desistência do cliente pendente: não avança antes de a equipe aprovar o cancelamento
+  if (cancelRequestPending(current)) return back('erro=update&motivo=desistencia');
   // Enviado e Entregue exigem rastreio válido
   const withTracking = status === 'shipped' || status === 'delivered';
   if (withTracking && !trackingCode) return back('erro=update&motivo=rastreio');

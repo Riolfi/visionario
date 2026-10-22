@@ -24,7 +24,7 @@ export type NotificationCategory = 'cancelamentos' | 'estoque' | 'financeiro' | 
 export const NOTIFICATION_KINDS: Record<string, { category: NotificationCategory; label: string; tone: 'red' | 'orange' | 'amber' | 'green' | 'gray' }> = {
   cancelamento_solicitado: { category: 'cancelamentos', label: 'Solicitação de cancelamento', tone: 'red' },
   cancelado_pelo_cliente: { category: 'cancelamentos', label: 'Cancelado pelo cliente', tone: 'orange' },
-  devolucao_solicitada: { category: 'cancelamentos', label: 'Solicitação de devolução', tone: 'orange' },
+  devolucao_solicitada: { category: 'cancelamentos', label: 'Troca ou devolução', tone: 'orange' },
   estoque_esgotado: { category: 'estoque', label: 'Estoque esgotado', tone: 'amber' },
   estoque_baixo: { category: 'estoque', label: 'Estoque baixo', tone: 'amber' },
   pagamento_sem_estoque: { category: 'estoque', label: 'Pago sem estoque', tone: 'amber' },

@@ -103,7 +103,7 @@ export function canAccess(a: AdminAccess, pathname: string, method = 'GET'): boo
   if (under('/admin/pedidos')) return can(a, 'pedidos.ver');
   if (under('/api/admin/orders/cancel')) return can(a, 'pedidos.cancelar');
   if (under('/api/admin/orders/devolucao')) return can(a, 'pedidos.cancelar');
-  if (under('/api/admin/orders/cancel-request', '/api/admin/orders/stock')) return can(a, 'pedidos.cancelar');
+  if (under('/api/admin/orders/stock')) return can(a, 'pedidos.cancelar');
   if (under('/api/admin/orders')) return pick('pedidos.ver', 'pedidos.status');
   if (under('/admin/ofertas')) return can(a, 'ofertas.ver');
   if (under('/api/admin/offers')) return pick('ofertas.ver', 'ofertas.editar');

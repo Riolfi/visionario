@@ -3,8 +3,8 @@ import { orderLabel } from '../../../lib/format';
 import AccountLayout from '../../../layouts/AccountLayout.astro';
 import { getUserOrder } from '../../../lib/repo/orders';
 import { brl } from '../../../lib/format';
-import { ORDER_STATUS_LABELS } from '../../../lib/types';
-import { CUSTOMER_CANCELABLE, CUSTOMER_CANCEL_REASONS, RETURN_REASONS, cancelRequestPending, returnDeadline } from '../../../lib/order-policy';
+import { ORDER_STATUS_LABELS, RETURN_KIND_LABELS } from '../../../lib/types';
+import { CUSTOMER_CANCELABLE, CUSTOMER_CANCEL_REASONS, CUSTOMER_REQUEST_CANCEL, RETURN_REASONS, cancelRequestPending, returnDeadline, returnOpen } from '../../../lib/order-policy';
 
 export const prerender = false;
 
@@ -14,24 +14,27 @@ const order = number ? await getUserOrder(user.id, number) : null;
 if (!order) return Astro.redirect('/conta/pedidos');
 
 const a = order.shipping_address;
-// cancelamento: o cliente só PEDE (Aguardando pagamento ou Pago); a loja analisa e responde
+// cancelamento: antes da separação o cliente cancela na hora (com estorno); em separação, pede a desistência
 const requestPending = cancelRequestPending(order);
 const requestRejected = !!order.cancel_request_resolved_at && order.status !== 'cancelled' && !!order.cancel_request_response;
-const canCancel = CUSTOMER_CANCELABLE.includes(order.status) && !requestPending;
-// em separação em diante: cancelamento e devolução pela loja / política de trocas
-const afterShipping = ['separating', 'shipped', 'delivered'].includes(order.status);
-// devolução: até 7 dias corridos depois da entrega (CDC)
+// pedido de reenvio de uma troca: não se cancela pelo site (fala com a loja)
+const canCancelNow = CUSTOMER_CANCELABLE.includes(order.status) && !order.exchange_of;
+const canRequestCancel = CUSTOMER_REQUEST_CANCEL.includes(order.status) && !requestPending && !order.exchange_of;
+const paidOnline = order.status === 'paid' && !!order.mp_payment_id;
+// troca/devolução: até 7 dias corridos depois da entrega (CDC); depois de uma recusa, pode pedir de novo
 const deadline = returnDeadline(order);
-const canReturn = !!deadline && Date.now() <= deadline.getTime() && !order.return_requested_at;
+const canReturn = !!deadline && Date.now() <= deadline.getTime() && !returnOpen(order) && !order.return_completed_at;
+const returnWhat = order.return_kind === 'troca' ? 'Troca' : 'Devolução';
 const fmtDay = (d: Date | string) => new Date(d).toLocaleDateString('pt-BR');
 const MSG: Record<string, [string, string]> = {
-  'cancelamento=ok': ['ok', 'Pedido de cancelamento enviado. O responsável pela loja vai verificar o motivo, validar o pedido e responder por e-mail e aqui nesta página.'],
-  'cancelamento=ja': ['erro', 'Já existe um pedido de cancelamento em análise para esta compra.'],
-  'cancelamento=fora': ['erro', 'Esta compra já está em separação ou foi enviada: fale com a loja ou consulte a política de trocas.'],
+  'cancelamento=feito': ['ok', 'Pedido cancelado. Se você já tinha pago, o valor foi estornado para o mesmo meio de pagamento. Enviamos a confirmação por e-mail.'],
+  'cancelamento=ok': ['ok', 'Pedido de desistência enviado. A loja interrompe a separação, confirma o cancelamento e avisa você por e-mail.'],
+  'cancelamento=ja': ['erro', 'A desistência desta compra já foi pedida e está sendo confirmada pela loja.'],
+  'cancelamento=fora': ['erro', 'Esta compra já foi enviada: depois da entrega, você pode pedir a troca ou a devolução em até 7 dias.'],
   'cancelamento=motivo': ['erro', 'Escolha o motivo do cancelamento.'],
   'cancelamento=falha': ['erro', 'Não foi possível cancelar agora. Tente de novo ou fale com a loja.'],
-  'devolucao=ok': ['ok', 'Pedido de devolução enviado. A loja entra em contato para combinar a coleta e o reembolso.'],
-  'devolucao=ja': ['erro', 'A devolução deste pedido já foi solicitada.'],
+  'devolucao=ok': ['ok', 'Pedido enviado. A loja analisa e manda por e-mail como devolver os itens pelos Correios.'],
+  'devolucao=ja': ['erro', 'A troca ou devolução deste pedido já foi solicitada.'],
   'devolucao=prazo': ['erro', 'O prazo de 7 dias para pedir a devolução já passou. Fale com a loja.'],
   'devolucao=motivo': ['erro', 'Escolha o motivo da devolução.'],
   'devolucao=falha': ['erro', 'Não foi possível enviar agora. Tente de novo.'],
@@ -57,7 +60,7 @@ const msg = MSG[q.has('cancelamento') ? `cancelamento=${q.get('cancelamento')}` 
   )}
   {requestPending && (
     <p class="mt-4 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-      Cancelamento solicitado em {fmtDay(order.cancel_requested_at!)} — em análise. O responsável pela loja vai verificar o motivo, validar o pedido e responder por e-mail e aqui.
+      Desistência pedida em {fmtDay(order.cancel_requested_at!)}. A loja está interrompendo a separação e vai confirmar o cancelamento por e-mail e aqui; o valor é estornado para o mesmo meio de pagamento.
     </p>
   )}
   {requestRejected && (
@@ -65,13 +68,30 @@ const msg = MSG[q.has('cancelamento') ? `cancelamento=${q.get('cancelamento')}` 
       <strong>Pedido de cancelamento não aprovado.</strong> Resposta da loja: {order.cancel_request_response}
     </p>
   )}
+  {order.exchange_of && (
+    <p class="mt-4 rounded-card border border-agua/40 bg-agua-wash px-3 py-2 text-sm text-ink-soft">
+      Itens da troca do pedido <a href={`/conta/pedidos/${order.exchange_of}`} class="underline">{orderLabel(order.exchange_of)}</a>, sem custo.
+    </p>
+  )}
   {order.return_completed_at ? (
     <p class="mt-4 rounded-card border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-800">
-      Devolução concluída em {fmtDay(order.return_completed_at)}. O valor foi estornado para o mesmo meio de pagamento.
+      {order.return_resolution === 'troca'
+        ? <>Troca concluída em {fmtDay(order.return_completed_at)}. Os itens novos seguem no pedido <a href={`/conta/pedidos/${order.exchange_order_number}`} class="underline">{orderLabel(order.exchange_order_number ?? '')}</a>.</>
+        : <>Devolução concluída em {fmtDay(order.return_completed_at)}. O valor total foi estornado para o mesmo meio de pagamento.</>}
     </p>
+  ) : order.return_rejected_at ? (
+    <p class="mt-4 rounded-card border border-ink/15 bg-white/50 px-3 py-2 text-sm text-ink-soft">
+      <strong>Pedido de {returnWhat.toLowerCase()} não aprovado.</strong> Resposta da loja: {order.return_response}
+    </p>
+  ) : order.return_approved_at ? (
+    <div class="mt-4 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      <p><strong>{returnWhat} aprovada.</strong> Envie os itens pelos Correios{order.return_post_code ? <> com o código de postagem reversa <strong>{order.return_post_code}</strong></> : ''}.</p>
+      {order.return_instructions && <p class="mt-1 whitespace-pre-line">{order.return_instructions}</p>}
+      <p class="mt-1 text-[13px]">Quando os itens chegarem e forem conferidos, {order.return_kind === 'troca' ? 'enviamos os itens novos' : 'o valor total é estornado'} e avisamos por e-mail.</p>
+    </div>
   ) : order.return_requested_at && (
     <p class="mt-4 rounded-card border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-      Devolução solicitada em {fmtDay(order.return_requested_at)}. A loja entra em contato para combinar a coleta e o reembolso.
+      {RETURN_KIND_LABELS[order.return_kind ?? 'devolucao']} solicitada em {fmtDay(order.return_requested_at)}. A loja analisa e manda por e-mail como devolver os itens.
     </p>
   )}
 
@@ -110,10 +130,17 @@ const msg = MSG[q.has('cancelamento') ? `cancelamento=${q.get('cancelamento')}` 
     </section>
   </div>
 
-  {canCancel && (
+  {(canCancelNow || canRequestCancel) && (
     <details class="mt-6 rounded-card border border-ink/10 bg-white/50 p-5 text-sm">
-      <summary class="cursor-pointer font-medium text-red-700">Solicitar cancelamento</summary>
-      <form method="POST" action="/api/account/cancelar-pedido" class="mt-4 max-w-md space-y-3" data-confirm="Solicitar o cancelamento?|A loja vai analisar o pedido e responder por e-mail e aqui.|Enviar solicitação|Voltar|primary">
+      <summary class="cursor-pointer font-medium text-red-700">{canCancelNow ? 'Cancelar pedido' : 'Desistir da compra'}</summary>
+      <form
+        method="POST"
+        action="/api/account/cancelar-pedido"
+        class="mt-4 max-w-md space-y-3"
+        data-confirm={canCancelNow
+          ? `Cancelar o pedido?|${paidOnline ? `O valor de ${brl(order.total_cents)} é estornado agora para o mesmo meio de pagamento. ` : ''}Não dá para desfazer.|Cancelar pedido|Voltar`
+          : 'Desistir da compra?|O pedido já está em separação: a loja interrompe, confirma o cancelamento e estorna o valor.|Enviar desistência|Voltar|primary'}
+      >
         <input type="hidden" name="order_number" value={order.order_number} />
         <label class="block">
           <span class="label">Motivo <span class="text-red-600">*</span></span>
@@ -123,23 +150,32 @@ const msg = MSG[q.has('cancelamento') ? `cancelamento=${q.get('cancelamento')}` 
           </select>
         </label>
         <label class="block"><span class="label">Detalhes <span class="text-[11px] font-normal text-ink-muted/60">(obrigatório em "Outro")</span></span><textarea id="cancel-detalhe" name="detalhe" rows="3" maxlength="400" class="field"></textarea></label>
-        <p class="text-[12px] text-ink-muted">O pedido não é cancelado na hora: a loja verifica o motivo e responde. Se for aprovado e você já tiver pago, o valor é estornado para o mesmo meio de pagamento.</p>
-        <button class="rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">Enviar solicitação de cancelamento</button>
+        <p class="text-[12px] text-ink-muted">
+          {canCancelNow
+            ? 'O pedido é cancelado na hora. Se você já pagou, o valor é estornado para o mesmo meio de pagamento: no Pix volta em instantes; no cartão, em até 2 faturas.'
+            : 'O pedido já está em separação: a loja interrompe, confirma o cancelamento e estorna o valor para o mesmo meio de pagamento.'}
+        </p>
+        <button class="rounded-card border border-red-300 px-4 py-2 text-sm text-red-700 hover:bg-red-50">{canCancelNow ? 'Cancelar pedido' : 'Enviar desistência'}</button>
       </form>
     </details>
   )}
 
-  {afterShipping && (
+  {order.status === 'shipped' && (
     <p class="mt-6 rounded-card border border-ink/10 bg-white/50 p-4 text-sm text-ink-soft">
-      Para devoluções ou recusa de entrega, entre em contato com o <a href="/contato" class="underline">suporte</a> ou consulte nossa <a href="/politica-trocas" class="underline">política de trocas</a>.
+      Pedido a caminho: não dá mais para cancelar. Quando ele for entregue, você pode pedir a troca ou a devolução aqui por 7 dias; se não quiser receber, pode recusar a entrega. Veja a <a href="/politica-trocas" class="underline">política de trocas</a>.
     </p>
   )}
 
   {canReturn && (
     <details class="mt-4 rounded-card border border-ink/10 bg-white/50 p-5 text-sm">
-      <summary class="cursor-pointer font-medium">Solicitar devolução <span class="font-normal text-ink-muted">(até {fmtDay(deadline!)})</span></summary>
+      <summary class="cursor-pointer font-medium">Solicitar troca ou devolução <span class="font-normal text-ink-muted">(até {fmtDay(deadline!)})</span></summary>
       <form method="POST" action="/api/account/devolucao" class="mt-4 max-w-md space-y-3">
         <input type="hidden" name="order_number" value={order.order_number} />
+        <fieldset class="space-y-1.5">
+          <legend class="label">O que você quer? <span class="text-red-600">*</span></legend>
+          <label class="flex items-start gap-2"><input type="radio" name="tipo" value="devolucao" class="mt-0.5" checked /> <span><strong>Devolução</strong> — reembolso integral (produtos + frete)</span></label>
+          <label class="flex items-start gap-2"><input type="radio" name="tipo" value="troca" class="mt-0.5" /> <span><strong>Troca</strong> — outro tamanho, cor ou produto de mesmo valor (diga qual nos detalhes)</span></label>
+        </fieldset>
         <label class="block">
           <span class="label">Motivo <span class="text-red-600">*</span></span>
           <select name="motivo" class="field" required data-other-target="devolucao-detalhe">
@@ -148,8 +184,8 @@ const msg = MSG[q.has('cancelamento') ? `cancelamento=${q.get('cancelamento')}` 
           </select>
         </label>
         <label class="block"><span class="label">Detalhes <span class="text-[11px] font-normal text-ink-muted/60">(obrigatório em "Outro")</span></span><textarea id="devolucao-detalhe" name="detalhe" rows="3" maxlength="400" class="field"></textarea></label>
-        <p class="text-[12px] text-ink-muted">Você tem 7 dias corridos depois da entrega para devolver. A loja entra em contato para combinar a coleta; o reembolso sai quando o produto chegar.</p>
-        <button class="btn-primary">Enviar pedido de devolução</button>
+        <p class="text-[12px] text-ink-muted">Você tem 7 dias corridos depois da entrega. A loja analisa e manda por e-mail o código de postagem dos Correios (por nossa conta); o reembolso ou os itens novos saem quando os itens chegarem.</p>
+        <button class="btn-primary">Enviar pedido</button>
       </form>
     </details>
   )}

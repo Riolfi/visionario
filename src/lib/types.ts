@@ -81,6 +81,8 @@ export const FINAL_STATUSES: OrderStatus[] = ['delivered', 'cancelled'];
 /** Motivos de cancelamento/devolução (política em lib/order-policy). */
 export const CUSTOMER_CANCEL_REASONS = ['Desisti da compra', 'Comprei o produto errado', 'Encontrei mais barato', 'Prazo de entrega muito longo', 'Outro'];
 export const RETURN_REASONS = ['Arrependimento (até 7 dias)', 'Produto com defeito', 'Tamanho incorreto', 'Produto diferente do anunciado', 'Outro'];
+export type ReturnKind = 'devolucao' | 'troca';
+export const RETURN_KIND_LABELS: Record<ReturnKind, string> = { devolucao: 'Devolução (reembolso)', troca: 'Troca' };
 export const CANCEL_REASONS_ONLINE = ['Solicitação do cliente (CDC - 7 dias)', 'Suspeita de fraude', 'Falta de estoque', 'Pagamento não aprovado', 'Erro no pedido', 'Outro'];
 export const CANCEL_REASONS_CAIXA = ['Devolução do produto no balcão', 'Erro de digitação do operador', 'Desistência imediata', 'Venda duplicada', 'Outro'];
 
@@ -190,6 +192,17 @@ export interface Order {
   stock_pending?: boolean;
   stock_resolved_at?: string | null;
   stock_resolved_by?: string | null;
+  /** troca ou devolução em duas etapas (0030): pedido, aprovação/recusa, conclusão */
+  return_kind?: ReturnKind | null;
+  return_approved_at?: string | null;
+  return_post_code?: string | null;
+  return_instructions?: string | null;
+  return_rejected_at?: string | null;
+  return_response?: string | null;
+  return_resolution?: 'reembolso' | 'troca' | null;
+  /** pedido de reenvio de uma troca (exchange_of = pedido original) e o inverso */
+  exchange_of?: string | null;
+  exchange_order_number?: string | null;
   mp_payment_id: string | null;
   tracking_code: string | null;
   /** origem do pedido: 'web' (loja online) ou 'caixa' (venda de balcão). */

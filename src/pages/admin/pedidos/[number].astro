@@ -6,7 +6,9 @@ import { brl, formatCpf, formatPhone, orderStatusBadge, whatsappUrl } from '../.
 import { FINAL_STATUSES, ORDER_NEXT, ORDER_STATUS_LABELS, orderStatusLabel, PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type OrderStatus } from '../../../lib/types';
 import { RESERVE_MINUTES } from '../../../lib/repo/orders';
 import { receiptUrl } from '../../../lib/receipt';
-import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, caixaRefundPlan, cancelRequestPending, manualRefundText, returnDeadline, stockLines, stockWasOut } from '../../../lib/order-policy';
+import { CANCEL_REASONS_CAIXA, CANCEL_REASONS_ONLINE, STAFF_CANCELABLE_ONLINE, caixaRefundPlan, cancelRequestPending, manualRefundText, returnAwaitingReview, returnDeadline, returnOpen, stockLines, stockWasOut } from '../../../lib/order-policy';
+import { RETURN_KIND_LABELS } from '../../../lib/types';
+import { getProducts } from '../../../lib/repo/catalog';
 
 export const prerender = false;
 
@@ -28,6 +30,7 @@ const ERROS: Record<string, string> = {
   retrocesso: 'O status só avança: não dá para voltar a um status anterior.',
   final: 'Venda entregue ou cancelada não muda mais de status.',
   igual: 'Escolha um status diferente do atual.',
+  desistencia: 'O cliente pediu a desistência desta compra: aprove o cancelamento antes de qualquer outro passo.',
   migracao: 'O banco ainda não aceita este status. Rode a migration 0024 (supabase/migrations/0024_separating_cancel_request.sql) no Supabase e tente de novo.',
 };
 // só os próximos status da linha do tempo (cancelar tem botão próprio); final = travado
@@ -86,8 +89,19 @@ const cancelConfirm = `Confirmar o cancelamento da venda ${orderLabel(order.orde
 // comprovante (link assinado) para reimprimir ou reenviar vendas do Caixa
 const receipt = order.source === 'caixa' && order.status !== 'pending' && order.status !== 'failed' ? receiptUrl(order) : '';
 const cancelledByCustomer = !!order.cancelled_by && order.cancelled_by === order.user_id;
-// concluir devolução: quem pode cancelar, com a devolução pedida e ainda aberta
-const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status === 'delivered' && !order.return_completed_at;
+// troca/devolução (duas etapas): quem pode cancelar aprova/recusa e, com os itens na loja, conclui
+const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status === 'delivered';
+const returnPending = returnOpen(order);
+const returnReview = returnAwaitingReview(order);
+const returnWaitingItems = returnPending && !!order.return_approved_at;
+const returnKind = order.return_kind ?? 'devolucao';
+const returnWhat = returnKind === 'troca' ? 'troca' : 'devolução';
+// itens da troca: o catálogo ativo (padrão: os mesmos produtos do pedido)
+const exchangeProducts = canReturn && returnWaitingItems ? await getProducts({}) : [];
+const returnConfirm = (troca: boolean) =>
+  troca
+    ? `Confirmar a troca?|Cria o pedido de reenvio (R$ 0) com os itens escolhidos e tira-os do estoque. O que você marcou volta ao estoque; o resto fica como perda. Não dá para desfazer.|Confirmar troca|Voltar|primary`
+    : `Confirmar a devolução?|${order.mp_payment_id ? `O valor total de ${brl(order.total_cents)} (produtos + frete) será estornado agora pelo Mercado Pago` : 'O pedido'} e o pedido fica Cancelado. Não dá para desfazer.|Confirmar devolução|Voltar|primary`;
 ---
 
 <AdminLayout title={`Venda ${orderLabel(order.order_number)}`}>
@@ -109,17 +123,18 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
   {/* pedido de cancelamento do cliente esperando análise */}
   {requestPending && (
     <div role="alert" class="mt-4 rounded-card border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
-      <p class="font-semibold">! Solicitação de Cancelamento Pendente</p>
-      <p class="mt-1">Em {new Date(order.cancel_requested_at!).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}, o cliente pediu: <strong>{order.cancel_request_reason}</strong></p>
+      <p class="font-semibold">! Solicitação de Cancelamento Pendente — não envie este pedido</p>
+      <p class="mt-1">Em {new Date(order.cancel_requested_at!).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}, o cliente desistiu da compra: <strong>{order.cancel_request_reason}</strong></p>
+      <p class="mt-1 text-[13px]">Pare a separação e aprove o cancelamento: o valor é estornado e você decide o que volta ao estoque e o que é perda. Enquanto isso, o status não avança.</p>
       {canCancel ? (
-        <div class="mt-3 flex flex-wrap gap-2">
-          <button type="button" data-open-cancel class="rounded-card bg-red-700 px-3 py-1.5 text-[13px] text-white hover:bg-red-800">Aprovar e cancelar</button>
-          <button type="button" id="reject-open" class="rounded-card border border-amber-400 bg-white px-3 py-1.5 text-[13px] text-amber-900 hover:bg-amber-100">Recusar</button>
-        </div>
-      ) : <p class="mt-2 text-[12px]">Quem pode cancelar vendas analisa este pedido.</p>}
+        <button type="button" data-open-cancel class="mt-3 rounded-card bg-red-700 px-3 py-1.5 text-[13px] text-white hover:bg-red-800">Aprovar o cancelamento</button>
+      ) : <p class="mt-2 text-[12px]">Quem pode cancelar vendas aprova este pedido.</p>}
     </div>
   )}
 
+  {order.exchange_of && (
+    <p class="mt-4 rounded-card border border-agua/40 bg-agua-wash px-3 py-2 text-sm text-ink-soft">Pedido de reenvio da troca do pedido <a href={`/admin/pedidos/${order.exchange_of}`} class="text-agua-dark underline">{orderLabel(order.exchange_of)}</a> (sem custo para o cliente).</p>
+  )}
   <div class="mt-4 grid gap-6 lg:grid-cols-[1.5fr_1fr]">
     <section class="rounded-card border border-ink/10 bg-white p-5">
       <div class="flex items-center justify-between">
@@ -275,7 +290,7 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
           <h2 class="font-display text-lg">Cancelar venda</h2>
           <p class="mt-2 text-sm text-ink-soft">
             {cancelBlocked
-              ? 'Venda já enviada: não dá para cancelar. Se o cliente quiser devolver, ele pede em Minha conta › Pedidos (até 7 dias depois da entrega).'
+              ? 'Venda já enviada: não dá para cancelar. Depois da entrega, o cliente pede a troca ou a devolução em Minha conta › Pedidos (até 7 dias).'
               : isCaixa
                 ? 'Cancela a venda, registra a saída do valor no caixa e você decide o que volta ao estoque e o que é perda.'
                 : 'Cancela a venda, estorna o valor pelo Mercado Pago (se já foi pago) e você decide o que volta ao estoque e o que é perda.'}
@@ -284,26 +299,59 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
         </div>
       )}
 
-      {/* devolução pedida pelo cliente (até 7 dias depois da entrega) */}
+      {/* troca/devolução pedida pelo cliente (até 7 dias depois da entrega), em duas etapas */}
       {order.return_requested_at && (
-        <div class:list={['rounded-card border bg-white p-5 text-sm', order.return_completed_at ? 'border-ink/10' : 'border-amber-300']}>
-          <h2 class="font-display text-lg">{order.return_completed_at ? 'Devolução concluída' : 'Devolução solicitada'}</h2>
-          <p class="mt-2 text-ink-soft">Pedida em {new Date(order.return_requested_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: {order.return_reason}</p>
+        <div class:list={['rounded-card border bg-white p-5 text-sm', returnPending ? 'border-amber-300' : 'border-ink/10']}>
+          <h2 class="font-display text-lg">
+            {order.return_completed_at
+              ? order.return_resolution === 'troca' ? 'Troca concluída' : 'Devolução concluída'
+              : order.return_rejected_at ? `Pedido de ${returnWhat} recusado`
+              : returnWaitingItems ? 'Aguardando os itens do cliente'
+              : `${returnKind === 'troca' ? 'Troca' : 'Devolução'} solicitada`}
+          </h2>
+          <p class="mt-2 text-ink-soft"><strong>{RETURN_KIND_LABELS[returnKind]}</strong> · pedida em {new Date(order.return_requested_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: {order.return_reason}</p>
+          {order.return_approved_at && !order.return_rejected_at && (
+            <div class="mt-2 rounded-card bg-bone-50 p-3 text-[13px] text-ink-soft">
+              <p><strong>Forma de devolução:</strong> Correios{order.return_post_code ? ` · código de postagem ${order.return_post_code}` : ''}</p>
+              {order.return_instructions && <p class="mt-1 whitespace-pre-line">{order.return_instructions}</p>}
+            </div>
+          )}
           {order.return_completed_at ? (
-            <p class="mt-2 text-ink-soft">Concluída em {new Date(order.return_completed_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}: valor estornado e pedido cancelado.</p>
-          ) : canReturn ? (
-            <form method="POST" action="/api/admin/orders/devolucao" class="mt-3 space-y-3" data-confirm={`Concluir a devolução?|Confirme que o produto chegou. O valor de ${brl(order.total_cents)} é estornado ao cliente pelo Mercado Pago e o pedido fica Cancelado.|Concluir devolução|Voltar|primary`}>
-              <input type="hidden" name="order_number" value={order.order_number} />
-              <p class="text-[12px] text-ink-muted">Use quando o produto devolvido chegar e estiver conferido.</p>
-              {/* produto com defeito não volta a ficar à venda */}
-              <label class="flex items-start gap-2 text-[13px] text-ink-soft">
-                <input type="checkbox" name="restock" class="mt-0.5" checked={!/defeito/i.test(order.return_reason ?? '')} />
-                Devolver os itens ao estoque (desmarque se o produto voltou com defeito)
-              </label>
-              <button class="btn-primary w-full">Concluir devolução</button>
-            </form>
+            <p class="mt-2 text-ink-soft">
+              Concluída em {new Date(order.return_completed_at).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}:{' '}
+              {order.return_resolution === 'troca'
+                ? <>itens novos no pedido de reenvio <a href={`/admin/pedidos/${order.exchange_order_number}`} class="text-agua-dark underline">{orderLabel(order.exchange_order_number ?? '')}</a>.</>
+                : 'valor estornado e pedido cancelado.'}
+            </p>
+          ) : order.return_rejected_at ? (
+            <p class="mt-2 text-ink-soft">Resposta ao cliente: {order.return_response}</p>
+          ) : !canReturn ? (
+            <p class="mt-2 text-[12px] text-ink-muted">Quem pode cancelar vendas cuida de trocas e devoluções.</p>
+          ) : returnWaitingItems ? (
+            <>
+              <p class="mt-2 text-[12px] text-ink-muted">Quando os itens chegarem à loja e forem conferidos, confirme a {returnWhat}.</p>
+              <button type="button" data-open-return class="btn-primary mt-3 w-full">Itens recebidos — confirmar</button>
+            </>
           ) : (
-            <p class="mt-2 text-[12px] text-ink-muted">Combine a coleta com o cliente; o reembolso sai quando o produto chegar.</p>
+            <>
+              {/* etapa 1: aprovar com a forma de devolver, ou recusar com resposta */}
+              <form method="POST" action="/api/admin/orders/devolucao" class="mt-3 space-y-3">
+                <input type="hidden" name="order_number" value={order.order_number} />
+                <input type="hidden" name="acao" value="aprovar" />
+                <label class="block">
+                  <span class="label">Código de postagem reversa (Correios)</span>
+                  <input name="codigo_postagem" maxlength="40" class="field" placeholder="Opcional" />
+                </label>
+                <label class="block">
+                  <span class="label">Instruções ao cliente <span class="text-red-600">*</span></span>
+                  <textarea name="instrucoes" rows="4" maxlength="1000" required class="field">Embale os itens com etiquetas e acessórios (de preferência na embalagem original) e poste numa agência dos Correios usando o código de postagem reversa, em até 7 dias. A postagem é por nossa conta.</textarea>
+                </label>
+                <div class="grid gap-2">
+                  <button class="btn-primary w-full">Aprovar e enviar instruções</button>
+                  <button type="button" id="reject-open" class="rounded-card border border-ink/20 px-4 py-2 text-sm hover:bg-bone-100">Recusar</button>
+                </div>
+              </form>
+            </>
           )}
         </div>
       )}
@@ -336,9 +384,9 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
           ) : <p class="mt-2 text-[12px] text-ink-muted">Quem pode cancelar vendas decide o estoque.</p>}
         </div>
       )}
-      {order.status === 'cancelled' && order.stock_resolution && (
+      {(order.status === 'cancelled' || order.return_resolution === 'troca') && order.stock_resolution && (
         <div class="rounded-card border border-ink/10 bg-white p-5 text-sm">
-          <h2 class="font-display text-lg">Estoque do cancelamento</h2>
+          <h2 class="font-display text-lg">{order.return_completed_at ? `Estoque da ${order.return_resolution === 'troca' ? 'troca' : 'devolução'}` : 'Estoque do cancelamento'}</h2>
           <table class="mt-2 w-full text-left text-[13px]">
             <thead class="text-[11px] uppercase tracking-[0.08em] text-ink-muted"><tr><th class="py-1">Produto</th><th class="py-1 text-right">Ao estoque</th><th class="py-1 text-right">Perda</th></tr></thead>
             <tbody>
@@ -451,6 +499,12 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
                 </label>
               </>
             )}
+            {requestPending && (
+              <label class="flex items-start gap-2 rounded-card border border-amber-300 bg-amber-50 p-3 text-[13px] text-amber-900">
+                <input type="checkbox" required class="mt-0.5" />
+                <span>Confirmo que <strong>parei a separação</strong> deste pedido e que ele não será enviado.</span>
+              </label>
+            )}
             {/* estoque por item e quantidade: o que não volta vira perda (avaria) */}
             {stockOut ? (
               <fieldset class="min-w-0 space-y-2" data-stock-box>
@@ -489,19 +543,78 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
           </form>
         </dialog>
       )}
-      {requestPending && canCancel && (
+      {canReturn && returnReview && (
         <dialog id="reject-dialog" class="m-auto w-[min(92vw,28rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
-          <form method="POST" action="/api/admin/orders/cancel-request" class="space-y-4 p-6">
+          <form method="POST" action="/api/admin/orders/devolucao" class="space-y-4 p-6">
             <input type="hidden" name="order_number" value={order.order_number} />
-            <h2 class="font-display text-xl">Recusar o cancelamento?</h2>
-            <p class="text-sm text-ink-soft">O pedido segue normalmente. A resposta vai por e-mail ao cliente e aparece em Minha conta.</p>
+            <input type="hidden" name="acao" value="recusar" />
+            <h2 class="font-display text-xl">Recusar a {returnWhat}?</h2>
+            <p class="text-sm text-ink-soft">O pedido continua Entregue. A resposta vai por e-mail ao cliente e aparece em Minha conta. Os 7 dias são direito do cliente: recuse só o que está fora das condições da política.</p>
             <label class="block">
               <span class="label">Resposta ao cliente <span class="text-red-600">*</span></span>
-              <textarea name="resposta" rows="4" minlength="5" maxlength="500" required class="field" placeholder="Ex.: o pedido já foi separado e sai hoje; se não quiser recebê-lo, recuse a entrega ou peça a devolução em até 7 dias."></textarea>
+              <textarea name="resposta" rows="4" minlength="5" maxlength="500" required class="field" placeholder="Ex.: as fotos mostram sinais de uso além da prova; fale com a gente para avaliarmos."></textarea>
             </label>
             <div class="flex justify-end gap-2">
               <button type="button" id="reject-close" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Voltar</button>
               <button class="rounded-card bg-ink px-4 py-2 font-sans text-sm text-bone">Recusar e responder</button>
+            </div>
+          </form>
+        </dialog>
+      )}
+      {canReturn && returnWaitingItems && (
+        <dialog id="return-dialog" class="m-auto w-[min(92vw,32rem)] rounded-card border border-ink/10 bg-bone p-0 text-ink shadow-xl backdrop:bg-ink/50">
+          {/* mesma janela da Confirmação de Cancelamento, para os itens que voltaram */}
+          <form id="return-form" method="POST" action="/api/admin/orders/devolucao" class="space-y-4 p-6" data-confirm={returnConfirm(returnKind === 'troca')} data-confirm-troca={returnConfirm(true)} data-confirm-reembolso={returnConfirm(false)}>
+            <input type="hidden" name="order_number" value={order.order_number} />
+            <input type="hidden" name="acao" value="concluir" />
+            <h2 class="font-display text-xl">Confirmação de troca ou devolução</h2>
+            <p class="text-sm text-ink-soft">Use quando os itens devolvidos chegarem à loja e forem conferidos. O cliente pediu: <strong>{RETURN_KIND_LABELS[returnKind]}</strong> — {order.return_reason}</p>
+            <fieldset class="min-w-0 space-y-2">
+              <legend class="label">Resolução</legend>
+              <label class="flex items-start gap-2 text-[13px]">
+                <input type="radio" name="resolucao" value="reembolso" class="mt-0.5" checked={returnKind !== 'troca'} />
+                <span><strong>Reembolso integral</strong> — {brl(order.subtotal_cents)} em produtos + {order.shipping_cents ? brl(order.shipping_cents) : 'R$ 0,00'} de frete = <strong>{brl(order.total_cents)}</strong>, estornado pelo Mercado Pago. O pedido fica Cancelado.</span>
+              </label>
+              <label class="flex items-start gap-2 text-[13px]">
+                <input type="radio" name="resolucao" value="troca" class="mt-0.5" checked={returnKind === 'troca'} />
+                <span><strong>Troca</strong> — cria um pedido de reenvio (R$ 0) com os itens abaixo, já como Pago; separe e envie por ele.</span>
+              </label>
+            </fieldset>
+            <div data-exchange-box class="space-y-2 rounded-card bg-bone-50 p-3">
+              <p class="label">Itens que vão para o cliente</p>
+              {order.items.map((it, n) => (
+                <div class="flex items-center gap-2">
+                  <select name={`troca_product_${n}`} class="field min-w-0 flex-1 py-1 text-[13px]" aria-label="Produto da troca">
+                    {!exchangeProducts.some((p) => p.id === it.product_id) && <option value={it.product_id} selected>{it.product_name}</option>}
+                    {exchangeProducts.map((p) => <option value={p.id} selected={p.id === it.product_id}>{p.name} ({p.stock} em estoque)</option>)}
+                  </select>
+                  <input type="number" name={`troca_qty_${n}`} min="0" max="99" value={it.quantity} class="field w-16 px-2 py-1 text-center" aria-label="Quantidade" />
+                </div>
+              ))}
+              <p class="text-[11px] text-ink-muted">Quantidade 0 tira o item. A troca é por produto de mesmo valor (política de trocas).</p>
+            </div>
+            <fieldset class="min-w-0 space-y-2">
+              <legend class="label">Estoque dos itens devolvidos</legend>
+              <div class="space-y-2 rounded-card bg-bone-50 p-3">
+                {lines.map((l) => (
+                  <div data-stock-line data-qty={l.quantity}>
+                    <div class="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[13px]">
+                      <span class="min-w-[9rem] flex-1">{l.product_name}</span>
+                      <span class="flex shrink-0 items-center gap-1.5">
+                        <input type="number" name={`restock_${l.product_id}`} min="0" max={l.quantity} value={/defeito|avaria/i.test(order.return_reason ?? '') ? 0 : l.quantity} class="field w-16 px-2 py-1 text-center" aria-label={`Unidades de ${l.product_name} que voltam ao estoque`} />
+                        <span class="text-ink-muted">de {l.quantity} ao estoque</span>
+                      </span>
+                    </div>
+                    <p data-loss class="hidden text-right text-[12px] font-medium text-red-700"></p>
+                  </div>
+                ))}
+                <p class="text-[11px] text-ink-muted">O que não voltar ao estoque fica registrado como perda (defeito, avaria ou sinais de uso).</p>
+              </div>
+            </fieldset>
+            <p class="text-[12px] text-ink-muted">O cliente recebe um e-mail com o resultado.</p>
+            <div class="flex justify-end gap-2">
+              <button type="button" id="return-close" class="rounded-card border border-ink/20 px-4 py-2 font-sans text-sm hover:bg-bone-200">Voltar</button>
+              <button class="btn-primary">Confirmar</button>
             </div>
           </form>
         </dialog>
@@ -524,6 +637,21 @@ const canReturn = can(Astro.locals.admin, 'pedidos.cancelar') && order.status ==
   const detalhe = document.getElementById('cancel-detalhe') as HTMLTextAreaElement | null;
   document.querySelectorAll<HTMLButtonElement>('[data-open-cancel]').forEach((b) => b.addEventListener('click', () => dlg?.showModal()));
   document.getElementById('cancel-close')?.addEventListener('click', () => dlg?.close());
+  const returnDlg = document.getElementById('return-dialog') as HTMLDialogElement | null;
+  document.querySelectorAll<HTMLButtonElement>('[data-open-return]').forEach((b) => b.addEventListener('click', () => returnDlg?.showModal()));
+  document.getElementById('return-close')?.addEventListener('click', () => returnDlg?.close());
+  // resolução: Troca mostra os itens novos; a confirmação final acompanha a escolha
+  const returnForm = document.getElementById('return-form') as HTMLFormElement | null;
+  const syncResolution = () => {
+    if (!returnForm) return;
+    const troca = (returnForm.querySelector('input[name=resolucao]:checked') as HTMLInputElement | null)?.value === 'troca';
+    const box = returnForm.querySelector<HTMLElement>('[data-exchange-box]')!;
+    box.classList.toggle('hidden', !troca);
+    box.querySelectorAll<HTMLInputElement | HTMLSelectElement>('input, select').forEach((i) => (i.disabled = !troca));
+    returnForm.dataset.confirm = troca ? returnForm.dataset.confirmTroca : returnForm.dataset.confirmReembolso;
+  };
+  returnForm?.querySelectorAll('input[name=resolucao]').forEach((r) => r.addEventListener('change', syncResolution));
+  syncResolution();
   const rejectDlg = document.getElementById('reject-dialog') as HTMLDialogElement | null;
   document.getElementById('reject-open')?.addEventListener('click', () => rejectDlg?.showModal());
   document.getElementById('reject-close')?.addEventListener('click', () => rejectDlg?.close());

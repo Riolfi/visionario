@@ -52,6 +52,15 @@ function rowToOrder(row: any, items: any[]): Order {
     stock_pending: row.stock_pending === true,
     stock_resolved_at: row.stock_resolved_at ?? null,
     stock_resolved_by: row.stock_resolved_by ?? null,
+    return_kind: row.return_kind ?? null,
+    return_approved_at: row.return_approved_at ?? null,
+    return_post_code: row.return_post_code ?? null,
+    return_instructions: row.return_instructions ?? null,
+    return_rejected_at: row.return_rejected_at ?? null,
+    return_response: row.return_response ?? null,
+    return_resolution: row.return_resolution ?? null,
+    exchange_of: row.exchange_of ?? null,
+    exchange_order_number: row.exchange_order_number ?? null,
     mp_payment_id: row.mp_payment_id,
     tracking_code: row.tracking_code ?? null,
     source: row.source === 'caixa' ? 'caixa' : 'web',
@@ -202,6 +211,53 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   orders.unshift(base);
   await writeOrders(orders);
   return base;
+}
+
+/**
+ * Pedido de reenvio de uma troca: mesmo cliente e endereço do original, R$ 0
+ * (exchange_of = número do original). Nasce Aguardando e vira Pago pelo
+ * change_order_status, que baixa o estoque numa transação (falta estoque =
+ * o pedido é apagado e nada muda). Depois segue Em separação → Enviado → Entregue.
+ * ponytail: troca é por produto de mesmo valor (política); diferença de preço
+ * se acerta fora do sistema
+ */
+export async function createExchangeOrder(original: Order, lines: { product_id: string; quantity: number }[]): Promise<{ order: Order } | { error: string }> {
+  const sb = supabaseAdmin();
+  if (!hasSupabase || !sb) return { error: 'A troca exige o Supabase configurado.' };
+  const items = [];
+  for (const l of lines) {
+    const p = await getProductById(l.product_id);
+    if (!p) return { error: 'Produto da troca não encontrado.' };
+    items.push({ product_id: p.id, product_name: p.name, product_slug: p.slug ?? null, unit_price_cents: 0, quantity: l.quantity });
+  }
+  const orderNumber = await newOrderNumber();
+  const { data: row, error } = await sb
+    .from('orders')
+    .insert({
+      order_number: orderNumber,
+      status: 'pending',
+      user_id: original.user_id,
+      customer_name: original.customer_name,
+      customer_email: original.customer_email,
+      customer_phone: original.customer_phone,
+      customer_cpf: original.customer_cpf,
+      shipping_cep: original.shipping_cep,
+      shipping_address: original.shipping_address,
+      shipping_cents: 0,
+      subtotal_cents: 0,
+      total_cents: 0,
+      exchange_of: original.order_number,
+    })
+    .select()
+    .single();
+  if (error) return { error: /exchange_of/.test(error.message) ? 'Rode a migration 0030 no Supabase.' : error.message };
+  const { error: itemsError } = await sb.from('order_items').insert(items.map((i) => ({ ...i, order_id: row.id })));
+  const paid = itemsError ? { order: null, error: itemsError.message } : await changeOrderStatus(orderNumber, 'paid');
+  if (!paid.order) {
+    await sb.from('orders').delete().eq('id', row.id); // itens saem junto (cascade)
+    return { error: paid.error && /estoque/i.test(paid.error) ? paid.error : `Não foi possível criar o pedido da troca (${paid.error ?? 'erro'}).` };
+  }
+  return { order: paid.order };
 }
 
 // ---------------------------------------------------------------------------

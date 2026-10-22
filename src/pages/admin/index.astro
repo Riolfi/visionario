@@ -2,7 +2,7 @@
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { getProducts } from '../../lib/repo/catalog';
 import { listOrders, reservedStock, todaySP } from '../../lib/repo/orders';
-import { cancelRequestPending } from '../../lib/order-policy';
+import { cancelRequestPending, returnOpen } from '../../lib/order-policy';
 import { brl, orderLabel } from '../../lib/format';
 import { RECEIVED_STATUSES } from '../../lib/types';
 import { can } from '../../lib/rbac';
@@ -36,6 +36,7 @@ const dateLabel = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day:
 
 // avisos e pendências
 const cancelReqs = canSales ? orders.filter(cancelRequestPending) : [];
+const returnReqs = canSales ? orders.filter(returnOpen) : [];
 const stockPending = canSales ? orders.filter((o) => o.status === 'cancelled' && o.stock_pending) : [];
 const toSeparate = canSales ? orders.filter((o) => o.source !== 'caixa' && o.status === 'paid') : [];
 const lowStock = products.filter((p) => p.is_active && p.stock <= 5);
@@ -44,6 +45,9 @@ type Alert = { tone: 'amber' | 'red' | 'blue'; title: string; text: string; href
 const alerts: Alert[] = [
   ...(cancelReqs.length
     ? [{ tone: 'amber' as const, title: 'Solicitação de Cancelamento Pendente', text: cancelReqs.length === 1 ? `O cliente da venda ${orderLabel(cancelReqs[0]!.order_number)} pediu o cancelamento.` : `${cancelReqs.length} clientes pediram o cancelamento.`, href: cancelReqs.length === 1 ? `/admin/pedidos/${cancelReqs[0]!.order_number}` : '/admin/pedidos', cta: 'Analisar' }]
+    : []),
+  ...(returnReqs.length
+    ? [{ tone: 'amber' as const, title: 'Troca ou devolução pendente', text: returnReqs.length === 1 ? `A venda ${orderLabel(returnReqs[0]!.order_number)} tem troca ou devolução em andamento.` : `${returnReqs.length} vendas têm troca ou devolução em andamento.`, href: returnReqs.length === 1 ? `/admin/pedidos/${returnReqs[0]!.order_number}` : '/admin/pedidos', cta: 'Abrir' }]
     : []),
   ...(stockPending.length
     ? [{ tone: 'amber' as const, title: 'Estoque pendente de cancelamento', text: `${stockPending.length} ${stockPending.length === 1 ? 'venda cancelada espera' : 'vendas canceladas esperam'} a decisão do que volta ao estoque.`, href: '/admin/pedidos?aba=cancelamentos', cta: 'Decidir' }]

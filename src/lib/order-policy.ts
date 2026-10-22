@@ -1,24 +1,29 @@
 /**
  * Política de cancelamento e devolução (compras online e do Caixa).
  *
- *  - Cliente cancela sozinho até ser enviado (Aguardando pagamento, Pago,
- *    Em separação); se já pagou, o estorno sai na hora pelo Mercado Pago.
- *  - Enviado/Entregue: não cancela; Entregue abre a devolução por 7 dias
- *    corridos (CDC, art. 49), contados de delivered_at.
+ *  - Aguardando pagamento/Pago: o cliente cancela sozinho; se já pagou, o
+ *    estorno sai na hora pelo Mercado Pago.
+ *  - Em separação: o cliente pede a desistência; a equipe é avisada e só
+ *    aprova (confirma que parou a separação e decide estoque/perda). Enquanto
+ *    o pedido está pendente, a venda não avança para Enviado.
+ *  - Enviado: nada pelo site; Entregue abre a troca ou devolução por 7 dias
+ *    corridos (CDC, art. 49), contados de delivered_at, em duas etapas
+ *    (aprovar com a forma de devolver; concluir quando os itens chegarem).
  *  - A equipe cancela compra online antes do envio com motivo; Caixa, sempre.
  *  - Cancelado é final (o banco também recusa, migration 0025).
  */
-import { changeOrderStatus, recordCancellation } from './repo/orders';
+import { changeOrderStatus, createExchangeOrder, recordCancellation } from './repo/orders';
 import { supabaseAdmin } from './supabase';
 import { createNotification } from './repo/notifications';
 import { refundPayment } from './mercadopago';
-import { sendCancelRequestAnswer, sendOrderStatusEmail } from './email';
+import { sendOrderStatusEmail, sendReturnAnswer } from './email';
 import { orderLabel } from './format';
 import { PAYMENT_METHOD_LABELS, RECEIVED_STATUSES, type Order, type OrderStatus, type StockLine } from './types';
 import { brl } from './format';
 
-// cliente só PEDE o cancelamento (a equipe analisa); depois de Pago, só pela loja / trocas
+// cliente cancela sozinho (com estorno) antes da separação; em separação, só pede a desistência
 export const CUSTOMER_CANCELABLE: OrderStatus[] = ['pending', 'paid'];
+export const CUSTOMER_REQUEST_CANCEL: OrderStatus[] = ['separating'];
 /** a equipe ainda cancela pagamento não concluído; depois de enviado, só devolução */
 export const STAFF_CANCELABLE_ONLINE: OrderStatus[] = ['pending', 'paid', 'separating', 'failed'];
 export const RETURN_DAYS = 7;
@@ -108,20 +113,6 @@ export function restockFromForm(form: FormData): Record<string, number> {
 /** Pedido de cancelamento do cliente esperando análise? */
 export const cancelRequestPending = (order: Order) => !!order.cancel_requested_at && !order.cancel_request_resolved_at && order.status !== 'cancelled';
 
-/** Recusa o pedido de cancelamento com uma resposta (vai por e-mail e aparece em Minha conta). */
-export async function rejectCancelRequest(order: Order, by: string | null, response: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!cancelRequestPending(order)) return { ok: false, error: 'Não há pedido de cancelamento em análise.' };
-  const sb = supabaseAdmin();
-  if (!sb) return { ok: false, error: 'Supabase não configurado.' };
-  const { error } = await sb
-    .from('orders')
-    .update({ cancel_request_resolved_at: new Date().toISOString(), cancel_request_resolved_by: by, cancel_request_response: response.slice(0, 500) })
-    .eq('id', order.id);
-  if (error) return { ok: false, error: /cancel_request_response/.test(error.message) ? 'Rode a migration 0028 no Supabase.' : error.message };
-  await sendCancelRequestAnswer(order, response).catch((e) => console.error('[cancel] e-mail da recusa falhou:', e));
-  return { ok: true };
-}
-
 /**
  * Cancela uma compra online: estorna no Mercado Pago se já foi paga (estorno
  * falhou = nada muda), põe Cancelado (o estoque volta se já tinha baixado),
@@ -173,21 +164,66 @@ export async function cancelOnlineOrder(
   return { ok: true, refundedCents, simulated };
 }
 
+/** Troca/devolução pedida e ainda não concluída nem recusada. */
+export const returnOpen = (order: Order) => !!order.return_requested_at && !order.return_completed_at && !order.return_rejected_at;
+/** Etapa 1 pendente: a equipe ainda não aprovou nem recusou. */
+export const returnAwaitingReview = (order: Order) => returnOpen(order) && !order.return_approved_at;
+
+async function saveReturn(order: Order, patch: Record<string, unknown>): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sb = supabaseAdmin();
+  if (!sb) return { ok: false, error: 'Supabase não configurado.' };
+  const { error } = await sb.from('orders').update(patch).eq('id', order.id);
+  return error ? { ok: false, error: /return_|exchange_/.test(error.message) ? 'Rode a migration 0030 no Supabase.' : error.message } : { ok: true };
+}
+
+/** Etapa 1: aprova e informa como devolver (Correios); o cliente recebe por e-mail e vê em Minha conta. */
+export async function approveReturn(order: Order, by: string | null, postCode: string | null, instructions: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!returnAwaitingReview(order)) return { ok: false, error: 'Este pedido não tem troca ou devolução esperando análise.' };
+  const r = await saveReturn(order, { return_approved_at: new Date().toISOString(), return_approved_by: by, return_post_code: postCode, return_instructions: instructions.slice(0, 1000) });
+  if (r.ok) await sendReturnAnswer(order, { approved: true, postCode, instructions }).catch((e) => console.error('[devolucao] e-mail da aprovação falhou:', e));
+  return r;
+}
+
+/** Etapa 1: recusa com resposta (ex.: fora das condições da política). */
+export async function rejectReturn(order: Order, by: string | null, response: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!returnAwaitingReview(order)) return { ok: false, error: 'Este pedido não tem troca ou devolução esperando análise.' };
+  const r = await saveReturn(order, { return_rejected_at: new Date().toISOString(), return_approved_by: by, return_response: response.slice(0, 500) });
+  if (r.ok) await sendReturnAnswer(order, { approved: false, response }).catch((e) => console.error('[devolucao] e-mail da recusa falhou:', e));
+  return r;
+}
+
 /**
- * Conclui a devolução pedida pelo cliente (pedido Entregue com devolução
- * solicitada): estorna o valor total no Mercado Pago (falhou = nada muda),
- * põe Cancelado (o estoque volta), grava quem/quando e avisa o cliente.
- * restock=false (produto com defeito): os itens não voltam a ficar à venda.
+ * Etapa 2 (Confirmação de troca ou devolução), com os itens já na loja:
+ *  - reembolso: estorna o total (produtos + frete) no Mercado Pago (falhou =
+ *    nada muda), põe Cancelado e aplica o estoque por item (o resto é perda);
+ *  - troca: cria o pedido de reenvio (R$ 0) com os itens novos — falta de
+ *    estoque = nada muda —, devolve ao estoque o que voltou em condições e o
+ *    pedido original continua Entregue.
+ * O cliente é avisado por e-mail nos dois casos.
  */
 export async function completeReturn(
   order: Order,
   by: string | null,
-  restock: boolean,
-): Promise<{ ok: true; refundedCents: number | null; simulated?: boolean } | { ok: false; error: string }> {
-  if (order.status !== 'delivered' || !order.return_requested_at) return { ok: false, error: 'Este pedido não tem devolução pendente.' };
-  if (order.return_completed_at) return { ok: false, error: 'A devolução deste pedido já foi concluída.' };
+  opts: { resolution: 'reembolso' | 'troca'; restock: Record<string, number>; exchange?: { product_id: string; quantity: number }[] },
+): Promise<{ ok: true; refundedCents: number | null; simulated?: boolean; exchangeNumber?: string } | { ok: false; error: string }> {
+  if (order.status !== 'delivered' || !returnOpen(order)) return { ok: false, error: 'Este pedido não tem troca ou devolução pendente.' };
+  if (!order.return_approved_at) return { ok: false, error: 'Aprove o pedido e informe como devolver antes de concluir.' };
   const sb = supabaseAdmin();
   if (!sb) return { ok: false, error: 'Supabase não configurado.' };
+  const done = { return_completed_at: new Date().toISOString(), return_completed_by: by, return_resolution: opts.resolution };
+
+  if (opts.resolution === 'troca') {
+    if (!opts.exchange?.length) return { ok: false, error: 'Escolha os itens que vão para o cliente na troca.' };
+    const ex = await createExchangeOrder(order, opts.exchange);
+    if ('error' in ex) return { ok: false, error: ex.error };
+    // o pedido original estava Entregue (estoque já tinha saído): só o que voltou em condições entra
+    const lines = stockLines(order, opts.restock);
+    for (const l of lines) await adjustStock(l.product_id, l.restocked);
+    await saveStock(order.id, { stock_pending: false, stock_resolution: lines, stock_resolved_at: done.return_completed_at, stock_resolved_by: by });
+    await sb.from('orders').update({ ...done, exchange_order_number: ex.order.order_number }).eq('id', order.id);
+    await sendOrderStatusEmail(ex.order, 'paid', { exchangeOf: order.order_number }).catch((e) => console.error('[troca] e-mail falhou:', e));
+    return { ok: true, refundedCents: null, exchangeNumber: ex.order.order_number };
+  }
 
   let refundedCents: number | null = null;
   let simulated = false;
@@ -208,14 +244,25 @@ export async function completeReturn(
     }
     return { ok: false, error: error || 'Não foi possível concluir a devolução.' };
   }
-  // o change_order_status devolveu os itens ao estoque; produto com defeito não volta à venda
-  if (!restock) await withdrawStock(order.items);
-  await sb.from('orders').update({ return_completed_at: new Date().toISOString() }).eq('id', order.id);
+  // o change_order_status devolveu tudo ao estoque; o que não voltou em condições sai de novo (perda)
+  await applyStockDecision(order, { mode: 'now', restock: opts.restock }, by);
+  await sb.from('orders').update(done).eq('id', order.id);
   await recordCancellation(order.order_number, by, `Devolução: ${order.return_reason ?? 'sem motivo'}`);
   await sendOrderStatusEmail(updated, 'cancelled', { refundCents: refundedCents, returned: true }).catch((e) =>
     console.error('[devolucao] e-mail falhou:', e),
   );
   return { ok: true, refundedCents, simulated };
+}
+
+/** Lê "troca_product_<n>" e "troca_qty_<n>" do formulário (itens novos da troca). */
+export function exchangeFromForm(form: FormData): { product_id: string; quantity: number }[] {
+  const out: { product_id: string; quantity: number }[] = [];
+  for (const [k, v] of form.entries()) {
+    if (!k.startsWith('troca_product_')) continue;
+    const quantity = Math.floor(Number(form.get(`troca_qty_${k.slice(14)}`)) || 0);
+    if (String(v) && quantity > 0) out.push({ product_id: String(v), quantity: Math.min(quantity, 99) });
+  }
+  return out;
 }
 
 /**

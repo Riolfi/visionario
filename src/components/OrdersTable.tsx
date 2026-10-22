@@ -17,6 +17,8 @@ export interface OrderRow {
   customer: string;
   /** pedido de cancelamento do cliente esperando análise */
   cancel_pending?: boolean;
+  /** troca/devolução aberta (esperando análise ou os itens) */
+  return_pending?: boolean;
 }
 
 const FORMATS = [
@@ -278,7 +280,8 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
               <span role="cell" class="px-3 py-3 text-ink-soft">{o.source === 'caixa' ? 'Física' : 'Online'}</span>
               <span role="cell" class="px-3 py-3">
                 <span class={`inline-block rounded-full px-2 py-0.5 text-[11px] font-medium uppercase leading-tight ${orderStatusBadge(o.status, o.source === 'caixa' ? 'caixa' : 'web')}`}>{o.status_label}</span>
-                {o.cancel_pending && <span class="mt-1 block text-[11px] font-semibold text-amber-700" title="O cliente pediu o cancelamento: abra a venda para aprovar ou recusar">! Cancelamento pendente</span>}
+                {o.cancel_pending && <span class="mt-1 block text-[11px] font-semibold text-amber-700" title="O cliente desistiu da compra em separação: abra a venda para aprovar o cancelamento">! Cancelamento pendente</span>}
+                {o.return_pending && <span class="mt-1 block text-[11px] font-semibold text-amber-700" title="O cliente pediu troca ou devolução: abra a venda">! Troca/devolução pendente</span>}
               </span>
               <span role="cell" class="px-3 py-3 text-right">{brl(o.total_cents)}</span>
               <span role="cell" class="px-3 py-2 text-right">

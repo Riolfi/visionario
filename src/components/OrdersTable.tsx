@@ -298,7 +298,7 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
         </div>
       </div>
 
-      {/* paginação: itens por página, ⏮ ◀ ▶ ⏭ e quantos estão aparecendo */}
+      {/* paginação: itens por página, primeira/anterior/próxima/última e quantos estão aparecendo */}
       <div class="flex flex-wrap items-center justify-between gap-3 px-1 py-3 font-sans text-[13px] text-ink-muted">
         <label class="flex items-center gap-2">
           Itens por página
@@ -308,11 +308,11 @@ export default function OrdersTable({ orders }: { orders: OrderRow[] }) {
         </label>
         <span aria-live="polite">{sorted.length ? `Exibindo ${start + 1}–${Math.min(start + size, sorted.length)} de ${sorted.length} ${sorted.length === 1 ? 'item' : 'itens'}` : 'Nenhum item'}</span>
         <span class="flex items-center gap-1">
-          <button type="button" class={PAGE_BTN} disabled={current <= 1} onClick={() => setPage(1)} aria-label="Primeira página" title="Primeira página">⏮</button>
-          <button type="button" class={PAGE_BTN} disabled={current <= 1} onClick={() => setPage(current - 1)} aria-label="Página anterior" title="Anterior">◀</button>
+          <button type="button" class={PAGE_BTN} disabled={current <= 1} onClick={() => setPage(1)} aria-label="Primeira página" title="Primeira página"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 18l-6-6 6-6" /><path d="M7 6v12" /></svg></button>
+          <button type="button" class={PAGE_BTN} disabled={current <= 1} onClick={() => setPage(current - 1)} aria-label="Página anterior" title="Anterior"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6" /></svg></button>
           <span class="px-2 text-ink">{current} / {pages}</span>
-          <button type="button" class={PAGE_BTN} disabled={current >= pages} onClick={() => setPage(current + 1)} aria-label="Próxima página" title="Próxima">▶</button>
-          <button type="button" class={PAGE_BTN} disabled={current >= pages} onClick={() => setPage(pages)} aria-label="Última página" title="Última página">⏭</button>
+          <button type="button" class={PAGE_BTN} disabled={current >= pages} onClick={() => setPage(current + 1)} aria-label="Próxima página" title="Próxima"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6" /></svg></button>
+          <button type="button" class={PAGE_BTN} disabled={current >= pages} onClick={() => setPage(pages)} aria-label="Última página" title="Última página"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 18l6-6-6-6" /><path d="M17 6v12" /></svg></button>
         </span>
       </div>
 

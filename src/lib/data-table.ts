@@ -5,7 +5,8 @@
  *   <div data-table class="data-table-box …"><table>…</table></div>
  *   - <th data-sort="text|number|date"> vira ordenável (clique alterna ▲/▼);
  *   - o valor de cada célula é td[data-sort] (se houver) ou o texto dela.
- * O rodapé (itens por página 10/20/30/50, ⏮ ◀ ▶ ⏭ e "Exibindo 1–10 de N")
+ * O rodapé (itens por página 10/20/30/50, primeira/anterior/próxima/última
+ * página e "Exibindo 1–10 de N")
  * entra logo abaixo da caixa; o cabeçalho fica preso no topo dela (CSS
  * .data-table-box em global.css) e as linhas rolam no meio.
  *
@@ -78,11 +79,11 @@ export function enableDataTable(box: HTMLElement) {
     </label>
     <span data-info aria-live="polite"></span>
     <span class="flex items-center gap-1">
-      <button type="button" data-go="first" class="${BTN}" aria-label="Primeira página" title="Primeira página">⏮</button>
-      <button type="button" data-go="prev" class="${BTN}" aria-label="Página anterior" title="Anterior">◀</button>
+      <button type="button" data-go="first" class="${BTN}" aria-label="Primeira página" title="Primeira página"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 18l-6-6 6-6"/><path d="M7 6v12"/></svg></button>
+      <button type="button" data-go="prev" class="${BTN}" aria-label="Página anterior" title="Anterior"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
       <span data-page class="px-2 text-ink"></span>
-      <button type="button" data-go="next" class="${BTN}" aria-label="Próxima página" title="Próxima">▶</button>
-      <button type="button" data-go="last" class="${BTN}" aria-label="Última página" title="Última página">⏭</button>
+      <button type="button" data-go="next" class="${BTN}" aria-label="Próxima página" title="Próxima"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+      <button type="button" data-go="last" class="${BTN}" aria-label="Última página" title="Última página"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18l6-6-6-6"/><path d="M17 6v12"/></svg></button>
     </span>`;
   box.after(footer);
   const sizeSel = footer.querySelector<HTMLSelectElement>('[data-size]')!;
